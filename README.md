@@ -46,6 +46,14 @@ alt="Guition 1.80 silver puck photo"
 
 </div>
 
+**How to use**
+
+While music is playing, swipe left or right to move to the previous or next song.
+
+Tap the screen to open the player controls, where you can adjust the volume, skip to the next or previous track, pause, or stop playback. When the player controls are visible, swipe down to open the playlist selector.
+
+When no music is playing, the display switches to a weather clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again.
+
 ### Where to buy
 
 Guition 1.80" Silver Puck:
