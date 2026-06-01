@@ -1,5 +1,3 @@
-Here’s a polished version for your `README.md`:
-
 # sendspin-guition
 
 Sendspin player for Guition devices with Line Out.
