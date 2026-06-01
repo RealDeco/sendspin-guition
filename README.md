@@ -18,6 +18,8 @@ Not many esp32 devices include Line Out, but Guition has made two: the 1.80" sil
 
 ### Flash Firmware
 
+For your convenience, you can flash the device directly from this webpage. Click your version below to get started.
+
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v1/index.html">
   <strong>Guition Silver Puck v1</strong>
 </a>
