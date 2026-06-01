@@ -9,6 +9,8 @@ These devices are perfect for Sendspin players because of their Line Out support
 Here is the code to go with them. :)
 
 <p align="center">
+  <h3><a href="https://realdeco.github.io/sendspin-guition//Guition_Silver_Puck_v1/index.html">Flash Firmware - Guition_Silver_Puck_v1</a></h3>
+
   <h3><a href="https://realdeco.github.io/sendspin-guition//Guition_Silver_Puck_v2/index.html">Flash Firmware - Guition_Silver_Puck_v2</a></h3>
 
 <img width="1448" height="615" alt="Guition Line Out devices" src="https://github.com/user-attachments/assets/e6e6a76f-20ce-4229-90d6-5cc22ac82135" />
