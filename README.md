@@ -4,7 +4,9 @@
 
 Sendspin player firmware for Guition devices with Line Out.
 
-Not many devices include Line Out, but Guition has made two: the 1.80" silver puck and a new version of the 1.85" rotary dial knob. These devices are perfect for Sendspin players because they support Line Out through the 3.5 mm mini-jack connector.
+Turn any amplifier, active speaker, or existing hi-fi setup into part of a perfectly synchronized multi-room audio system. With microsecond-precise timing, automatic local discovery, encrypted pairing, and support for mixed brands, it delivers “one song, every room” without cloud lock-in, accounts, or Big Tech telemetry.
+
+Not many esp32 devices include Line Out, but Guition has made two: the 1.80" silver puck and a new version of the 1.85" rotary dial knob. These devices are perfect for Sendspin players because they support Line Out through the 3.5 mm mini-jack connector.
 
 </div>
 
