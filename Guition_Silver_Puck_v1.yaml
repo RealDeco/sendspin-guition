@@ -136,6 +136,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: touch_swipe_detected
+    type: bool
+    restore_value: no
+    initial_value: "false"
   - id: touch_start_x
     type: int
     restore_value: no
@@ -265,7 +269,7 @@ switch:
     icon: "mdi:image-outline"
     entity_category: config
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     on_turn_on:
       - script.execute: load_standby_background
     on_turn_off:
@@ -937,7 +941,7 @@ script:
       - lvgl.page.show:
           id: playlist_menu_page
           animation: MOVE_BOTTOM
-          time: 300ms
+          time: 160ms
       - script.execute: player_controls_timeout
 
   - id: close_playlist_menu
@@ -948,7 +952,7 @@ script:
       - lvgl.page.show:
           id: player_controls_page
           animation: MOVE_TOP
-          time: 300ms
+          time: 160ms
       - script.execute: player_controls_timeout
 
   - id: refresh_playlist_labels
@@ -979,7 +983,7 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return !id(playlist_media_player_entity).state.empty() && !uri.empty();'
+            lambda: 'return !id(touch_swipe_detected) && !id(playlist_media_player_entity).state.empty() && !uri.empty();'
           then:
             - homeassistant.action:
                 action: media_player.play_media
@@ -1101,33 +1105,63 @@ script:
 
   - id: player_controls_toggle
     then:
-      - media_player.toggle: sendspin_group_media_player
-      - script.execute: player_controls_keep_open
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.toggle: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
 
   - id: player_controls_previous
     then:
-      - media_player.previous: sendspin_group_media_player
-      - script.execute: player_controls_keep_open
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.previous: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
 
   - id: player_controls_next
     then:
-      - media_player.next: sendspin_group_media_player
-      - script.execute: player_controls_keep_open
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.next: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
 
   - id: player_controls_volume_down
     then:
-      - media_player.volume_down: external_media_player
-      - script.execute: player_controls_keep_open
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.volume_down: external_media_player
+            - script.execute: player_controls_keep_open
 
   - id: player_controls_volume_up
     then:
-      - media_player.volume_up: external_media_player
-      - script.execute: player_controls_keep_open
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.volume_up: external_media_player
+            - script.execute: player_controls_keep_open
 
   - id: player_controls_mute
     then:
-      - media_player.mute: external_media_player
-      - script.execute: player_controls_keep_open
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.mute: external_media_player
+            - script.execute: player_controls_keep_open
 
   - id: album_art_slide
     mode: restart
@@ -1351,6 +1385,7 @@ touchscreen:
             id(touch_last_x) = touch.x;
             id(touch_last_y) = touch.y;
             id(touch_start_ms) = millis();
+            id(touch_swipe_detected) = false;
     on_update:
       then:
         - lambda: |-
@@ -1359,6 +1394,18 @@ touchscreen:
               if (touch.state >= 1 && touch.state <= 2) {
                 id(touch_last_x) = touch.x;
                 id(touch_last_y) = touch.y;
+                const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+                const int swipe_min_dist = std::max(16, min_dim / 8);
+                if (std::abs(id(touch_last_x) - id(touch_start_x)) >= swipe_min_dist ||
+                    std::abs(id(touch_last_y) - id(touch_start_y)) >= swipe_min_dist) {
+                  id(touch_swipe_detected) = true;
+                  lv_obj_remove_state(id(controls_mute_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_previous_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_next_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
+                }
                 break;
               }
             }
@@ -1601,6 +1648,7 @@ lvgl:
             text_align: CENTER
 
         - button:
+            id: controls_mute_button
             align: BOTTOM_MID
             y: -58
             width: 58
@@ -1625,6 +1673,7 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
+            id: controls_previous_button
             align: CENTER
             x: -104
             y: 0
@@ -1650,6 +1699,7 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
+            id: controls_toggle_button
             align: CENTER
             y: 0
             width: 104
@@ -1673,6 +1723,7 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
+            id: controls_next_button
             align: CENTER
             x: 104
             y: 0
@@ -1698,6 +1749,7 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
+            id: controls_volume_down_button
             align: BOTTOM_MID
             x: -72
             y: -58
@@ -1725,6 +1777,7 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
+            id: controls_volume_up_button
             align: BOTTOM_MID
             x: 72
             y: -58
