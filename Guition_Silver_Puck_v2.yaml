@@ -53,7 +53,7 @@ esphome:
   min_version: 2026.5.0
   name_add_mac_suffix: false
   project:
-    name: realdeco.sendspin_zero
+    name: realdeco.sendspin_guition
     version: "2026.5.0"
   on_boot:
     priority: -100
@@ -96,6 +96,8 @@ wifi:
           - script.execute: load_standby_background
   ap:
     password: "RZ7D3EzJdPM6"
+
+improv_serial:
 
 psram:
   mode: octal
