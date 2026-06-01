@@ -65,6 +65,8 @@ Guition 1.80" Silver Puck:
 
 ## Guition 1.85" Rotary Knob
 
+beware there is two versions of this, the older more expensive JC3636K518C with dual processor and the newer JC3636K518C with a single esp32-s3, this is for the new version.
+
 <div align="center">
 
 <img
