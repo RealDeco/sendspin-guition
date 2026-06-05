@@ -50,14 +50,6 @@ alt="Guition 1.80 silver puck photo"
 
 </div>
 
-**How to use**
-
-While music is playing, swipe left or right to move to the previous or next song.
-
-Tap the screen to open the player controls, where you can adjust the volume, skip to the next or previous track, pause, or stop playback. When the player controls are visible, swipe down to open the playlist selector.
-
-When no music is playing, the display switches to a weather clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again.
-
 ### Where to buy
 
 Guition 1.80" Silver Puck:
@@ -67,16 +59,15 @@ Guition 1.80" Silver Puck:
 
 ## Guition 1.85" Rotary Knob
 
-Beware there is two versions of this, the older more expensive JC3636K518C with dual processor, and the newer JC3636K718C with a single esp32-s3, this is for the new version.
+Beware there is two versions of this, the older more expensive JC3636K518C with dual processor, and the newer JC3636K718C with a single esp32-s3, this is for the new version. first yaml for this device is a quick vibe coded conversion of the yaml for the other device, with gpio and extra hardware added and working, ready to use.
 
 <div align="center">
 
-<img
-width="301"
-height="297"
-alt="Guition 1.85 Rotary knob"
-src="https://github.com/user-attachments/assets/7e128d55-79ee-42b6-925f-070175836c7f"
-/>
+
+<img width="400" src="https://github.com/user-attachments/assets/063362d3-3063-4a42-8740-1f7cea6c51af" />
+
+
+### Flash Firmware
 
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2/index.html">
   <strong>Guition Knob v2</strong>
@@ -88,5 +79,14 @@ src="https://github.com/user-attachments/assets/7e128d55-79ee-42b6-925f-07017583
 
 Guition 1.85" Rotary Knob:
 [https://www.aliexpress.com/item/1005011771382178.html](https://www.aliexpress.com/item/1005011771382178.html)
+
+
+**How to use**
+
+While music is playing, swipe left or right to move to the previous or next song.
+
+Tap the screen to open the player controls, where you can adjust the volume, skip to the next or previous track, pause, or stop playback. When the player controls are visible, swipe down to open the playlist selector.
+
+When no music is playing, the display switches to a weather clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again.
 
 ---
