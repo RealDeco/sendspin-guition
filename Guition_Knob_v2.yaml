@@ -853,10 +853,6 @@ text_sensor:
           then:
             - lvgl.widget.show: weather_header
             - lvgl.widget.show: weather_label
-            - lvgl.widget.show: weather_label_glow
-            - lvgl.label.update:
-                id: weather_label_glow
-                text: !lambda return x;
             - lvgl.label.update:
                 id: weather_label
                 text: !lambda return x;
@@ -867,7 +863,6 @@ text_sensor:
                 then:
                   - lvgl.widget.hide: weather_header
                   - lvgl.widget.hide: weather_label
-                  - lvgl.widget.hide: weather_label_glow
 
 font:
   - file:
@@ -1771,18 +1766,6 @@ lvgl:
                         text_font: font_temp_unit
 
               - label:
-                  id: weather_label_glow
-                  align: TOP_MID
-                  x: 1
-                  y: 242
-                  width: 285
-                  text: "Weather..."
-                  text_color: 0x1AA6C8
-                  text_font: font_display
-                  long_mode: SCROLL_CIRCULAR
-                  text_align: CENTER
-
-              - label:
                   id: weather_label
                   align: TOP_MID
                   x: 0
@@ -2309,6 +2292,5 @@ lvgl:
 # Knob hardware notes:
 # - Rotary encoder uses GPIO_KNOB_A/GPIO2 and GPIO_KNOB_B/GPIO1 from the vendor demo pin map.
 # - DRV2605L haptic feedback is configured on the touch I2C bus at 0x5A. HAPTIC_EN/TRIG
-#   GPIO mapping is still not confirmed from the extracted schematic metadata.
 # - RGB ring/chain is enabled as a default-off Home Assistant light on RGB_DATA/GPIO0.
 #   GPIO0 is a boot/strapping pin, so keep startup state off while testing.
