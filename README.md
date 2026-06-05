@@ -78,9 +78,11 @@ alt="Guition 1.85 Rotary knob"
 src="https://github.com/user-attachments/assets/7e128d55-79ee-42b6-925f-070175836c7f"
 />
 
-</div>
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2/index.html">
+  <strong>Guition Knob v2</strong>
+</a>
 
-I am still waiting for this device to arrive before I can create and test the YAML configuration for it.
+</div>
 
 ### Where to buy
 
