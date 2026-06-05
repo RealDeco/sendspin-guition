@@ -55,7 +55,7 @@ alt="Guition 1.80 silver puck photo"
 Guition 1.80" Silver Puck:
 [https://www.aliexpress.com/item/1005007606734344.html](https://www.aliexpress.com/item/1005007606734344.html)
 
----
+
 
 ## Guition 1.85" Rotary Knob
 
@@ -80,6 +80,7 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 Guition 1.85" Rotary Knob:
 [https://www.aliexpress.com/item/1005011771382178.html](https://www.aliexpress.com/item/1005011771382178.html)
 
+---
 
 **How to use**
 
