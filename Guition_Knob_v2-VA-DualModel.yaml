@@ -2096,13 +2096,17 @@ script:
 
   - id: player_controls_swipe_previous
     then:
+      - script.execute:
+          id: player_controls_slide_to_now_playing
+          direction: 1
       - media_player.previous: sendspin_group_media_player
-      - script.execute: player_controls_keep_open
 
   - id: player_controls_swipe_next
     then:
+      - script.execute:
+          id: player_controls_slide_to_now_playing
+          direction: -1
       - media_player.next: sendspin_group_media_player
-      - script.execute: player_controls_keep_open
 
   - id: player_controls_previous
     then:
@@ -2153,6 +2157,19 @@ script:
           then:
             - media_player.mute: external_media_player
             - script.execute: player_controls_keep_open
+
+  - id: player_controls_slide_to_now_playing
+    mode: restart
+    parameters:
+      direction: int
+    then:
+      - script.stop: player_controls_timeout
+      - lambda: |-
+          id(ui_phase) = ${ui_phase_now_playing};
+      - lvgl.page.show: sendspin_page
+      - script.execute:
+          id: album_art_slide
+          direction: !lambda return direction;
 
   - id: album_art_slide
     mode: restart
@@ -2825,7 +2842,11 @@ touchscreen:
                 }
               } else if (id(ui_phase) == ${ui_phase_playlist_menu}) {
                 if (abs_x >= abs_y) {
-                  id(close_playlist_menu_to_now_playing)->execute();
+                  if (dx < 0) {
+                    id(player_controls_swipe_next)->execute();
+                  } else {
+                    id(player_controls_swipe_previous)->execute();
+                  }
                 } else if (dy < 0) {
                   id(close_playlist_menu)->execute();
                 }
