@@ -91,6 +91,18 @@ Guition 1.85" Rotary Knob:
 
 ---
 
+## Modular Dual VA with sendspin (experimental)
+
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v2-modular/index.html">
+  <strong>Guition Silver Puck v2 Modular</strong>
+</a>
+<br>
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_1.85_v2-VA-modular/index.html">
+  <strong>Guition Knob v2 Dual VA Modular</strong>
+</a>
+
+---
+
 ### **How to use**
 
 Sendspin Player:
