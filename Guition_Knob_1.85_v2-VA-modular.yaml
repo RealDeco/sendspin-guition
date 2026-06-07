@@ -44,6 +44,13 @@ packages: # github
 #packages: # local
 #  hardware: !include sendspin-guition/HW/guition_knob_1.85_v2-VA-modular-hw.yaml
 
+external_components:
+  - source: github://pr#16057
+    components: [generic_image, sendspin]
+  - source: github://RAR/esphome-drv2605
+    components: [drv2605]
+    refresh: 1h
+
 esp32:
   variant: esp32s3
   flash_size: 16MB
@@ -54,13 +61,6 @@ psram:
   mode: octal
   speed: 80MHz
   ignore_not_found: false
-
-external_components:
-  - source: github://pr#16057
-    components: [generic_image, sendspin]
-  - source: github://RAR/esphome-drv2605
-    components: [drv2605]
-    refresh: 1h
 
 esphome:
   name: ${name}
