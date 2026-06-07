@@ -6,7 +6,7 @@ substitutions:
 
   startup_sound_file: Home_Connected # options are: Home_Connected or Home_Connected_Male
   imagemodel1: "Gwen" # options are: below
-  imagemodel2: "Jarvis" # options are below
+  imagemodel2: "Alfred" # options are below
 
 # AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, HA-character, ha-girl, Hacker, Harley,
 # Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
@@ -95,6 +95,7 @@ api:
             id(play_sound)->execute(true, std::string("ready_sound"));
           }
         }
+
 ota:
   - platform: esphome
 
@@ -903,22 +904,27 @@ media_player:
       then:
         - if:
             condition:
-              and:
-                - lambda: 'return !id(va_reply_active);'
-                - lambda: 'return id(va_phase) == ${va_phase_idle};'
-                - not:
-                    media_player.is_announcing:
-                      id: external_media_player
+              lambda: 'return id(va_reply_active);'
             then:
-              - script.execute: start_wake_word
-        - lambda: |-
-            id(va_reply_active) = false;
-        - if:
-            condition:
-              lambda: 'return id(va_phase) == ${va_phase_idle};'
-            then:
-              - script.execute: mp_idle_debounce
-        - script.execute: led_ring_apply_state
+              - lambda: |-
+                  id(va_reply_active) = false;
+              - script.execute: finish_va_reply
+            else:
+              - if:
+                  condition:
+                    and:
+                      - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                      - not:
+                          media_player.is_announcing:
+                            id: external_media_player
+                  then:
+                    - script.execute: start_wake_word
+              - if:
+                  condition:
+                    lambda: 'return id(va_phase) == ${va_phase_idle};'
+                  then:
+                    - script.execute: mp_idle_debounce
+              - script.execute: led_ring_apply_state
 
     on_pause:
       then:
@@ -941,18 +947,31 @@ micro_wake_word:
     - model: hey_jarvis
       id: hey_jarvis
 
-# other wakewords to use, don't add too many.
+### other wakewords to use at own risk.
 #    - alexa
+#      id: 
 #    - hey_mycroft
+#      id: hey_mycroft
+    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_alfred.json
+      id: hey_alfred
 #    - model: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/refs/heads/main/MicroWakeWords/models/v2/hey_sarah.json
+#      id: hey_sarah
 #    - model: https://raw.githubusercontent.com/JohnnyPrimus/Custom_V2_MicroWakeWords/refs/heads/main/models/computer/computer.json
+#      id: computer
 #    - model: https://raw.githubusercontent.com/JohnnyPrimus/Custom_V2_MicroWakeWords/refs/heads/main/models/hey_friday/hey_friday.json
+#      id: hey_friday
 #    - model: https://github.com/kahrendt/microWakeWord/releases/download/okay_nabu_20241226.3/okay_nabu.json
+#      id: okay_nabu
 #    - model: https://raw.githubusercontent.com/formatBCE/Respeaker-Lite-ESPHome-integration/refs/heads/main/microwakeword/models/v2/kenobi.json
+#      id: kenobi
 #    - model: https://raw.githubusercontent.com/esphome/micro-wake-word-models/refs/heads/main/models/v2/experiments/choo_choo_homie.json
+#      id: choo_choo_homie
 #    - model: https://raw.githubusercontent.com/esphome/micro-wake-word-models/refs/heads/main/models/v2/experiments/hey_home_assistant.json
+#      id: hey_home_assistant
 #    - model: https://raw.githubusercontent.com/esphome/micro-wake-word-models/refs/heads/main/models/v2/experiments/hey_peppa_pig.json
+#      id: hey_peppa_pig
 #    - model: https://raw.githubusercontent.com/esphome/micro-wake-word-models/refs/heads/main/models/v2/experiments/okay_computer.json
+#      id: okay_computer
 
     - model: https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json
       id: stop
@@ -1050,49 +1069,11 @@ voice_assistant:
   on_end:
     - lambda: |-
         ESP_LOGW("va", "assist pipeline ended");
-    - wait_until:
-        condition:
-          media_player.is_announcing:
-            id: external_media_player
-        timeout: 500ms
-    - wait_until:
-        condition:
-          and:
-            - not:
-                media_player.is_announcing:
-                  id: external_media_player
-            - not:
-                speaker.is_playing:
-                  id: box_speaker
-        timeout: 15s
-    - delay: 1500ms
     - if:
         condition:
-          lambda: return id(manual_va_active);
+          lambda: return !id(va_reply_active);
         then:
-          - lambda: id(manual_va_active) = false;
-          - script.execute:
-              id: set_va_phase
-              phase: ${va_phase_idle}
-          - script.execute:
-              id: set_ui_phase
-              phase: ${ui_phase_player_controls}
-          - if:
-              condition:
-                lambda: return id(manual_va_resume_media);
-              then:
-                - lambda: id(manual_va_resume_media) = false;
-                - media_player.toggle: sendspin_group_media_player
-        else:
-          - script.execute:
-              id: set_va_phase
-              phase: ${va_phase_idle}
-    - if:
-        condition:
-          lambda: return id(wake_word_engine_location).current_option() == "On device";
-        then:
-          - lambda: id(va).set_use_wake_word(false);
-          - script.execute: start_wake_word
+          - script.execute: finish_va_reply
   on_idle:
     - lambda: |-
         ESP_LOGW("va", "idle");
@@ -1483,6 +1464,38 @@ font:
       - "\U000F075F"
 
 script:
+  - id: finish_va_reply
+    mode: restart
+    then:
+      - delay: 1500ms
+      - if:
+          condition:
+            lambda: return id(manual_va_active);
+          then:
+            - lambda: id(manual_va_active) = false;
+            - script.execute:
+                id: set_va_phase
+                phase: ${va_phase_idle}
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_player_controls}
+            - if:
+                condition:
+                  lambda: return id(manual_va_resume_media);
+                then:
+                  - lambda: id(manual_va_resume_media) = false;
+                  - media_player.toggle: sendspin_group_media_player
+          else:
+            - script.execute:
+                id: set_va_phase
+                phase: ${va_phase_idle}
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).current_option() == "On device";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - script.execute: start_wake_word
+
   - id: set_va_phase
     mode: restart
     parameters:
@@ -1559,6 +1572,7 @@ script:
           condition:
             lambda: return phase != ${va_phase_idle};
           then:
+            - script.stop: player_controls_timeout
             - script.execute: standby_screen_activity
       - component.update: va_phase_text
       - script.execute: led_ring_apply_state
@@ -1582,7 +1596,9 @@ script:
                 timeout: 1s
       - script.execute: stop_wake_word
       - delay: 100ms
-      - lambda: id(manual_va_slide_up) = true;
+      - lambda: |-
+          id(active_image_set) = 1;
+          id(manual_va_slide_up) = true;
       - script.execute:
           id: set_va_phase
           phase: ${va_phase_waiting_for_command}
@@ -1627,6 +1643,10 @@ script:
                   voice_assistant.is_running:
               - not:
                   micro_wake_word.is_running:
+              - not:
+                  media_player.is_playing: external_media_player
+              - not:
+                  media_player.is_playing: sendspin_group_media_player
               - lambda: return id(wake_word_engine_location).current_option() == "On device";
           then:
             - lambda: id(va).set_use_wake_word(false);
@@ -1639,6 +1659,10 @@ script:
               - switch.is_off: mute
               - not:
                   voice_assistant.is_running:
+              - not:
+                  media_player.is_playing: external_media_player
+              - not:
+                  media_player.is_playing: sendspin_group_media_player
               - lambda: return id(wake_word_engine_location).current_option() == "In Home Assistant";
           then:
             - lambda: id(va).set_use_wake_word(true);
@@ -1844,15 +1868,19 @@ script:
           return (uint32_t) (id(player_controls_timeout_seconds).state * 1000.0f);
       - if:
           condition:
-            media_player.is_idle: external_media_player
+            lambda: 'return id(va_phase) == ${va_phase_idle};'
           then:
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_standby}
-          else:
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_now_playing}
+            - if:
+                condition:
+                  media_player.is_idle: external_media_player
+                then:
+                  - script.execute:
+                      id: set_ui_phase
+                      phase: ${ui_phase_standby}
+                else:
+                  - script.execute:
+                      id: set_ui_phase
+                      phase: ${ui_phase_now_playing}
 
   - id: open_playlist_menu
     then:
