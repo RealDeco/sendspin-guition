@@ -257,6 +257,7 @@ globals:
     initial_value: "0"
 
 image:
+### model 1
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/playing.png
     id: fallback_playing_image1
     resize: ${imageheight}x${imageheight}
@@ -287,8 +288,7 @@ image:
     type: RGB565
     dither: NONE
 
-#model 2
-
+### model 2
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/playing.png
     id: fallback_playing_image2
     resize: ${imageheight}x${imageheight}
@@ -318,6 +318,21 @@ image:
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
+
+### other
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/error.png
+    id: va_error_image
+    resize: ${imageheight}x${imageheight}
+    type: RGB565
+    dither: NONE
+
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/timer_finished.png
+    id: va_timer_finished_image
+    resize: ${imageheight}x${imageheight}
+    type: RGB565
+    dither: NONE
+
+### sendspin album art
 
 generic_image:
   - platform: sendspin
@@ -2872,25 +2887,28 @@ lvgl:
     - id: va_error_page
       bg_color: 0x000000
       widgets:
-        - label:
-            align: CENTER
-            text: "!"
-            text_color: 0xFFFFFF
-            text_font: font_boot
-            width: 220
-            text_align: CENTER
+        - image:
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: va_error_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
 
     - id: va_timer_done_page
       bg_color: 0x000000
       widgets:
-        - label:
-            align: CENTER
-            text: "Timer Done!"
-            text_color: 0xFFFFFF
-            text_font: font_boot
-            width: 300
-            long_mode: WRAP
-            text_align: CENTER
+        - image:
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: va_timer_finished_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
 
     - id: idle_page
       bg_color: 0x000000
