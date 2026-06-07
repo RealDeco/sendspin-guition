@@ -59,7 +59,7 @@ Guition 1.80" Silver Puck:
 
 ## Guition 1.85" Rotary Knob
 
-Beware there is two versions of this, the older more expensive JC3636K518C with dual processor, and the newer JC3636K718C with a single esp32-s3, this is for the new version. first yaml for this device is a quick vibe coded conversion of the yaml for the other device, with gpio and extra hardware added and working, ready to use.
+Beware there is two versions of this, the older more expensive JC3636K518C with dual processor, and the newer JC3636K718C with a single esp32-s3, this is for the new version.
 
 <div align="center">
 
@@ -76,11 +76,15 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2-VA/index.html">
   <strong>Guition Knob v2 VA edition</strong>
 </a>
+<br>
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2-VA-DualModel/index.html">
+  <strong>Guition Knob v2 VA Dual Model</strong>
+</a>
 
 
 </div>
 
-### Where to buy
+### Where to buy (in Red, Blue or Black)
 
 Guition 1.85" Rotary Knob:
 [https://www.aliexpress.com/item/1005011771382178.html](https://www.aliexpress.com/item/1005011771382178.html)
