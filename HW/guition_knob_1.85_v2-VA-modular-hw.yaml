@@ -1,0 +1,609 @@
+# Hardware package for Guition JC3636K718 / 1.85 inch knob board.
+# Edit this file for board pinouts and device-specific hardware.
+
+substitutions:
+  display_model: "JC3636W518V2"
+  pdm_mic_type: "true"
+  media_sample_rate: 48000
+
+esp32:
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+  ignore_not_found: false
+  
+spi:
+  id: display_qspi
+  type: quad
+  clk_pin: GPIO11
+  data_pins: [GPIO13, GPIO14, GPIO15, GPIO16]
+
+i2c:
+  id: touchscreen_bus
+  sda: GPIO9
+  scl: GPIO10
+
+drv2605:
+  id: haptic_driver
+  i2c_id: touchscreen_bus
+  address: 0x5A
+  motor_type: LRA
+  library: 6
+
+i2s_audio:
+  #   Speaker/PCM5100A: WS GPIO45, BCK GPIO3, DO GPIO42, no MCLK
+  #   PDM mic: SCK GPIO5, DATA GPIO4
+  # PDM mic uses GPIO5 as clock and GPIO4 as data; no LRCLK/WS pin is routed for mic input.
+  - id: i2s_mic
+    i2s_lrclk_pin: GPIO5
+
+  - id: i2s_audio_bus
+    i2s_lrclk_pin:
+      number: GPIO45
+      ignore_strapping_warning: true
+    i2s_bclk_pin: GPIO3
+
+microphone:
+  - platform: i2s_audio
+    id: box_mic
+    i2s_audio_id: i2s_mic
+    i2s_din_pin: GPIO4
+    adc_type: external
+    channel: left
+    pdm: ${pdm_mic_type}
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    
+speaker:
+  - platform: i2s_audio
+    id: box_speaker
+    i2s_audio_id: i2s_audio_bus
+    i2s_dout_pin: GPIO42
+    dac_type: external
+    channel: stereo
+    buffer_duration: 300ms
+
+  - platform: mixer
+    id: mixing_speaker
+    output_speaker: box_speaker
+    num_channels: 2
+    task_stack_in_psram: true
+    source_speakers:
+      - id: announcement_mixing_input
+      - id: media_mixing_input
+
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+    
+media_source:
+  - platform: audio_file
+    id: audio_file_announcement_source
+  - platform: audio_http
+    id: http_announcement_source
+  - platform: audio_http
+    id: http_media_source
+  - platform: sendspin
+    id: sendspin_media_source
+
+media_player:
+  - platform: sendspin
+    id: sendspin_group_media_player
+    name: Sendspin Group Media Player
+
+  - platform: speaker_source
+    id: external_media_player
+    name: Media Player
+
+    announcement_pipeline:
+      format: FLAC
+      num_channels: 1
+      sample_rate: ${media_sample_rate}
+      speaker: announcement_resampling_speaker
+      sources:
+        - audio_file_announcement_source
+        - http_announcement_source
+
+    media_pipeline:
+      format: FLAC
+      num_channels: 2
+      sample_rate: ${media_sample_rate}
+      speaker: media_resampling_speaker
+      sources:
+        - http_media_source
+        - sendspin_media_source
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 0.85
+
+    on_play:
+      then:
+        - script.stop: mp_idle_debounce
+        - if:
+            condition:
+              and:
+                - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                - lambda: 'return !id(va_reply_active);'
+                - not:
+                    media_player.is_announcing:
+                      id: external_media_player
+            then:
+              - lambda: |-
+                  ESP_LOGW("va", "stopping wake word for media playback");
+              - script.execute: stop_wake_word
+        - script.execute: led_ring_apply_state
+        - if:
+            condition:
+              lambda: 'return id(va_phase) == ${va_phase_idle};'
+            then:
+              - if:
+                  condition:
+                    lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+                  then:
+                    - script.execute:
+                        id: set_ui_phase
+                        phase: ${ui_phase_player_controls}
+                  else:
+                    - script.execute:
+                        id: set_ui_phase
+                        phase: ${ui_phase_now_playing}
+
+    on_announcement:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(boot_announce_active);'
+            then:
+              - lvgl.page.show: boot_sound_page
+              - delay: 2s
+              - script.execute:
+                  id: set_ui_phase
+                  phase: !lambda 'return id(ui_phase);'
+              - lambda: 'id(boot_announce_active) = false;'
+
+    on_idle:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(va_reply_active);'
+            then:
+              - lambda: |-
+                  id(va_reply_active) = false;
+              - script.execute: finish_va_reply
+            else:
+              - if:
+                  condition:
+                    and:
+                      - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                      - not:
+                          media_player.is_announcing:
+                            id: external_media_player
+                  then:
+                    - script.execute: start_wake_word
+              - if:
+                  condition:
+                    lambda: 'return id(va_phase) == ${va_phase_idle};'
+                  then:
+                    - script.execute: mp_idle_debounce
+              - script.execute: led_ring_apply_state
+
+    on_pause:
+      then:
+        - script.execute: led_ring_apply_state
+        - if:
+            condition:
+              lambda: 'return id(va_phase) == ${va_phase_idle};'
+            then:
+              - script.execute: start_wake_word
+              - script.execute:
+                  id: set_ui_phase
+                  phase: ${ui_phase_player_controls}
+
+binary_sensor:
+  - platform: gpio
+    id: rotary_cw_pulse
+    internal: true
+    pin:
+      number: GPIO1
+      mode:
+        input: true
+        pullup: true
+    use_interrupt: false
+    filters:
+      - delayed_on_off: 2ms
+    on_press:
+      then:
+        - logger.log:
+            level: WARN
+            tag: rotary
+            format: "GPIO1 CW pulse"
+        - script.execute: standby_screen_activity
+        - media_player.volume_up: external_media_player
+        - script.execute: haptic_click
+        - script.execute: show_rotary_volume_feedback
+
+  - platform: gpio
+    id: rotary_ccw_pulse
+    internal: true
+    pin:
+      number: GPIO2
+      mode:
+        input: true
+        pullup: true
+    use_interrupt: false
+    filters:
+      - delayed_on_off: 2ms
+    on_press:
+      then:
+        - logger.log:
+            level: WARN
+            tag: rotary
+            format: "GPIO2 CCW pulse"
+        - script.execute: standby_screen_activity
+        - media_player.volume_down: external_media_player
+        - script.execute: haptic_click
+        - script.execute: show_rotary_volume_feedback
+
+output:
+  - platform: ledc
+    id: backlight_output
+    pin: GPIO21
+    inverted: false
+
+light:
+  - platform: monochromatic
+    id: Sled
+    name: Screen
+    icon: mdi:television
+    entity_category: config
+    output: backlight_output
+    restore_mode: ALWAYS_ON
+    default_transition_length: 250ms
+
+  - platform: esp32_rmt_led_strip
+    id: rgb_ring
+    name: RGB ring
+    icon: mdi:led-strip-variant
+    pin:
+      number: GPIO0
+      ignore_strapping_warning: true
+    num_leds: 13
+    chipset: WS2812
+    rgb_order: GRB
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 250ms
+    effects:
+      - addressable_lambda:
+          name: "Waiting for Command"
+          update_interval: 100ms
+          lambda: |-
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            static uint8_t index = 0;
+            if (initial_run) { index = 0; }
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13) {
+                it[i] = color;
+              } else if (i == (index + 12) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 11) % 13) {
+                it[i] = color * 128;
+              } else if (i == (index + 6) % 13) {
+                it[i] = color;
+              } else if (i == (index + 5) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 4) % 13) {
+                it[i] = color * 128;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+            index = (index + 1) % 13;
+      - addressable_lambda:
+          name: "Listening For Command"
+          update_interval: 50ms
+          lambda: |-
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            static uint8_t index = 0;
+            if (initial_run) { index = 0; }
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13) {
+                it[i] = color;
+              } else if (i == (index + 12) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 11) % 13) {
+                it[i] = color * 128;
+              } else if (i == (index + 6) % 13) {
+                it[i] = color;
+              } else if (i == (index + 5) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 4) % 13) {
+                it[i] = color * 128;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+            index = (index + 1) % 13;
+      - addressable_lambda:
+          name: "Thinking"
+          update_interval: 20ms
+          lambda: |-
+            static uint8_t index = 0;
+            static uint8_t brightness_step = 0;
+            static bool brightness_decreasing = true;
+            const uint8_t brightness_step_number = 10;
+            if (initial_run) {
+              index = 0;
+              brightness_step = 0;
+              brightness_decreasing = true;
+            }
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            const uint8_t level = 255 / brightness_step_number * (brightness_step_number - brightness_step);
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13 || i == (index + 6) % 13) {
+                it[i] = color * level;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+            if (brightness_decreasing) { brightness_step++; } else { brightness_step--; }
+            if (brightness_step == 0 || brightness_step == brightness_step_number) { brightness_decreasing = !brightness_decreasing; }
+            index = (index + 1) % 13;
+      - addressable_lambda:
+          name: "Replying"
+          update_interval: 50ms
+          lambda: |-
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            static uint8_t index = 0;
+            if (initial_run) { index = 0; }
+            index = (13 + index - 1) % 13;
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13) {
+                it[i] = color;
+              } else if (i == (index + 1) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 2) % 13) {
+                it[i] = color * 128;
+              } else if (i == (index + 6) % 13) {
+                it[i] = color;
+              } else if (i == (index + 7) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 8) % 13) {
+                it[i] = color * 128;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+
+touchscreen:
+  - platform: cst816
+    id: my_touchscreen
+    interrupt_pin: GPIO7
+    reset_pin: GPIO8
+    display: main_display
+    i2c_id: touchscreen_bus
+    on_touch:
+      then:
+        - script.execute: standby_screen_activity
+        - lambda: |-
+            id(touch_active) = true;
+            id(touch_start_x) = touch.x;
+            id(touch_start_y) = touch.y;
+            id(touch_last_x) = touch.x;
+            id(touch_last_y) = touch.y;
+            id(touch_start_ms) = millis();
+            id(touch_swipe_detected) = false;
+    on_update:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            for (auto &touch : touches) {
+              if (touch.state >= 1 && touch.state <= 2) {
+                id(touch_last_x) = touch.x;
+                id(touch_last_y) = touch.y;
+                const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+                const int swipe_min_dist = std::max(16, min_dim / 8);
+                if (std::abs(id(touch_last_x) - id(touch_start_x)) >= swipe_min_dist ||
+                    std::abs(id(touch_last_y) - id(touch_start_y)) >= swipe_min_dist) {
+                  id(touch_swipe_detected) = true;
+                  lv_obj_remove_state(id(controls_mute_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_previous_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_next_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
+                }
+                break;
+              }
+            }
+    on_release:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            id(touch_active) = false;
+
+            const int dx = id(touch_last_x) - id(touch_start_x);
+            const int dy = id(touch_last_y) - id(touch_start_y);
+            const int abs_x = std::abs(dx);
+            const int abs_y = std::abs(dy);
+            const uint32_t elapsed = millis() - id(touch_start_ms);
+            const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+            const int swipe_min_dist = std::max(16, min_dim / 8);
+            const int tap_max_dist = std::max(14, min_dim / 12);
+
+            if (id(va_phase) != ${va_phase_idle}) {
+              id(stop_active_va)->execute();
+              return;
+            }
+
+            if (elapsed <= 1500 && (abs_x >= swipe_min_dist || abs_y >= swipe_min_dist)) {
+              if (id(ui_phase) == ${ui_phase_now_playing}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(now_playing_swipe_left)->execute();
+                  } else {
+                    id(now_playing_swipe_right)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(now_playing_swipe_up)->execute();
+                } else {
+                  id(now_playing_swipe_down)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_player_controls}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(player_controls_swipe_next)->execute();
+                  } else {
+                    id(player_controls_swipe_previous)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(start_manual_va)->execute();
+                } else {
+                  id(open_playlist_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_playlist_menu}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(player_controls_swipe_next)->execute();
+                  } else {
+                    id(player_controls_swipe_previous)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(close_playlist_menu)->execute();
+                }
+              }
+              return;
+            }
+
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
+              id(set_ui_phase)->execute(${ui_phase_player_controls});
+            }
+
+display:
+  - platform: mipi_spi
+    id: main_display
+    model: ${display_model}
+    cs_pin: GPIO12
+    reset_pin: GPIO17
+    auto_clear_enabled: false
+    update_interval: never
+    dimensions:
+        height: ${screenheight}
+        width: ${screenwidth}
+
+globals:
+  - id: haptic_last_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+switch:
+  - platform: gpio
+    name: Speaker Enable
+    icon: "mdi:speaker"
+    entity_category: config
+    pin:
+      number: GPIO46
+      ignore_strapping_warning: true
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
+    id: rotary_haptic_feedback_enabled
+    name: Rotary haptic feedback
+    icon: "mdi:vibrate"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+script:
+  - id: haptic_click
+    mode: restart
+    then:
+      - if:
+          condition:
+            switch.is_on: rotary_haptic_feedback_enabled
+          then:
+            - lambda: |-
+                const uint32_t now = millis();
+                if (now - id(haptic_last_ms) < 45) return;
+                id(haptic_last_ms) = now;
+            - drv2605.play_effect:
+                id: haptic_driver
+                effect: 7
+
+  - id: show_rotary_volume_feedback
+    mode: restart
+    then:
+      - script.stop: hide_rotary_volume_feedback
+      - lambda: |-
+          if (id(volume_ring_overlay) == nullptr) {
+            id(volume_ring_overlay) = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(id(volume_ring_overlay));
+            lv_obj_set_size(id(volume_ring_overlay), 150, 150);
+            lv_obj_center(id(volume_ring_overlay));
+            lv_obj_set_style_bg_color(id(volume_ring_overlay), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_opa(id(volume_ring_overlay), 230, 0);
+            lv_obj_set_style_border_width(id(volume_ring_overlay), 3, 0);
+            lv_obj_set_style_radius(id(volume_ring_overlay), LV_RADIUS_CIRCLE, 0);
+            lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_SCROLLABLE);
+
+            id(volume_ring_label) = lv_label_create(id(volume_ring_overlay));
+            lv_obj_set_width(id(volume_ring_label), 130);
+            lv_obj_center(id(volume_ring_label));
+            lv_obj_set_style_text_align(id(volume_ring_label), LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_set_style_text_font(id(volume_ring_label), id(font_7seg), 0);
+          }
+
+          const float volume = std::max(0.0f, std::min(1.0f, id(external_media_player).volume));
+          const int pct = (int) lroundf(volume * 100.0f);
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const lv_color_t accent = lv_color_hex(accent_u32);
+          lv_obj_set_style_border_color(id(volume_ring_overlay), accent, 0);
+          lv_obj_set_style_text_color(id(volume_ring_label), accent, 0);
+          char text[8];
+          snprintf(text, sizeof(text), "%d", pct);
+          lv_label_set_text(id(volume_ring_label), text);
+          lv_obj_set_style_opa(id(volume_ring_overlay), LV_OPA_COVER, 0);
+          lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(volume_ring_overlay));
+      - script.execute: hide_rotary_volume_feedback
+
+  - id: hide_rotary_volume_feedback
+    mode: restart
+    then:
+      - delay: 900ms
+      - lambda: |-
+          if (id(volume_ring_overlay) == nullptr) return;
+          lv_anim_del(id(volume_ring_overlay), nullptr);
+          lv_anim_t fade;
+          lv_anim_init(&fade);
+          lv_anim_set_var(&fade, id(volume_ring_overlay));
+          lv_anim_set_values(&fade, LV_OPA_COVER, LV_OPA_TRANSP);
+          lv_anim_set_time(&fade, 260);
+          lv_anim_set_exec_cb(&fade, [](void *obj, int32_t opacity) {
+            lv_obj_set_style_opa((lv_obj_t *) obj, opacity, 0);
+          });
+          lv_anim_start(&fade);
+      - delay: 280ms
+      - lambda: |-
+          if (id(volume_ring_overlay) != nullptr) {
+            lv_obj_add_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
+          }
+
+
