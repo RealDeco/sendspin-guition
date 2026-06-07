@@ -5,17 +5,6 @@ substitutions:
   display_model: "JC3636W518V2"
   pdm_mic_type: "true"
   media_sample_rate: 48000
-
-esp32:
-  variant: esp32s3
-  flash_size: 16MB
-  framework:
-    type: esp-idf
-
-psram:
-  mode: octal
-  speed: 80MHz
-  ignore_not_found: false
   
 spi:
   id: display_qspi
