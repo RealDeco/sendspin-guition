@@ -55,7 +55,7 @@ alt="Guition 1.80 silver puck photo"
 Guition 1.80" Silver Puck:
 [https://www.aliexpress.com/item/1005007606734344.html](https://www.aliexpress.com/item/1005007606734344.html)
 
-
+---
 
 ## Guition 1.85" Rotary Knob
 
@@ -87,7 +87,9 @@ Guition 1.85" Rotary Knob:
 
 ---
 
-**How to use**
+### **How to use**
+
+Sendspin Player:
 
 While music is playing, swipe left or right to move to the previous or next song.
 
@@ -96,3 +98,9 @@ Tap the screen to open the player controls, where you can adjust the volume, ski
 When no music is playing, the display switches to a weather clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again.
 
 ---
+
+VA edition
+...
+
+---
+
