@@ -72,6 +72,11 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2/index.html">
   <strong>Guition Knob v2</strong>
 </a>
+<br>
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2-VA/index.html">
+  <strong>Guition Knob v2 VA edition</strong>
+</a>
+
 
 </div>
 
