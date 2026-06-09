@@ -212,15 +212,6 @@ output:
     pin: GPIO15
     inverted: false
 
-  # Silver Puck v2 example has no RGB ring pin. This no-op output keeps the
-  # shared VA UI package compatible with devices without a physical LED ring.
-  - platform: template
-    id: rgb_ring_output
-    type: float
-    write_action:
-      - lambda: |-
-          return;
-
 light:
   - platform: monochromatic
     id: Sled
@@ -231,35 +222,13 @@ light:
     restore_mode: ALWAYS_ON
     default_transition_length: 250ms
 
-  - platform: monochromatic
-    id: rgb_ring
-    name: RGB ring
-    icon: mdi:led-strip-variant
-    entity_category: diagnostic
-    output: rgb_ring_output
-    restore_mode: ALWAYS_OFF
-    default_transition_length: 0s
-    effects:
-      - lambda:
-          name: "Waiting for Command"
-          update_interval: 1s
-          lambda: |-
-            return;
-      - lambda:
-          name: "Listening For Command"
-          update_interval: 1s
-          lambda: |-
-            return;
-      - lambda:
-          name: "Thinking"
-          update_interval: 1s
-          lambda: |-
-            return;
-      - lambda:
-          name: "Replying"
-          update_interval: 1s
-          lambda: |-
-            return;
+
+script:
+  - id: led_ring_apply_state
+    mode: restart
+    then:
+      - lambda: |-
+          return;
 
 touchscreen:
   - platform: cst816
