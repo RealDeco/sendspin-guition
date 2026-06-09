@@ -79,7 +79,6 @@ api:
             id(play_sound)->execute(true, std::string("ready_sound"));
           }
         }
-
 ota:
   - platform: esphome
 
