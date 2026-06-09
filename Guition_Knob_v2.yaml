@@ -1,7 +1,6 @@
 substitutions:
-  name: esp32-knob
-  friendly_name: ESP-32-KNOB
-
+  name: guition-knob-185-v2
+  friendly_name: Guition Knob 1.85 v2
   # User settings
 
   startup_sound_file: Home_Connected # options are: Home_Connected or Home_Connected_Male
@@ -79,15 +78,11 @@ api:
             id(play_sound)->execute(true, std::string("ready_sound"));
           }
         }
+
 ota:
   platform: esphome
-  password: !secret esphome_ota_password
 
 wifi:
-
-  ssid: !secret esphome_wifi_ssid
-  password: !secret esphome_wifi_password
-  use_address: 192.168.1.28
   on_connect:
     - delay: 1s
     - if:
@@ -1819,7 +1814,7 @@ display:
 lvgl:
   displays:
     - main_display
-  buffer_size: 50%
+  buffer_size: 12%
   color_depth: 16
   bg_color: 0x000000
   default_font: font_display
@@ -1947,12 +1942,6 @@ lvgl:
                   text_font: font_display
                   long_mode: SCROLL_CIRCULAR
                   text_align: CENTER
-        - label:
-            align: BOTTOM_MID
-            y: -8
-            text: "DEV BUILD 002"
-            text_color: 0x00FF00
-            text_font: font_playlist
 
     - id: player_controls_page
       bg_color: 0x000000
