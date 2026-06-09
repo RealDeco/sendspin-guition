@@ -1,6 +1,6 @@
 substitutions:
-  name: guition-knob-185-v2
-  friendly_name: Guition Knob 1.85 v2
+  name: esp32-knob
+  friendly_name: ESP-32-KNOB
 
   # User settings
 
@@ -80,9 +80,14 @@ api:
           }
         }
 ota:
-  - platform: esphome
+  platform: esphome
+  password: !secret esphome_ota_password
 
 wifi:
+
+  ssid: !secret esphome_wifi_ssid
+  password: !secret esphome_wifi_password
+  use_address: 192.168.1.28
   on_connect:
     - delay: 1s
     - if:
@@ -1508,7 +1513,7 @@ script:
     then:
       - script.stop: hide_rotary_volume_feedback
       - lambda: |-
-          static constexpr int SEGMENTS = 96;
+          static constexpr int ARC_WIDTH = 24;
           if (id(volume_ring_overlay) == nullptr) {
             id(volume_ring_overlay) = lv_obj_create(lv_layer_top());
             lv_obj_remove_style_all(id(volume_ring_overlay));
@@ -1517,31 +1522,32 @@ script:
             lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_CLICKABLE);
             lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_SCROLLABLE);
 
-            const float cx = ${screenwidth} / 2.0f;
-            const float cy = ${screenheight} / 2.0f;
-            const float radius = 160.0f;
-            for (int i = 0; i < SEGMENTS; i++) {
-              const float angle = (-90.0f + (360.0f * i / SEGMENTS)) * (float) M_PI / 180.0f;
-              lv_obj_t *seg = lv_obj_create(id(volume_ring_overlay));
-              lv_obj_remove_style_all(seg);
-              lv_obj_set_size(seg, 24, 24);
-              lv_obj_set_style_radius(seg, LV_RADIUS_CIRCLE, 0);
-              lv_obj_set_style_bg_opa(seg, LV_OPA_COVER, 0);
-              lv_obj_set_pos(seg, (int) lroundf(cx + cosf(angle) * radius - 12.0f),
-                             (int) lroundf(cy + sinf(angle) * radius - 12.0f));
-              lv_obj_clear_flag(seg, LV_OBJ_FLAG_CLICKABLE);
-              lv_obj_clear_flag(seg, LV_OBJ_FLAG_SCROLLABLE);
-            }
+            // Child 0: single arc — MAIN=dark track, INDICATOR=accent fill, KNOB=white dot
+            lv_obj_t *arc = lv_arc_create(id(volume_ring_overlay));
+            lv_obj_set_size(arc, 330, 330);
+            lv_obj_center(arc);
+            lv_arc_set_rotation(arc, 270);
+            lv_arc_set_bg_angles(arc, 0, 360);
+            lv_arc_set_range(arc, 0, 100);
+            lv_arc_set_value(arc, 0);
+            lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(arc, LV_OBJ_FLAG_SCROLLABLE);
+            // MAIN: transparent bounding box, dark full-circle track
+            lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
+            lv_obj_set_style_border_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
+            lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN);
+            lv_obj_set_style_arc_color(arc, lv_color_hex(0x202020), LV_PART_MAIN);
+            lv_obj_set_style_arc_width(arc, ARC_WIDTH, LV_PART_MAIN);
+            lv_obj_set_style_arc_opa(arc, 150, LV_PART_MAIN);
+            // INDICATOR: accent colour, width matches track
+            lv_obj_set_style_arc_width(arc, ARC_WIDTH, LV_PART_INDICATOR);
+            // KNOB: white circular handle at the end of the indicator
+            lv_obj_set_style_bg_color(arc, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
+            lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
+            lv_obj_set_style_radius(arc, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+            lv_obj_set_style_pad_all(arc, 4, LV_PART_KNOB);
 
-            lv_obj_t *dot = lv_obj_create(id(volume_ring_overlay));
-            lv_obj_remove_style_all(dot);
-            lv_obj_set_size(dot, 30, 30);
-            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-            lv_obj_set_style_bg_color(dot, lv_color_hex(0xFFFFFF), 0);
-            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-            lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
-
+            // Child 1: centered percentage label
             id(volume_ring_label) = lv_label_create(id(volume_ring_overlay));
             lv_obj_center(id(volume_ring_label));
             lv_obj_set_style_text_color(id(volume_ring_label), lv_color_hex(0xFFFFFF), 0);
@@ -1550,33 +1556,21 @@ script:
 
           const float volume = std::max(0.0f, std::min(1.0f, id(external_media_player).volume));
           const int pct = (int) lroundf(volume * 100.0f);
-          const int active_segments = (int) lroundf((pct / 100.0f) * SEGMENTS);
-          for (int i = 0; i < SEGMENTS; i++) {
-            lv_obj_t *seg = lv_obj_get_child(id(volume_ring_overlay), i);
-            if (seg == nullptr) continue;
-            const bool active = i < active_segments;
-            const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
-            lv_obj_set_style_bg_color(seg, active ? lv_color_hex(accent_u32) : lv_color_hex(0x202020), 0);
-            lv_obj_set_style_bg_opa(seg, active ? LV_OPA_COVER : 150, 0);
+
+          lv_obj_t *arc = lv_obj_get_child(id(volume_ring_overlay), 0);
+          if (arc != nullptr) {
+            const uint32_t accent = ((uint32_t)id(accent_red) << 16)
+                                  | ((uint32_t)id(accent_green) << 8)
+                                  |  (uint32_t)id(accent_blue);
+            lv_obj_set_style_arc_color(arc, lv_color_hex(accent), LV_PART_INDICATOR);
+            lv_arc_set_value(arc, pct);
           }
 
-          lv_obj_t *dot = lv_obj_get_child(id(volume_ring_overlay), SEGMENTS);
-          if (dot != nullptr) {
-            const float cx = ${screenwidth} / 2.0f;
-            const float cy = ${screenheight} / 2.0f;
-            const float radius = 160.0f;
-            const float angle = (-90.0f + (360.0f * volume)) * (float) M_PI / 180.0f;
-            lv_obj_set_pos(dot, (int) lroundf(cx + cosf(angle) * radius - 15.0f),
-                           (int) lroundf(cy + sinf(angle) * radius - 15.0f));
-            lv_obj_move_foreground(dot);
-          }
           char text[8];
           snprintf(text, sizeof(text), "%d%%", pct);
           lv_label_set_text(id(volume_ring_label), text);
-          lv_obj_move_foreground(id(volume_ring_label));
           lv_obj_set_style_opa(id(volume_ring_overlay), LV_OPA_COVER, 0);
           lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_move_foreground(id(volume_ring_overlay));
       - script.execute: hide_rotary_volume_feedback
 
   - id: hide_rotary_volume_feedback
@@ -1825,7 +1819,7 @@ display:
 lvgl:
   displays:
     - main_display
-  buffer_size: 12%
+  buffer_size: 50%
   color_depth: 16
   bg_color: 0x000000
   default_font: font_display
@@ -1842,6 +1836,11 @@ lvgl:
             width: 230
             long_mode: WRAP
             text_align: CENTER
+        - arc:
+            id: arc_enable_stub
+            hidden: true
+            width: 1
+            height: 1
 
     - id: idle_page
       bg_color: 0x000000
@@ -1948,6 +1947,12 @@ lvgl:
                   text_font: font_display
                   long_mode: SCROLL_CIRCULAR
                   text_align: CENTER
+        - label:
+            align: BOTTOM_MID
+            y: -8
+            text: "DEV BUILD 002"
+            text_color: 0x00FF00
+            text_font: font_playlist
 
     - id: player_controls_page
       bg_color: 0x000000
@@ -2472,3 +2477,4 @@ lvgl:
 # - DRV2605L haptic feedback is configured on the touch I2C bus at 0x5A. HAPTIC_EN/TRIG
 # - RGB ring/chain is enabled as a default-off Home Assistant light on RGB_DATA/GPIO0.
 #   GPIO0 is a boot/strapping pin, so keep startup state off while testing.
+    
