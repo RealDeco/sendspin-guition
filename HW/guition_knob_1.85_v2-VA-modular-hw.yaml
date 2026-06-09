@@ -1,6 +1,11 @@
 # Hardware package for Guition JC3636K718 / 1.85 inch knob board.
 # Edit this file for board pinouts and device-specific hardware.
 
+external_components:
+  - source: github://RAR/esphome-drv2605
+    components: [drv2605]
+    refresh: 1h
+
 substitutions:
   display_model: "JC3636W518V2"
   pdm_mic_type: "true"
@@ -519,6 +524,18 @@ switch:
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
 
+  - platform: template
+    id: led_ring_enabled
+    name: LED ring
+    icon: "mdi:led-strip-variant"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - script.execute: led_ring_apply_state
+    on_turn_off:
+      - light.turn_off: rgb_ring
+
 script:
   - id: haptic_click
     mode: restart
@@ -594,5 +611,112 @@ script:
           if (id(volume_ring_overlay) != nullptr) {
             lv_obj_add_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
           }
+
+  - id: led_ring_apply_state
+    mode: restart
+    then:
+      - if:
+          condition:
+            switch.is_off: led_ring_enabled
+          then:
+            - light.turn_off: rgb_ring
+          else:
+            - if:
+                condition:
+                  lambda: |-
+                    return id(va_phase) == ${va_phase_timer_ringing};
+                then:
+                  - light.turn_on:
+                      id: rgb_ring
+                      brightness: 75%
+                      red: 100%
+                      green: 35%
+                      blue: 0%
+                      effect: "none"
+                else:
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(va_phase) == ${va_phase_waiting_for_command};
+                      then:
+                        - light.turn_on:
+                            id: rgb_ring
+                            brightness: 75%
+                            red: 0%
+                            green: 40%
+                            blue: 100%
+                            effect: "Waiting for Command"
+                      else:
+                        - if:
+                            condition:
+                              lambda: |-
+                                return id(va_phase) == ${va_phase_listening};
+                            then:
+                              - light.turn_on:
+                                  id: rgb_ring
+                                  brightness: 90%
+                                  red: 0%
+                                  green: 75%
+                                  blue: 100%
+                                  effect: "Listening For Command"
+                            else:
+                              - if:
+                                  condition:
+                                    lambda: |-
+                                      return id(va_phase) == ${va_phase_thinking};
+                                  then:
+                                    - light.turn_on:
+                                        id: rgb_ring
+                                        brightness: 80%
+                                        red: 100%
+                                        green: 100%
+                                        blue: 0%
+                                        effect: "Thinking"
+                                  else:
+                                    - if:
+                                        condition:
+                                          lambda: |-
+                                            return id(va_phase) == ${va_phase_replying};
+                                        then:
+                                          - light.turn_on:
+                                              id: rgb_ring
+                                              brightness: 80%
+                                              red: 0%
+                                              green: 100%
+                                              blue: 100%
+                                              effect: "Replying"
+                                        else:
+                                          - if:
+                                              condition:
+                                                lambda: |-
+                                                  return id(va_phase) == ${va_phase_error};
+                                              then:
+                                                - light.turn_on:
+                                                    id: rgb_ring
+                                                    brightness: 80%
+                                                    red: 100%
+                                                    green: 0%
+                                                    blue: 100%
+                                                    effect: "none"
+                                              else:
+                                                - if:
+                                                    condition:
+                                                      media_player.is_playing: external_media_player
+                                                    then:
+                                                      - light.turn_on:
+                                                          id: rgb_ring
+                                                          brightness: 45%
+                                                          red: 0%
+                                                          green: 100%
+                                                          blue: 0%
+                                                          effect: "none"
+                                                    else:
+                                                      - light.turn_on:
+                                                          id: rgb_ring
+                                                          brightness: 28%
+                                                          red: 100%
+                                                          green: 0%
+                                                          blue: 0%
+                                                          effect: "none"
 
 
