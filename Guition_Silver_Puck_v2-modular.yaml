@@ -33,8 +33,16 @@ substitutions:
   va_phase_error: "5"
   va_phase_timer_ringing: "6"
 
-packages:
-  hardware: !include sendspin-guition/HW/silver_hw.yaml
+packages: # github
+  core:
+    url: https://github.com/RealDeco/sendspin-guition.git
+    ref: main
+    refresh: 0s
+    files:
+      - HW/guition_silver_Puck_v2-modular-hw.yaml
+
+#packages: # local
+#  hardware: !include sendspin-guition/HW/guition_silver_Puck_v2-modular-hw.yaml
 
 external_components:
   - source: github://pr#16057
