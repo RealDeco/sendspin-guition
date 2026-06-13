@@ -8,6 +8,9 @@ substitutions:
   imagemodel1: "Gwen" # options are: below
   imagemodel2: "Alfred" # options are below
 
+  display_model: "JC3636W518V2" # JC3636W518 for v1, JC3636W518V2 for v2
+  pdm_mic_type: "true" # false for v1, true for v2
+
 # AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, HA-character, ha-girl, Hacker, Harley,
 # Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
 
@@ -39,10 +42,10 @@ packages: # github
     ref: main
     refresh: 0s
     files:
-      - HW/guition_silver_Puck_v2-modular-hw.yaml
+      - HW/guition_silver_Puck-modular-hw.yaml
 
 #packages: # local
-#  hardware: !include sendspin-guition/HW/guition_silver_Puck_v2-modular-hw.yaml
+#  hardware: !include sendspin-guition/HW/guition_silver_Puck-modular-hw.yaml
 
 external_components:
   - source: github://pr#16057
