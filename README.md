@@ -23,11 +23,17 @@ For your convenience, you can flash the device directly from this webpage. Click
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v1/index.html">
   <strong>Guition Silver Puck v1</strong>
 </a>
-
 <br>
-
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v2/index.html">
   <strong>Guition Silver Puck v2</strong>
+</a>
+<br>
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v1-modular/index.html">
+  <strong>Guition Silver Puck v1 Modular</strong>
+</a>
+<br>
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v2-modular/index.html">
+  <strong>Guition Silver Puck v2 Modular</strong>
 </a>
 
 <br><br>
@@ -73,14 +79,9 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
   <strong>Guition Knob v2</strong>
 </a>
 <br>
-<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2-VA/index.html">
-  <strong>Guition Knob v2 VA edition</strong>
+<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_1.85_v2-VA-modular/index.html">
+  <strong>Guition Knob v2 Dual VA Modular</strong>
 </a>
-<br>
-<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2-VA-DualModel/index.html">
-  <strong>Guition Knob v2 VA Dual Model</strong>
-</a>
-
 
 </div>
 
@@ -88,18 +89,6 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 
 Guition 1.85" Rotary Knob:
 [https://www.aliexpress.com/item/1005011771382178.html](https://www.aliexpress.com/item/1005011771382178.html)
-
----
-
-## Modular Dual VA with sendspin (experimental)
-
-<a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v2-modular/index.html">
-  <strong>Guition Silver Puck v2 Modular</strong>
-</a>
-<br>
-<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_1.85_v2-VA-modular/index.html">
-  <strong>Guition Knob v2 Dual VA Modular</strong>
-</a>
 
 ---
 
@@ -116,7 +105,8 @@ When no music is playing, the display switches to a weather clock. Optionally, t
 ---
 
 VA edition
-...
+
+not yet written...
 
 ---
 
