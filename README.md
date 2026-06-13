@@ -70,9 +70,6 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 <div align="center">
 
 
-<img width="400" src="https://github.com/user-attachments/assets/063362d3-3063-4a42-8740-1f7cea6c51af" />
-
-
 ### Flash Firmware
 
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2/index.html">
@@ -82,6 +79,11 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_1.85_v2-VA-modular/index.html">
   <strong>Guition Knob v2 Dual VA Modular</strong>
 </a>
+
+<br><br>
+
+<img width="400" src="https://github.com/user-attachments/assets/063362d3-3063-4a42-8740-1f7cea6c51af" />
+
 
 </div>
 
