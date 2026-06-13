@@ -657,9 +657,15 @@ text_sensor:
     id: sendspin_artist
     type: artist
     on_value:
-      - lambda: |-
-          id(sendspin_album_art_valid) = false;
-      - script.execute: album_art_timeout_fallback
+      - component.update: now_playing_text
+      - lvgl.label.update:
+          id: controls_artist_label
+          text: !lambda return x;
+
+  - platform: sendspin
+    id: sendspin_album
+    type: album
+    on_value:
       - component.update: now_playing_text
       - lvgl.label.update:
           id: controls_artist_label
