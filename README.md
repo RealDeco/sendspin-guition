@@ -29,11 +29,11 @@ For your convenience, you can flash the device directly from this webpage. Click
 </a>
 <br>
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v1-modular/index.html">
-  <strong>Guition Silver Puck v1 Modular</strong>
+  <strong>Guition Silver Puck v1 Dual VA Modular</strong>
 </a>
 <br>
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v2-modular/index.html">
-  <strong>Guition Silver Puck v2 Modular</strong>
+  <strong>Guition Silver Puck v2 Dual VA Modular</strong>
 </a>
 
 <br><br>
