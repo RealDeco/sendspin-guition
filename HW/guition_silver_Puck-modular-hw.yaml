@@ -1,6 +1,4 @@
 # Hardware package for Guition Silver Puck v2.
-# Edit this file for Silver Puck pinouts and device-specific hardware.
-# This variant has no rotary dial and no DRV2605 haptic motor.
 
 substitutions:
   display_model: "JC3636W518V2"
@@ -50,7 +48,7 @@ speaker:
     i2s_dout_pin: GPIO17
     dac_type: external
     channel: stereo
-    buffer_duration: 300ms
+    buffer_duration: 100ms
 
   - platform: mixer
     id: mixing_speaker
@@ -78,8 +76,10 @@ media_source:
     id: audio_file_announcement_source
   - platform: audio_http
     id: http_announcement_source
+    buffer_size: 250000
   - platform: audio_http
     id: http_media_source
+    buffer_size: 500000
   - platform: sendspin
     id: sendspin_media_source
 
