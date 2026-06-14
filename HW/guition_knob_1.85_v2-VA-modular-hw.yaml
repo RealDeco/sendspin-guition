@@ -60,7 +60,7 @@ speaker:
     i2s_dout_pin: GPIO42
     dac_type: external
     channel: stereo
-    buffer_duration: 300ms
+    buffer_duration: 100ms
 
   - platform: mixer
     id: mixing_speaker
@@ -88,8 +88,10 @@ media_source:
     id: audio_file_announcement_source
   - platform: audio_http
     id: http_announcement_source
+    buffer_size: 250000
   - platform: audio_http
     id: http_media_source
+    buffer_size: 500000
   - platform: sendspin
     id: sendspin_media_source
 
