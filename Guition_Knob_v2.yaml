@@ -37,11 +37,17 @@ i2c:
   scl: GPIO10
 
 external_components:
-  - source: github://pr#16057
-    components: [generic_image, sendspin]
   - source: github://RAR/esphome-drv2605
     components: [drv2605]
     refresh: 1h
+
+packages:
+  extcomp:
+    url: https://github.com/RealDeco/xiaozhi-esphome.git
+    ref: main
+    refresh: 0s
+    files:
+      - devices/Under_Development/Modular/HW/sendspin-external_components.yaml
 
 esphome:
   name: ${name}
