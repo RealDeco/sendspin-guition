@@ -8,11 +8,11 @@ substitutions:
   imagemodel1: "Gwen" # options are: below
   imagemodel2: "Alfred" # options are below
 
-  display_model: "JC3636W518" # JC3636W518 for v1, JC3636W518V2 for v2
-  pdm_mic_type: "false" # false for v1, true for v2
-
 # AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, HA-character, ha-girl, Hacker, Harley,
 # Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
+
+  display_model: "JC3636W518" # JC3636W518 for v1, JC3636W518V2 for v2
+  pdm_mic_type: "false" # false for v1, true for v2
 
   # Home Assistant weather entity.
   ha_weather_entity: weather.forecast_home
