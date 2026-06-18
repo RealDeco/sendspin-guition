@@ -886,7 +886,7 @@ text_sensor:
     lambda: |-
       if (!id(ha_weather_temperature).has_state()) return std::string("--");
       std::string tunit = id(ha_weather_temperature_unit).state.c_str();
-      if (tunit.empty()) tunit = "°C";
+      if (tunit.empty()) tunit = "\u00B0C";
       lv_label_set_text(id(weather_big_temp_unit), tunit.c_str());
       int ti = (int) lroundf(id(ha_weather_temperature).state);
       char buf[8];
@@ -909,7 +909,7 @@ text_sensor:
         return std::string("Weather unavailable");
       }
       std::string tunit = id(ha_weather_temperature_unit).state.c_str();
-      if (tunit.empty()) tunit = "°C";
+      if (tunit.empty()) tunit = "\u00B0C";
       std::string wunit = id(ha_weather_wind_speed_unit).state.c_str();
       if (wunit.empty()) wunit = "m/s";
       float temp_c = id(ha_weather_temperature).state;
@@ -1002,7 +1002,7 @@ font:
       weight: 700
     id: font_temp_unit
     size: 30
-    glyphs: "°CF"
+    glyphs: "\u00B0CF"
 
   - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
     id: font_7seg
@@ -1938,7 +1938,7 @@ lvgl:
                         align: CENTER
                         x: 102
                         y: -20
-                        text: "°C"
+                        text: "\u00B0C"
                         text_color: 0xFFFF00
                         text_font: font_temp_unit
 
@@ -2471,9 +2471,3 @@ lvgl:
                   text_color: 0xFFFFFF
                   text_font: font_playlist
                   text_align: CENTER
-
-# Knob hardware notes:
-# - Rotary encoder uses GPIO_KNOB_A/GPIO2 and GPIO_KNOB_B/GPIO1 from the vendor demo pin map.
-# - DRV2605L haptic feedback is configured on the touch I2C bus at 0x5A. HAPTIC_EN/TRIG
-# - RGB ring/chain is enabled as a default-off Home Assistant light on RGB_DATA/GPIO0.
-#   GPIO0 is a boot/strapping pin, so keep startup state off while testing.
