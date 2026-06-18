@@ -263,9 +263,9 @@ touchscreen:
                     std::abs(id(touch_last_y) - id(touch_start_y)) >= swipe_min_dist) {
                   id(touch_swipe_detected) = true;
                   lv_obj_remove_state(id(controls_mute_button), LV_STATE_PRESSED);
-                  lv_obj_remove_state(id(controls_previous_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_repeat_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
-                  lv_obj_remove_state(id(controls_next_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_shuffle_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
                 }
@@ -301,9 +301,9 @@ touchscreen:
                     id(now_playing_swipe_right)->execute();
                   }
                 } else if (dy < 0) {
-                  id(now_playing_swipe_up)->execute();
+                  id(start_manual_va)->execute();
                 } else {
-                  id(now_playing_swipe_down)->execute();
+                  id(open_playlist_menu)->execute();
                 }
               } else if (id(ui_phase) == ${ui_phase_player_controls}) {
                 if (abs_x >= abs_y) {
