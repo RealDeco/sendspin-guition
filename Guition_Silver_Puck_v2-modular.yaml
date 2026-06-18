@@ -70,11 +70,11 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.5.0
+  min_version: 2026.6.0
   name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_guition
-    version: "2026.5.0"
+    version: "2026.6.0"
   on_boot:
     priority: -100
     then:
@@ -121,6 +121,11 @@ captive_portal:
 time:
   - platform: homeassistant
     id: homeassistant_time
+
+interval:
+  - interval: 1s
+    then:
+      - script.execute: refresh_now_playing_progress_bar
 
 globals:
   - id: sendspin_album_art_valid
@@ -219,6 +224,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: track_progress_anchor_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: volume_ring_overlay
     type: lv_obj_t*
     restore_value: no
@@ -248,6 +257,14 @@ globals:
     restore_value: yes
     initial_value: "255"
   - id: accent_blue
+    type: int
+    restore_value: yes
+    initial_value: "0"
+  - id: shuffle_state
+    type: bool
+    restore_value: yes
+    initial_value: "false"
+  - id: repeat_mode
     type: int
     restore_value: yes
     initial_value: "0"
@@ -608,7 +625,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: Okay Nabu
+    initial_value: hey_gwen
     mode: text
 
   - platform: template
@@ -617,7 +634,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: Hey Jarvis
+    initial_value: hey_alfred
     mode: text
 
   - platform: template
@@ -741,20 +758,20 @@ micro_wake_word:
   id: mww
   stop_after_detection: false
   models:
+    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_gwen.json
+      id: hey_gwen
+    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_alfred.json
+      id: hey_alfred
+
+### other wakewords to use at own risk.
 #    - model: okay_nabu
 #      id: okay_nabu
 #    - model: hey_jarvis
 #      id: hey_jarvis
-
-### other wakewords to use at own risk.
 #    - alexa
 #      id: 
 #    - hey_mycroft
 #      id: hey_mycroft
-    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_alfred.json
-      id: hey_alfred
-    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_gwen.json
-      id: hey_gwen
 #    - model: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/refs/heads/main/MicroWakeWords/models/v2/hey_sarah.json
 #      id: hey_sarah
 #    - model: https://raw.githubusercontent.com/JohnnyPrimus/Custom_V2_MicroWakeWords/refs/heads/main/models/computer/computer.json
@@ -927,6 +944,15 @@ sensor:
     id: ha_weather_wind_speed
     entity_id: ${ha_weather_entity}
     attribute: wind_speed
+  - platform: sendspin
+    id: sendspin_track_progress
+    type: track_progress
+    on_value:
+      - lambda: 'id(track_progress_anchor_ms) = millis();'
+      - script.execute: refresh_now_playing_progress_bar
+  - platform: sendspin
+    id: sendspin_track_duration
+    type: track_duration
 
 text_sensor:
   - platform: template
@@ -1077,7 +1103,7 @@ text_sensor:
     lambda: |-
       if (!id(ha_weather_temperature).has_state()) return std::string("--");
       std::string tunit = id(ha_weather_temperature_unit).state.c_str();
-      if (tunit.empty()) tunit = "°C";
+      if (tunit.empty()) tunit = "\u00B0C";
       lv_label_set_text(id(weather_big_temp_unit), tunit.c_str());
       int ti = (int) lroundf(id(ha_weather_temperature).state);
       char buf[8];
@@ -1100,7 +1126,7 @@ text_sensor:
         return std::string("Weather unavailable");
       }
       std::string tunit = id(ha_weather_temperature_unit).state.c_str();
-      if (tunit.empty()) tunit = "°C";
+      if (tunit.empty()) tunit = "\u00B0C";
       std::string wunit = id(ha_weather_wind_speed_unit).state.c_str();
       if (wunit.empty()) wunit = "m/s";
       float temp_c = id(ha_weather_temperature).state;
@@ -1193,7 +1219,7 @@ font:
       weight: 700
     id: font_temp_unit
     size: 30
-    glyphs: "°CF"
+    glyphs: "\u00B0CF"
 
   - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
     id: font_7seg
@@ -1224,6 +1250,11 @@ font:
       - "\U000F075D"
       - "\U000F075E"
       - "\U000F075F"
+      - "\U000F0456"
+      - "\U000F0457"
+      - "\U000F0458"
+      - "\U000F049D"
+      - "\U000F049E"
 
 script:
   - id: finish_va_reply
@@ -1447,6 +1478,21 @@ script:
           then:
             - micro_wake_word.stop:
 
+  - id: refresh_now_playing_progress_bar
+    mode: restart
+    then:
+      - lvgl.bar.update:
+          id: now_playing_progress_bar
+          animated: false
+          value: !lambda |-
+            if (!id(sendspin_track_duration).has_state() || id(sendspin_track_duration).state <= 0) return 0;
+            float progress = id(sendspin_track_progress).has_state() ? id(sendspin_track_progress).state : 0.0f;
+            if (id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_PLAYING) {
+              progress += (float) (millis() - id(track_progress_anchor_ms));
+            }
+            float pct = progress / id(sendspin_track_duration).state * 100.0f;
+            return (int) std::max(0.0f, std::min(100.0f, pct));
+
   - id: apply_accent_color_debounced
     mode: restart
     then:
@@ -1471,7 +1517,7 @@ script:
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
-          lv_obj_set_style_border_color(id(volume_feedback_box), accent, 0);
+          lv_obj_set_style_bg_color(id(now_playing_progress_bar), accent, LV_PART_INDICATOR);
 
           lv_obj_t *playlist_buttons[] = {
             id(playlist_1_button), id(playlist_2_button), id(playlist_3_button),
@@ -1483,6 +1529,7 @@ script:
             lv_obj_set_style_shadow_color(button, accent, 0);
             lv_obj_set_style_bg_color(button, accent, LV_STATE_PRESSED);
           }
+      - script.execute: refresh_shuffle_repeat_buttons
 
   - id: set_ui_phase
     mode: restart
@@ -1702,20 +1749,6 @@ script:
           direction: 1
       - media_player.previous: sendspin_group_media_player
 
-  - id: now_playing_swipe_up
-    then:
-      - media_player.volume_up: external_media_player
-      - script.execute:
-          id: show_volume_feedback
-          text: "+5"
-
-  - id: now_playing_swipe_down
-    then:
-      - media_player.volume_down: external_media_player
-      - script.execute:
-          id: show_volume_feedback
-          text: "-5"
-
   - id: player_controls_keep_open
     then:
       - script.execute:
@@ -1748,25 +1781,120 @@ script:
           direction: -1
       - media_player.next: sendspin_group_media_player
 
-  - id: player_controls_previous
+  - id: player_controls_shuffle_toggle
+    mode: restart
     then:
-      - delay: 75ms
+      - lambda: 'id(shuffle_state) = !id(shuffle_state);'
+      - script.execute: refresh_shuffle_repeat_buttons
+      - script.execute: player_controls_keep_open
       - if:
           condition:
-            lambda: 'return !id(touch_swipe_detected);'
+            lambda: 'return !id(playlist_media_player_entity).state.empty();'
           then:
-            - media_player.previous: sendspin_group_media_player
-            - script.execute: player_controls_keep_open
+            - if:
+                condition:
+                  lambda: 'return id(shuffle_state);'
+                then:
+                  - homeassistant.action:
+                      action: media_player.shuffle_set
+                      data:
+                        shuffle: "true"
+                      data_template:
+                        entity_id: "{{ media_player_entity }}"
+                      variables:
+                        media_player_entity: |-
+                          return id(playlist_media_player_entity).state;
+                else:
+                  - homeassistant.action:
+                      action: media_player.shuffle_set
+                      data:
+                        shuffle: "false"
+                      data_template:
+                        entity_id: "{{ media_player_entity }}"
+                      variables:
+                        media_player_entity: |-
+                          return id(playlist_media_player_entity).state;
 
-  - id: player_controls_next
+  - id: player_controls_repeat_cycle
+    mode: restart
     then:
-      - delay: 75ms
+      - lambda: 'id(repeat_mode) = (id(repeat_mode) + 1) % 3;'
+      - script.execute: refresh_shuffle_repeat_buttons
+      - script.execute: player_controls_keep_open
       - if:
           condition:
-            lambda: 'return !id(touch_swipe_detected);'
+            lambda: 'return !id(playlist_media_player_entity).state.empty();'
           then:
-            - media_player.next: sendspin_group_media_player
-            - script.execute: player_controls_keep_open
+            - if:
+                condition:
+                  lambda: 'return id(repeat_mode) == 0;'
+                then:
+                  - homeassistant.action:
+                      action: media_player.repeat_set
+                      data:
+                        repeat: "off"
+                      data_template:
+                        entity_id: "{{ media_player_entity }}"
+                      variables:
+                        media_player_entity: |-
+                          return id(playlist_media_player_entity).state;
+            - if:
+                condition:
+                  lambda: 'return id(repeat_mode) == 1;'
+                then:
+                  - homeassistant.action:
+                      action: media_player.repeat_set
+                      data:
+                        repeat: "all"
+                      data_template:
+                        entity_id: "{{ media_player_entity }}"
+                      variables:
+                        media_player_entity: |-
+                          return id(playlist_media_player_entity).state;
+            - if:
+                condition:
+                  lambda: 'return id(repeat_mode) == 2;'
+                then:
+                  - homeassistant.action:
+                      action: media_player.repeat_set
+                      data:
+                        repeat: "one"
+                      data_template:
+                        entity_id: "{{ media_player_entity }}"
+                      variables:
+                        media_player_entity: |-
+                          return id(playlist_media_player_entity).state;
+
+  - id: refresh_shuffle_repeat_buttons
+    mode: restart
+    then:
+      - lambda: |-
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const lv_color_t accent = lv_color_hex(accent_u32);
+          const lv_color_t inactive_color = lv_color_hex(0xFFFFFF);
+
+          if (id(shuffle_state)) {
+            lv_label_set_text(id(controls_shuffle_label), "\U000F049D");
+            lv_obj_set_style_text_color(id(controls_shuffle_label), accent, 0);
+          } else {
+            lv_label_set_text(id(controls_shuffle_label), "\U000F049E");
+            lv_obj_set_style_text_color(id(controls_shuffle_label), inactive_color, 0);
+          }
+
+          switch (id(repeat_mode)) {
+            case 1:
+              lv_label_set_text(id(controls_repeat_label), "\U000F0456");
+              lv_obj_set_style_text_color(id(controls_repeat_label), accent, 0);
+              break;
+            case 2:
+              lv_label_set_text(id(controls_repeat_label), "\U000F0458");
+              lv_obj_set_style_text_color(id(controls_repeat_label), accent, 0);
+              break;
+            default:
+              lv_label_set_text(id(controls_repeat_label), "\U000F0457");
+              lv_obj_set_style_text_color(id(controls_repeat_label), inactive_color, 0);
+              break;
+          }
 
   - id: player_controls_volume_down
     then:
@@ -1776,6 +1904,7 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - media_player.volume_down: external_media_player
+            - script.execute: show_volume_ring
             - script.execute: player_controls_keep_open
 
   - id: player_controls_volume_up
@@ -1786,6 +1915,7 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - media_player.volume_up: external_media_player
+            - script.execute: show_volume_ring
             - script.execute: player_controls_keep_open
 
   - id: player_controls_mute
@@ -2018,17 +2148,65 @@ script:
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
           }
 
-  - id: show_volume_feedback
+  - id: show_volume_ring
     mode: restart
-    parameters:
-      text: string
     then:
+      - script.stop: hide_volume_ring
       - lambda: |-
-          lv_label_set_text(id(volume_feedback_label), text.c_str());
-          lv_obj_clear_flag(id(volume_feedback_box), LV_OBJ_FLAG_HIDDEN);
-      - delay: 1200ms
+          if (id(volume_ring_overlay) == nullptr) {
+            id(volume_ring_overlay) = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(id(volume_ring_overlay));
+            lv_obj_set_size(id(volume_ring_overlay), 150, 150);
+            lv_obj_center(id(volume_ring_overlay));
+            lv_obj_set_style_bg_color(id(volume_ring_overlay), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_opa(id(volume_ring_overlay), 230, 0);
+            lv_obj_set_style_border_width(id(volume_ring_overlay), 3, 0);
+            lv_obj_set_style_radius(id(volume_ring_overlay), LV_RADIUS_CIRCLE, 0);
+            lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_SCROLLABLE);
+
+            id(volume_ring_label) = lv_label_create(id(volume_ring_overlay));
+            lv_obj_set_width(id(volume_ring_label), 130);
+            lv_obj_center(id(volume_ring_label));
+            lv_obj_set_style_text_align(id(volume_ring_label), LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_set_style_text_font(id(volume_ring_label), id(font_7seg), 0);
+          }
+
+          const float volume = std::max(0.0f, std::min(1.0f, id(external_media_player).volume));
+          const int pct = (int) lroundf(volume * 100.0f);
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const lv_color_t accent = lv_color_hex(accent_u32);
+          lv_obj_set_style_border_color(id(volume_ring_overlay), accent, 0);
+          lv_obj_set_style_text_color(id(volume_ring_label), accent, 0);
+          char text[8];
+          snprintf(text, sizeof(text), "%d", pct);
+          lv_label_set_text(id(volume_ring_label), text);
+          lv_obj_set_style_opa(id(volume_ring_overlay), LV_OPA_COVER, 0);
+          lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(volume_ring_overlay));
+      - script.execute: hide_volume_ring
+
+  - id: hide_volume_ring
+    mode: restart
+    then:
+      - delay: 900ms
       - lambda: |-
-          lv_obj_add_flag(id(volume_feedback_box), LV_OBJ_FLAG_HIDDEN);
+          if (id(volume_ring_overlay) == nullptr) return;
+          lv_anim_del(id(volume_ring_overlay), nullptr);
+          lv_anim_t fade;
+          lv_anim_init(&fade);
+          lv_anim_set_var(&fade, id(volume_ring_overlay));
+          lv_anim_set_values(&fade, LV_OPA_COVER, LV_OPA_TRANSP);
+          lv_anim_set_time(&fade, 260);
+          lv_anim_set_exec_cb(&fade, [](void *obj, int32_t opacity) {
+            lv_obj_set_style_opa((lv_obj_t *) obj, opacity, 0);
+          });
+          lv_anim_start(&fade);
+      - delay: 280ms
+      - lambda: |-
+          if (id(volume_ring_overlay) != nullptr) {
+            lv_obj_add_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
+          }
 
 
   - id: album_art_timeout_fallback
@@ -2337,7 +2515,7 @@ lvgl:
                         align: CENTER
                         x: 102
                         y: -20
-                        text: "°C"
+                        text: "\u00B0C"
                         text_color: 0xFFFF00
                         text_font: font_temp_unit
 
@@ -2457,9 +2635,9 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
-            id: controls_previous_button
+            id: controls_repeat_button
             align: CENTER
-            x: -104
+            x: 104
             y: 0
             width: 84
             height: 84
@@ -2474,11 +2652,12 @@ lvgl:
               border_color: 0xFFFFFF
               border_width: 3
             on_click:
-              - script.execute: player_controls_previous
+              - script.execute: player_controls_repeat_cycle
             widgets:
               - label:
+                  id: controls_repeat_label
                   align: CENTER
-                  text: "\U000F04AE"
+                  text: "\U000F0457"
                   text_color: 0xFFFFFF
                   text_font: font_mdi_controls
 
@@ -2507,9 +2686,9 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
-            id: controls_next_button
+            id: controls_shuffle_button
             align: CENTER
-            x: 104
+            x: -104
             y: 0
             width: 84
             height: 84
@@ -2524,11 +2703,12 @@ lvgl:
               border_color: 0xFFFFFF
               border_width: 3
             on_click:
-              - script.execute: player_controls_next
+              - script.execute: player_controls_shuffle_toggle
             widgets:
               - label:
+                  id: controls_shuffle_label
                   align: CENTER
-                  text: "\U000F04AD"
+                  text: "\U000F049E"
                   text_color: 0xFFFFFF
                   text_font: font_mdi_controls
 
@@ -2614,6 +2794,28 @@ lvgl:
             clickable: false
             hidden: true
 
+        - bar:
+            id: now_playing_progress_bar
+            align: BOTTOM_MID
+            x: 0
+            y: -70
+            width: 220
+            height: 8
+            bg_color: 0x000000
+            bg_opa: 40%
+            border_width: 1
+            border_color: 0xFFFFFF
+            border_opa: 70%
+            radius: 4
+            min_value: 0
+            max_value: 100
+            value: 0
+            animated: false
+            indicator:
+              bg_color: 0xFFFFFF
+              bg_opa: COVER
+              radius: 4
+
         - obj:
             id: now_playing_bar
             align: BOTTOM_MID
@@ -2636,26 +2838,6 @@ lvgl:
                   text_font: font_display
                   long_mode: SCROLL_CIRCULAR
                   text_align: CENTER
-
-        - obj:
-            id: volume_feedback_box
-            align: CENTER
-            width: 126
-            height: 92
-            bg_color: 0x000000
-            bg_opa: 75%
-            border_color: 0x66CCFF
-            border_width: 2
-            radius: 18
-            scrollable: false
-            hidden: true
-            widgets:
-              - label:
-                  id: volume_feedback_label
-                  align: CENTER
-                  text: "+5"
-                  text_color: 0xFFFFFF
-                  text_font: font_temp_big
 
     - id: playlist_menu_page
       bg_color: 0x000000
