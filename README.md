@@ -8,6 +8,14 @@ Turn any amplifier, active speaker, or existing hi-fi setup into part of a perfe
 
 Not many esp32 devices include Line Out, but Guition has made two: the 1.80" silver puck and a new version of the 1.85" rotary dial knob. These devices are perfect for Sendspin players because they support Line Out through the 3.5 mm mini-jack connector.
 
+
+There are two versions available in this project:
+
+Simple Player – A basic player example that others can use as a reference or as a starting point for their own projects.
+Modular – A more advanced version featuring two voice assistants and a Sendspin player.
+
+Both versions can be flashed directly from the project webpage for users who simply want everything to work without having to compile the firmware themselves.
+
 </div>
 
 ---
