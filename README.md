@@ -68,7 +68,7 @@ alt="Guition 1.80 silver puck photo"
 ### Where to buy
 
 Guition 1.80" Silver Puck:
-[https://www.aliexpress.com/item/1005007606734344.html](https://www.aliexpress.com/item/1005007606734344.html)
+[https://www.aliexpress.com/item/1005007338590852.html](https://www.aliexpress.com/item/1005007338590852.html)
 
 ---
 
