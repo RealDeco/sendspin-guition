@@ -113,17 +113,25 @@ Tap the screen to open the player controls, where you can mute the volume, toggl
 
 When no music is playing, the display switches to a weather clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again.
 
-For playlists and repeat+shuffle to work you need to enter the url and name of playlist in the fields in Home Assistant, and set the music assistant mediaplayer name of the device (not the esphome mediaplayer):
+### **Playlists, Shuffle & Repeat**
 
-<img width="626" height="233" alt="Screenshot 2026-06-19 at 18 52 30" src="https://github.com/user-attachments/assets/20c84d66-e5e9-4fd3-9255-f68219fa068f" />
+For playlists, shuffle and repeat to work you need to enter the url and name of playlist in the fields in Home Assistant, and set the music assistant mediaplayer name of the device (not the esphome mediaplayer):
+
+
+<img width="902" height="347" alt="Screenshot 2026-06-19 at 18 50 11" src="https://github.com/user-attachments/assets/79c7866b-49b9-4682-9f32-ff5a4a2df0e6" />
+
+<img width="626" height="233" alt="Screenshot 2026-06-19 at 18 52 30" src="https://github.com/user-attachments/assets/80d7d9f3-f411-4658-bf60-0deecf49ceb2" />
+
 
 and allow the device to perform Home Assistant actions:
 
-<img width="830" height="519" alt="Screenshot 2026-06-19 at 18 53 30" src="https://github.com/user-attachments/assets/260979d1-7fc9-42f7-ae0f-71443e1eff60" />
+<img width="830" height="519" alt="Screenshot 2026-06-19 at 18 53 30" src="https://github.com/user-attachments/assets/c6773cad-7b1c-4e11-81c5-8d7cfa0cde0b" />
+
 
 For Dual Voice Assistants to work, you need to set SAME NAME in the label box below the wake words like this:
 
-<img width="716" height="300" alt="Screenshot 2026-06-19 at 18 44 04" src="https://github.com/user-attachments/assets/d9140f1b-7d05-466a-8e80-a813a6098db6" />
+<img width="716" height="300" alt="Screenshot 2026-06-19 at 18 44 04" src="https://github.com/user-attachments/assets/ca05e6b1-0301-47f0-a5ea-a36a9d551d5f" />
+
 
 This is because we can't read from the device which wakewords are set in HA, and we need that to compare with the wake word used.
 
