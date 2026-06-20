@@ -109,15 +109,23 @@ Sendspin Player:
 
 While music is playing, swipe left or right to move to the previous or next song.
 
-Tap the screen to open the player controls, where you can adjust the volume, skip to the next or previous track, pause, or stop playback. When the player controls are visible, swipe down to open the playlist selector.
+Tap the screen to open the player controls, where you can mute the volume, toggle shuffle or repeat, pause, or stop playback. When the player controls are visible or music is playing and showing album art, swipe down to open the playlist selector or up to start the VA.
 
 When no music is playing, the display switches to a weather clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again.
 
----
+For playlists and repeat+shuffle to work you need to enter the url and name of playlist in the fields in Home Assistant, and set the music assistant mediaplayer name of the device (not the esphome mediaplayer):
 
-VA edition
+<img width="626" height="233" alt="Screenshot 2026-06-19 at 18 52 30" src="https://github.com/user-attachments/assets/20c84d66-e5e9-4fd3-9255-f68219fa068f" />
 
-not yet written...
+and allow the device to perform Home Assistant actions:
+
+<img width="830" height="519" alt="Screenshot 2026-06-19 at 18 53 30" src="https://github.com/user-attachments/assets/260979d1-7fc9-42f7-ae0f-71443e1eff60" />
+
+For Dual Voice Assistants to work, you need to set SAME NAME in the label box below the wake words like this:
+
+<img width="716" height="300" alt="Screenshot 2026-06-19 at 18 44 04" src="https://github.com/user-attachments/assets/d9140f1b-7d05-466a-8e80-a813a6098db6" />
+
+This is because we can't read from the device which wakewords are set in HA, and we need that to compare with the wake word used.
 
 ---
 
