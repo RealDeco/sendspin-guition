@@ -94,7 +94,10 @@ esphome:
           phase: ${va_phase_idle}
       - script.execute: refresh_playlist_labels
       - script.execute: apply_accent_color_debounced
-      - script.execute: led_ring_apply_state
+      - delay: 15s
+      - script.execute:
+          id: fetch_news_ticker
+          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
 logger:
   level: WARN
@@ -111,7 +114,7 @@ api:
 
 ota:
   - platform: esphome
-
+### REM THIS OUT IF USING ETHERNET *START* ***
 wifi:
   on_connect:
     - delay: 1s
@@ -121,11 +124,20 @@ wifi:
         then:
           - script.execute: load_standby_background
   ap:
-
 improv_serial:
-
 captive_portal:
-
+### REM THIS OUT IF USING ETHERNET *END* ***
+  
+#ethernet:
+#  type: IP101
+#  mdc_pin: GPIO31
+#  mdio_pin: GPIO52
+#  power_pin: GPIO51
+#  clk:
+#    pin: GPIO50
+#    mode: CLK_EXT_IN
+#  phy_addr: 1
+  
 time:
   - platform: homeassistant
     id: homeassistant_time
@@ -220,6 +232,14 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: touch_started_while_dimmed
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: news_ticker_last_fetch_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: track_progress_anchor_ms
     type: uint32_t
     restore_value: no
@@ -368,7 +388,7 @@ http_request:
 
 online_image:
   - id: standby_background_image
-    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/480x480/clock.png
+    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/1024x600/clock.png
     format: PNG
     type: RGB565
     resize: ${screenwidth}x${screenwidth}
@@ -384,6 +404,25 @@ online_image:
             - lambda: |-
                 lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_move_background(id(standby_background_widget));
+
+  - id: family_photo_image
+    url: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/family_photo1.png
+    format: PNG
+    type: RGB565
+    resize: ${imagewidth}x${imageheight}
+    update_interval: never
+    on_download_finished:
+      - if:
+          condition:
+            lambda: 'return id(standby_frame_content).current_option() == "Family Photo";'
+          then:
+            - lvgl.image.update:
+                id: family_photo_widget
+                src: family_photo_image
+            - lvgl.widget.show: family_photo_block
+    on_error:
+      - lambda: |-
+          ESP_LOGW("family_photo", "failed to load photo");
 
 i2c:
   id: bus_a
@@ -530,7 +569,6 @@ media_player:
               - lambda: |-
                   ESP_LOGW("va", "stopping wake word for media playback");
               - script.execute: stop_wake_word
-        - script.execute: led_ring_apply_state
         - if:
             condition:
               lambda: 'return id(va_phase) == ${va_phase_idle};'
@@ -584,11 +622,9 @@ media_player:
                     lambda: 'return id(va_phase) == ${va_phase_idle};'
                   then:
                     - script.execute: mp_idle_debounce
-              - script.execute: led_ring_apply_state
 
     on_pause:
       then:
-        - script.execute: led_ring_apply_state
         - if:
             condition:
               lambda: 'return id(va_phase) == ${va_phase_idle};'
@@ -648,14 +684,12 @@ switch:
             - media_player.stop:
                 announcement: true
                 id: external_media_player
-      - script.execute: led_ring_apply_state
     on_turn_on:
       - micro_wake_word.enable_model: stop
       - script.execute:
           id: set_va_phase
           phase: ${va_phase_timer_ringing}
       - script.execute: ring_timer
-      - script.execute: led_ring_apply_state
       - delay: 15min
       - switch.turn_off: timer_ringing
 
@@ -705,6 +739,23 @@ number:
             lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
           then:
             - script.execute: player_controls_timeout
+
+  - platform: template
+    id: news_ticker_max_items
+    name: News ticker max headlines
+    icon: "mdi:format-list-numbered"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    mode: box
+    min_value: 1
+    max_value: 30
+    step: 1
+    initial_value: 12
+    set_action:
+      - script.execute:
+          id: fetch_news_ticker
+          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
   - platform: template
     id: standby_screen_timeout_seconds
@@ -769,7 +820,7 @@ select:
             - online_image.set_url:
                 id: standby_background_image
                 url: !lambda |-
-                  return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/480x480/" + x + ".png";
+                  return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/1024x600/" + x + ".png";
 
   - platform: template
     id: standby_frame_content
@@ -782,11 +833,42 @@ select:
     options:
       - None
       - News Ticker
-      - Family Photos
+      - Family Photo
     set_action:
+      - lvgl.page.show: home_page
+      - lambda: |-
+          std::string content = x.str();
+          if (id(ui_phase) == ${ui_phase_standby}) {
+            if (content == "News Ticker") {
+              lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_clear_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+            } else if (content == "Family Photo") {
+              lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+              if (id(family_photo_image)->is_loaded()) {
+                lv_obj_clear_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+              }
+            } else {
+              lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+              if (content == "None") {
+                lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+              } else {
+                lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+              }
+            }
+          }
+      - if:
+          condition:
+            lambda: 'return id(ui_phase) == ${ui_phase_standby} && x.str() == "Family Photo" && !id(family_photo_image)->is_loaded();'
+          then:
+            - script.execute:
+                id: show_family_photo
+                selected_option: !lambda 'return x.str();'
       - script.execute:
-          id: set_ui_phase
-          phase: !lambda return id(ui_phase);
+          id: refresh_news_ticker_if_stale
+          selected_option: !lambda 'return x.str();'
 
   - platform: template
     name: "Audio Output"
@@ -943,6 +1025,32 @@ text:
     initial_value: ""
     mode: text
 
+  - platform: template
+    id: news_feed_url
+    name: News feed URL
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "https://news.google.com/rss/search?q=site%3Areuters.com&hl=en-US&gl=US&ceid=US%3Aen"
+    mode: text
+    on_value:
+      - script.execute:
+          id: fetch_news_ticker
+          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+
+  - platform: template
+    id: family_photo_url
+    name: Family photo URL
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+    on_value:
+      - script.execute:
+          id: show_family_photo
+          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+
 micro_wake_word:
   id: mww
   stop_after_detection: false
@@ -1095,9 +1203,27 @@ voice_assistant:
         condition:
           lambda: return id(va_phase) == ${va_phase_error};
         then:
-          - script.execute:
-              id: set_va_phase
-              phase: ${va_phase_idle}
+          - if:
+              condition:
+                lambda: return id(manual_va_active);
+              then:
+                - lambda: id(manual_va_active) = false;
+                - script.execute:
+                    id: set_va_phase
+                    phase: ${va_phase_idle}
+                - script.execute:
+                    id: set_ui_phase
+                    phase: ${ui_phase_player_controls}
+                - if:
+                    condition:
+                      lambda: return id(manual_va_resume_media);
+                    then:
+                      - lambda: id(manual_va_resume_media) = false;
+                      - media_player.toggle: sendspin_group_media_player
+              else:
+                - script.execute:
+                    id: set_va_phase
+                    phase: ${va_phase_idle}
           - if:
               condition:
                 switch.is_off: mute
@@ -1432,12 +1558,6 @@ font:
       - "\U000F0020"
 
 script:
-  - id: led_ring_apply_state
-    mode: restart
-    then:
-      - lambda: |-
-          return;
-
   - id: finish_va_reply
     mode: restart
     then:
@@ -1501,6 +1621,8 @@ script:
             - lambda: |-
                 lv_obj_add_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
             - script.execute:
                 id: set_ui_phase
                 phase: !lambda return id(ui_phase);
@@ -1513,6 +1635,8 @@ script:
                 lv_img_set_zoom(id(va_phase_image_widget), LV_ZOOM_NONE);
                 lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: home_page
@@ -1525,6 +1649,8 @@ script:
                 lv_img_set_zoom(id(va_phase_image_widget), LV_ZOOM_NONE);
                 lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: home_page
@@ -1537,6 +1663,8 @@ script:
                 lv_img_set_zoom(id(va_phase_image_widget), LV_ZOOM_NONE);
                 lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: home_page
@@ -1549,6 +1677,8 @@ script:
                 lv_img_set_zoom(id(va_phase_image_widget), LV_ZOOM_NONE);
                 lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: home_page
@@ -1567,6 +1697,8 @@ script:
                 lv_label_set_text(id(va_status_subtitle), "Something went wrong");
                 lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: home_page
@@ -1585,6 +1717,8 @@ script:
                 lv_label_set_text(id(va_status_subtitle), "Time is up");
                 lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: home_page
@@ -1595,7 +1729,6 @@ script:
             - script.stop: player_controls_timeout
             - script.execute: standby_screen_activity
       - component.update: va_phase_text
-      - script.execute: led_ring_apply_state
 
   - id: start_manual_va
     mode: restart
@@ -1777,11 +1910,36 @@ script:
             - lvgl.widget.hide: playlist_panel
             - lambda: |-
                 lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
-                if (id(standby_frame_content).current_option() == "None") {
-                  lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                } else {
+                std::string content = id(standby_frame_content).current_option();
+                if (content == "News Ticker") {
                   lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_clear_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+                } else if (content == "Family Photo") {
+                  lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                  if (id(family_photo_image)->is_loaded()) {
+                    lv_obj_clear_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+                  }
+                } else {
+                  lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+                  if (content == "None") {
+                    lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                  } else {
+                    lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                  }
                 }
+            - script.execute:
+                id: refresh_news_ticker_if_stale
+                selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+            - if:
+                condition:
+                  lambda: 'return id(standby_frame_content).current_option() == "Family Photo" && !id(family_photo_image)->is_loaded();'
+                then:
+                  - script.execute:
+                      id: show_family_photo
+                      selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_now_playing};'
@@ -1791,6 +1949,8 @@ script:
             - lvgl.widget.hide: playlist_panel
             - lambda: |-
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 if (id(va_phase) == ${va_phase_idle}) {
                   lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 }
@@ -1803,6 +1963,8 @@ script:
             - lvgl.widget.hide: playlist_panel
             - lambda: |-
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 if (id(va_phase) == ${va_phase_idle}) {
                   lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 }
@@ -1816,6 +1978,8 @@ script:
             - lvgl.widget.show: playlist_panel
             - lambda: |-
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
                 if (id(va_phase) == ${va_phase_idle}) {
                   lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 }
@@ -1892,7 +2056,7 @@ script:
       - online_image.set_url:
           id: standby_background_image
           url: !lambda |-
-            return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/480x480/" + id(standby_background_choice).current_option().str() + ".png";
+            return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/1024x600/" + id(standby_background_choice).current_option().str() + ".png";
 
   - id: standby_screen_activity
     mode: restart
@@ -2171,6 +2335,120 @@ script:
           then:
             - media_player.next: sendspin_group_media_player
             - script.execute: player_controls_keep_open
+
+  - id: refresh_news_ticker_if_stale
+    mode: restart
+    parameters:
+      selected_option: string
+    then:
+      - lambda: |-
+          if (id(ui_phase) != ${ui_phase_standby}) return;
+          if (selected_option != "News Ticker") return;
+          const uint32_t now = millis();
+          const bool never_fetched = id(news_ticker_last_fetch_ms) == 0;
+          const bool boot_grace_over = now >= 20000;
+          const bool is_stale = !never_fetched && (now - id(news_ticker_last_fetch_ms)) >= 20 * 60 * 1000;
+          if ((never_fetched && boot_grace_over) || is_stale) {
+            id(fetch_news_ticker)->execute(selected_option);
+          }
+
+  - id: show_family_photo
+    mode: restart
+    parameters:
+      selected_option: string
+    then:
+      - lambda: |-
+          if (selected_option != "Family Photo") return;
+          std::string url = id(family_photo_url).state;
+          if (url.empty()) {
+            url = "https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/family_photo1.png";
+          }
+          id(family_photo_image)->set_url(url);
+          id(family_photo_image)->update();
+
+  - id: fetch_news_ticker
+    mode: restart
+    parameters:
+      selected_option: string
+    then:
+      - if:
+          condition:
+            lambda: 'return selected_option == "News Ticker";'
+          then:
+            - lambda: |-
+                ESP_LOGW("news_ticker", "fetch_news_ticker called, url state: '%s'", id(news_feed_url).state.c_str());
+            - if:
+                condition:
+                  lambda: 'return !id(news_feed_url).state.empty();'
+                then:
+                  - lambda: |-
+                      ESP_LOGW("news_ticker", "fetching: %s", id(news_feed_url).state.c_str());
+                  - http_request.get:
+                      url: !lambda 'return id(news_feed_url).state;'
+                      capture_response: true
+                      max_response_buffer_size: 64kB
+                      on_error:
+                        - lambda: |-
+                            ESP_LOGW("news_ticker", "failed to fetch feed");
+                      on_response:
+                        - lambda: |-
+                            id(news_ticker_last_fetch_ms) = millis();
+                            std::string xml = body;
+                            std::string ticker;
+                            size_t pos = 0;
+                            int count = 0;
+                            const int max_items = (int) id(news_ticker_max_items).state;
+
+                            auto replace_all = [](std::string &s, const std::string &from, const std::string &to) {
+                              size_t p = 0;
+                              while ((p = s.find(from, p)) != std::string::npos) {
+                                s.replace(p, from.length(), to);
+                                p += to.length();
+                              }
+                            };
+
+                            while (count < max_items) {
+                              size_t item_start = xml.find("<item>", pos);
+                              if (item_start == std::string::npos) break;
+                              size_t item_end = xml.find("</item>", item_start);
+                              if (item_end == std::string::npos) break;
+                              std::string item = xml.substr(item_start, item_end - item_start);
+                              pos = item_end + 7;
+
+                              size_t t1 = item.find("<title>");
+                              if (t1 == std::string::npos) continue;
+                              t1 += 7;
+                              size_t t2 = item.find("</title>", t1);
+                              if (t2 == std::string::npos) continue;
+                              std::string title = item.substr(t1, t2 - t1);
+
+                              size_t cdata_start = title.find("<![CDATA[");
+                              if (cdata_start != std::string::npos) {
+                                size_t cdata_end = title.find("]]>", cdata_start);
+                                if (cdata_end != std::string::npos) {
+                                  title = title.substr(cdata_start + 9, cdata_end - (cdata_start + 9));
+                                }
+                              }
+
+                              replace_all(title, "&amp;", "&");
+                              replace_all(title, "&quot;", "\"");
+                              replace_all(title, "&#39;", "'");
+                              replace_all(title, "&apos;", "'");
+                              replace_all(title, "&lt;", "<");
+                              replace_all(title, "&gt;", ">");
+
+                              if (!ticker.empty()) ticker += "\n\n";
+                              ticker += title;
+                              count++;
+                            }
+
+                            if (!ticker.empty()) {
+                              lv_label_set_text(id(news_ticker_label), ticker.c_str());
+                            } else {
+                              lv_label_set_text(id(news_ticker_label), "No headlines available");
+                            }
+                            lv_obj_scroll_to_y(id(news_ticker_block), 0, LV_ANIM_ON);
+                            ESP_LOGW("news_ticker", "fetched %d headlines (%zu bytes)", count, xml.size());
 
   - id: refresh_timer_display
     mode: restart
@@ -2574,6 +2852,8 @@ touchscreen:
     reset_pin: GPIO22
     on_touch:
       then:
+        - lambda: |-
+            id(touch_started_while_dimmed) = id(screen_timeout_dimmed);
         - script.execute: standby_screen_activity
         - lambda: |-
             id(touch_active) = true;
@@ -2661,12 +2941,23 @@ touchscreen:
                 } else if (dy < 0) {
                   id(set_ui_phase)->execute(${ui_phase_player_controls});
                 }
+              } else if (id(ui_phase) == ${ui_phase_standby}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(standby_frame_content).make_call().select_next(true).perform();
+                  } else {
+                    id(standby_frame_content).make_call().select_previous(true).perform();
+                  }
+                }
               }
               return;
             }
 
             if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
-              id(set_ui_phase)->execute(${ui_phase_player_controls});
+              const bool just_waking = id(standby_screen_timeout_enabled).state && id(touch_started_while_dimmed);
+              if (!just_waking) {
+                id(set_ui_phase)->execute(${ui_phase_player_controls});
+              }
             }
 
 
@@ -2823,7 +3114,8 @@ lvgl:
                   y: 0
                   width: ${imagewidth}
                   height: ${imageheight}
-                  bg_opa: TRANSP
+                  bg_color: 0x000000
+                  bg_opa: COVER
                   border_opa: TRANSP
                   pad_all: 0
                   scrollable: false
@@ -2877,6 +3169,59 @@ lvgl:
                         text_color: 0xCCCCCC
                         text_font: font_display
                         text_align: CENTER
+
+              - obj:
+                  id: news_ticker_block
+                  align: TOP_MID
+                  x: 0
+                  y: 0
+                  width: ${imagewidth}
+                  height: ${imageheight}
+                  bg_color: 0x000000
+                  bg_opa: COVER
+                  border_opa: TRANSP
+                  radius: 0
+                  pad_all: 0
+                  scrollable: true
+                  scroll_dir: VER
+                  clickable: true
+                  hidden: true
+                  widgets:
+                    - label:
+                        id: news_ticker_label
+                        align: TOP_MID
+                        y: 20
+                        width: 440
+                        text: "Loading headlines..."
+                        text_color: 0x00FF41
+                        text_font: font_display
+                        text_align: LEFT
+                        long_mode: WRAP
+
+              - obj:
+                  id: family_photo_block
+                  align: TOP_MID
+                  x: 0
+                  y: 0
+                  width: ${imagewidth}
+                  height: ${imageheight}
+                  bg_color: 0x000000
+                  bg_opa: COVER
+                  border_opa: TRANSP
+                  radius: 0
+                  pad_all: 0
+                  scrollable: false
+                  clickable: false
+                  hidden: true
+                  widgets:
+                    - image:
+                        id: family_photo_widget
+                        align: CENTER
+                        src: family_photo_image
+                        width: ${imagewidth}
+                        height: ${imageheight}
+                        antialias: false
+                        clickable: false
 
               - canvas:
                   id: hourglass_canvas
