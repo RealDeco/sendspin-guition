@@ -112,8 +112,7 @@ This device is great for this project but requires to add a external DAC to the 
 
 ### Flash Firmware
 
-TBA
-
+https://github.com/RealDeco/sendspin-guition/blob/main/Other/Guition_P4_70.yaml
 
 <br><br>
 
