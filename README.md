@@ -103,6 +103,38 @@ Guition 1.85" Rotary Knob:
 
 ---
 
+## Guition 7"
+
+This device is great for this project but requires to add a external DAC to the expansion port on the back for dual i2s (duplex) with LINE OUT, so there is a "little" soldering involved (soldering the pinheader to the DAC). The device also features a Ethernet port for those that prefer wired network.
+
+<div align="center">
+
+
+### Flash Firmware
+
+TBA
+
+
+<br><br>
+
+<img height="400" src="https://github.com/user-attachments/assets/0e865528-f34c-4929-ae87-7834c4924c05" />
+<img height="400" src="https://github.com/user-attachments/assets/5015ee69-e862-4095-ae75-bc54511be341" />
+<img height="300" src="https://github.com/user-attachments/assets/4ad47016-ae60-4707-b613-58a21c1b4c97" />
+
+</div>
+
+### Where to buy
+
+Guition 7" 1024x600:
+[https://www.aliexpress.com/item/1005010022828767.html](https://www.aliexpress.com/item/1005010022828767.html)
+
+DAC
+[https://www.aliexpress.com/item/1005008130629022.html](https://www.aliexpress.com/item/1005008130629022.html)
+
+(DAC comes with male header, for this display you need a female header)
+
+---
+
 ### **How to use**
 
 Sendspin Player:
