@@ -16,6 +16,7 @@ There are two versions available in this project:
 
 Both versions can be flashed directly from the project webpage for users who simply want everything to work without having to compile the firmware themselves.
 
+NEW!: Added the bigger 7" disdplay from guition (JC1060P470C-I-W-Y) to the project because it's "almost" DIY free like the others, the DAC module does require soldering but thats it. 
 
 </div>
 
@@ -134,7 +135,7 @@ DAC
 
 ---
 
-### **How to use**
+### **How to use** (general for all)
 
 Sendspin Player:
 
