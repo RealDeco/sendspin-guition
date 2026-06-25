@@ -94,10 +94,6 @@ esphome:
           phase: ${va_phase_idle}
       - script.execute: refresh_playlist_labels
       - script.execute: apply_accent_color_debounced
-      - delay: 15s
-      - script.execute:
-          id: fetch_news_ticker
-          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
 logger:
   level: WARN
@@ -146,6 +142,11 @@ interval:
   - interval: 1s
     then:
       - script.execute: refresh_now_playing_progress_bar
+  - interval: 5min
+    then:
+      - script.execute:
+          id: refresh_news_ticker_if_stale
+          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
 globals:
   - id: boot_sound_played
