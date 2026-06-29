@@ -237,6 +237,10 @@ globals:
     type: int
     restore_value: yes
     initial_value: "0"
+  - id: slide_incoming_ptr
+    type: int
+    restore_value: no
+    initial_value: "0"
 
 image:
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imageheight}x${imageheight}/playing.png
@@ -331,7 +335,7 @@ generic_image:
 
 sendspin:
   id: sendspin_hub
-  task_stack_in_psram: false
+#  task_stack_in_psram: true
 
 audio_file:
   - id: timer_finished_sound
@@ -450,7 +454,7 @@ speaker:
     id: mixing_speaker
     output_speaker: box_speaker
     num_channels: 2
-    task_stack_in_psram: true
+#    task_stack_in_psram: true
     source_speakers:
       - id: announcement_mixing_input
       - id: media_mixing_input
@@ -2036,71 +2040,103 @@ script:
     mode: restart
     then:
       - lambda: |-
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
           lv_obj_t *img = id(album_art_widget);
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
-          lv_anim_t anim;
-          lv_anim_init(&anim);
-          lv_anim_set_var(&anim, img);
-          lv_anim_set_values(&anim, lv_obj_get_style_translate_x(img, LV_PART_MAIN), -240);
-          lv_anim_set_time(&anim, 220);
-          lv_anim_set_exec_cb(&anim, [](void *obj, int32_t v) {
+          lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
+          lv_img_set_src(incoming, id(fallback_playing_image1));
+          lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
+          lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
+          lv_obj_set_style_translate_x(incoming, ${imagewidth}, 0);
+          lv_obj_set_style_img_opa(incoming, LV_OPA_COVER, 0);
+          lv_obj_clear_flag(incoming, LV_OBJ_FLAG_CLICKABLE);
+          id(slide_incoming_ptr) = (int)incoming;
+          lv_anim_t aout;
+          lv_anim_init(&aout);
+          lv_anim_set_var(&aout, img);
+          lv_anim_set_values(&aout, 0, -${imagewidth});
+          lv_anim_set_time(&aout, 220);
+          lv_anim_set_exec_cb(&aout, [](void *obj, int32_t v) {
             lv_obj_set_style_translate_x((lv_obj_t *)obj, v, 0);
           });
-          lv_anim_start(&anim);
+          lv_anim_start(&aout);
+          lv_anim_t ain;
+          lv_anim_init(&ain);
+          lv_anim_set_var(&ain, incoming);
+          lv_anim_set_values(&ain, ${imagewidth}, 0);
+          lv_anim_set_time(&ain, 220);
+          lv_anim_set_exec_cb(&ain, [](void *obj, int32_t v) {
+            lv_obj_set_style_translate_x((lv_obj_t *)obj, v, 0);
+          });
+          lv_anim_start(&ain);
       - media_player.next: sendspin_group_media_player
       - delay: 220ms
       - lambda: |-
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
           lv_obj_t *img = id(album_art_widget);
           lv_anim_del(img, nullptr);
           lv_img_set_src(img, id(fallback_playing_image1));
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
-          lv_obj_set_style_translate_x(img, 240, 0);
-          lv_anim_t anim;
-          lv_anim_init(&anim);
-          lv_anim_set_var(&anim, img);
-          lv_anim_set_values(&anim, 240, 0);
-          lv_anim_set_time(&anim, 220);
-          lv_anim_set_exec_cb(&anim, [](void *obj, int32_t v) {
-            lv_obj_set_style_translate_x((lv_obj_t *)obj, v, 0);
-          });
-          lv_anim_start(&anim);
+          lv_obj_set_style_translate_x(img, 0, 0);
 
   - id: now_playing_swipe_right
     mode: restart
     then:
       - lambda: |-
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
           lv_obj_t *img = id(album_art_widget);
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
-          lv_anim_t anim;
-          lv_anim_init(&anim);
-          lv_anim_set_var(&anim, img);
-          lv_anim_set_values(&anim, lv_obj_get_style_translate_x(img, LV_PART_MAIN), 240);
-          lv_anim_set_time(&anim, 220);
-          lv_anim_set_exec_cb(&anim, [](void *obj, int32_t v) {
+          lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
+          lv_img_set_src(incoming, id(fallback_playing_image1));
+          lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
+          lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
+          lv_obj_set_style_translate_x(incoming, -${imagewidth}, 0);
+          lv_obj_set_style_img_opa(incoming, LV_OPA_COVER, 0);
+          lv_obj_clear_flag(incoming, LV_OBJ_FLAG_CLICKABLE);
+          id(slide_incoming_ptr) = (int)incoming;
+          lv_anim_t aout;
+          lv_anim_init(&aout);
+          lv_anim_set_var(&aout, img);
+          lv_anim_set_values(&aout, 0, ${imagewidth});
+          lv_anim_set_time(&aout, 220);
+          lv_anim_set_exec_cb(&aout, [](void *obj, int32_t v) {
             lv_obj_set_style_translate_x((lv_obj_t *)obj, v, 0);
           });
-          lv_anim_start(&anim);
+          lv_anim_start(&aout);
+          lv_anim_t ain;
+          lv_anim_init(&ain);
+          lv_anim_set_var(&ain, incoming);
+          lv_anim_set_values(&ain, -${imagewidth}, 0);
+          lv_anim_set_time(&ain, 220);
+          lv_anim_set_exec_cb(&ain, [](void *obj, int32_t v) {
+            lv_obj_set_style_translate_x((lv_obj_t *)obj, v, 0);
+          });
+          lv_anim_start(&ain);
       - media_player.previous: sendspin_group_media_player
       - delay: 220ms
       - lambda: |-
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
           lv_obj_t *img = id(album_art_widget);
           lv_anim_del(img, nullptr);
           lv_img_set_src(img, id(fallback_playing_image1));
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
-          lv_obj_set_style_translate_x(img, -240, 0);
-          lv_anim_t anim;
-          lv_anim_init(&anim);
-          lv_anim_set_var(&anim, img);
-          lv_anim_set_values(&anim, -240, 0);
-          lv_anim_set_time(&anim, 220);
-          lv_anim_set_exec_cb(&anim, [](void *obj, int32_t v) {
-            lv_obj_set_style_translate_x((lv_obj_t *)obj, v, 0);
-          });
-          lv_anim_start(&anim);
+          lv_obj_set_style_translate_x(img, 0, 0);
 
   - id: player_controls_keep_open
     then:
