@@ -64,8 +64,14 @@ esp_ldo:
   - channel: 3
     voltage: 2.5V
 
+update:
+  - platform: esp32_hosted
+    name: "ESP32 Hosted Firmware"
+    type: http
+    source: https://esphome.github.io/esp-hosted-firmware/manifest/esp32c6.json
+    update_interval: 6h
+
 esp32_hosted:
-  active_high: true
   variant: ESP32C6
   reset_pin: GPIO54
   cmd_pin: GPIO19
@@ -74,6 +80,9 @@ esp32_hosted:
   d1_pin: GPIO15
   d2_pin: GPIO16
   d3_pin: GPIO17
+  active_high: true
+  use_psram: true
+  slot: 1
 
 esphome:
   name: ${name}
@@ -276,56 +285,56 @@ globals:
 
 image:
 ### model 1
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/480x480/playing.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/playing.png
     id: fallback_playing_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/480x480/idle.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/idle.png
     id: va_waiting_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/480x480/listening.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/listening.png
     id: va_listening_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/480x480/thinking.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/thinking.png
     id: va_thinking_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/480x480/replying.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/replying.png
     id: va_replying_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
 ### model 2
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/480x480/idle.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/idle.png
     id: va_waiting_image2
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/480x480/listening.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/listening.png
     id: va_listening_image2
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/480x480/thinking.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/thinking.png
     id: va_thinking_image2
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/480x480/replying.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/replying.png
     id: va_replying_image2
     resize: ${imageheight}x${imageheight}
     type: RGB565
@@ -377,7 +386,7 @@ generic_image:
 
 sendspin:
   id: sendspin_hub
-  task_stack_in_psram: false
+#  task_stack_in_psram: true
 
 audio_file:
   - id: timer_finished_sound
@@ -389,7 +398,7 @@ http_request:
 
 online_image:
   - id: standby_background_image
-    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/1024x600/clock.png
+    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/${screenwidth}x${screenheight}/clock.png
     format: PNG
     type: RGB565
     resize: ${screenwidth}x${screenwidth}
@@ -497,7 +506,7 @@ speaker:
     id: mixing_speaker
     output_speaker: box_speaker
     num_channels: 2
-    task_stack_in_psram: true
+#    task_stack_in_psram: true
     source_speakers:
       - id: announcement_mixing_input
       - id: media_mixing_input
@@ -821,7 +830,7 @@ select:
             - online_image.set_url:
                 id: standby_background_image
                 url: !lambda |-
-                  return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/1024x600/" + x + ".png";
+                  return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/${screenwidth}x${screenheight}/" + x + ".png";
 
   - platform: template
     id: standby_frame_content
@@ -1035,9 +1044,13 @@ text:
     initial_value: "https://news.google.com/rss/search?q=site%3Areuters.com&hl=en-US&gl=US&ceid=US%3Aen"
     mode: text
     on_value:
-      - script.execute:
-          id: fetch_news_ticker
-          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+      - if:
+          condition:
+            api.connected:
+          then:
+            - script.execute:
+                id: fetch_news_ticker
+                selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
   - platform: template
     id: family_photo_url
@@ -1048,9 +1061,13 @@ text:
     initial_value: ""
     mode: text
     on_value:
-      - script.execute:
-          id: show_family_photo
-          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+      - if:
+          condition:
+            api.connected:
+          then:
+            - script.execute:
+                id: show_family_photo
+                selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
 micro_wake_word:
   id: mww
@@ -2057,7 +2074,7 @@ script:
       - online_image.set_url:
           id: standby_background_image
           url: !lambda |-
-            return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/1024x600/" + id(standby_background_choice).current_option().str() + ".png";
+            return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/${screenwidth}x${screenheight}/" + id(standby_background_choice).current_option().str() + ".png";
 
   - id: standby_screen_activity
     mode: restart
@@ -2354,27 +2371,32 @@ script:
           }
 
   - id: show_family_photo
-    mode: restart
-    parameters:
-      selected_option: string
-    then:
-      - lambda: |-
-          if (selected_option != "Family Photo") return;
-          std::string url = id(family_photo_url).state;
-          if (url.empty()) {
-            url = "https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/family_photo1.png";
-          }
-          id(family_photo_image)->set_url(url);
-          id(family_photo_image)->update();
-
-  - id: fetch_news_ticker
-    mode: restart
+    mode: single
     parameters:
       selected_option: string
     then:
       - if:
           condition:
-            lambda: 'return selected_option == "News Ticker";'
+            - lambda: 'return selected_option == "Family Photo";'
+            - api.connected:
+          then:
+            - lambda: |-
+                std::string url = id(family_photo_url).state;
+                if (url.empty()) {
+                  url = "https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/family_photo1.png";
+                }
+                id(family_photo_image)->set_url(url);
+                id(family_photo_image)->update();
+
+  - id: fetch_news_ticker
+    mode: single
+    parameters:
+      selected_option: string
+    then:
+      - if:
+          condition:
+            - lambda: 'return selected_option == "News Ticker";'
+            - api.connected:
           then:
             - lambda: |-
                 ESP_LOGW("news_ticker", "fetch_news_ticker called, url state: '%s'", id(news_feed_url).state.c_str());
