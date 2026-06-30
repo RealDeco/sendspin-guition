@@ -288,6 +288,10 @@ globals:
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
+  - id: wake_word_is_stop
+    type: bool
+    restore_value: no
+    initial_value: "false"
 
 image:
 ### model 1
@@ -1120,13 +1124,17 @@ micro_wake_word:
   on_wake_word_detected:
     - lambda: |-
         ESP_LOGW("va", "micro wake word detected: %s", wake_word.c_str());
-        if (wake_word == id(wake_word_1_label).state) {
-          id(active_image_set) = 1;
-        } else if (wake_word == id(wake_word_2_label).state) {
-          id(active_image_set) = 2;
-        } else {
-          id(active_image_set) = 1;
-          ESP_LOGW("va", "wake word did not match configured labels, falling back to image set 1");
+        id(wake_word_is_stop) = (wake_word != id(wake_word_1_label).state &&
+                                  wake_word != id(wake_word_2_label).state);
+        if (id(va_phase) == ${va_phase_idle}) {
+          if (wake_word == id(wake_word_1_label).state) {
+            id(active_image_set) = 1;
+          } else if (wake_word == id(wake_word_2_label).state) {
+            id(active_image_set) = 2;
+          } else {
+            id(active_image_set) = 1;
+            ESP_LOGW("va", "wake word did not match configured labels, falling back to image set 1");
+          }
         }
         ESP_LOGW("va", "using image set %d for wake word: %s", id(active_image_set), wake_word.c_str());
     - if:
@@ -1143,7 +1151,11 @@ micro_wake_word:
                     condition:
                       voice_assistant.is_running:
                     then:
-                      - voice_assistant.stop:
+                      - if:
+                          condition:
+                            lambda: 'return id(wake_word_is_stop);'
+                          then:
+                            - voice_assistant.stop:
                     else:
                       - if:
                           condition:
