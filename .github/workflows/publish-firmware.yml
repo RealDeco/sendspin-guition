@@ -50,7 +50,7 @@ jobs:
           echo "Pages base URL: $PAGES_BASE_URL"
           echo "Firmware version: $FW_VERSION"
 
-          configs=(Guition*.yaml)
+          configs=(*.yaml)
           if [ ${#configs[@]} -eq 0 ]; then
             echo "No firmware config files found."
             exit 1
