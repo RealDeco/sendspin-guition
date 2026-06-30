@@ -241,6 +241,10 @@ globals:
     type: int
     restore_value: no
     initial_value: "0"
+  - id: wake_word_is_stop
+    type: bool
+    restore_value: no
+    initial_value: "false"
 
 image:
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imageheight}x${imageheight}/playing.png
@@ -1029,12 +1033,16 @@ micro_wake_word:
   on_wake_word_detected:
     - lambda: |-
         ESP_LOGW("va", "micro wake word detected: %s", wake_word.c_str());
-        if (wake_word == id(wake_word_1_label).state) {
-          id(active_image_set) = 1;
-        } else if (wake_word == id(wake_word_2_label).state) {
-          id(active_image_set) = 2;
-        } else {
-          id(active_image_set) = 1;
+        id(wake_word_is_stop) = (wake_word != id(wake_word_1_label).state &&
+                                  wake_word != id(wake_word_2_label).state);
+        if (id(va_phase) == ${va_phase_idle}) {
+          if (wake_word == id(wake_word_1_label).state) {
+            id(active_image_set) = 1;
+          } else if (wake_word == id(wake_word_2_label).state) {
+            id(active_image_set) = 2;
+          } else {
+            id(active_image_set) = 1;
+          }
         }
     - if:
         condition:
@@ -1050,7 +1058,11 @@ micro_wake_word:
                     condition:
                       voice_assistant.is_running:
                     then:
-                      - voice_assistant.stop:
+                      - if:
+                          condition:
+                            lambda: 'return id(wake_word_is_stop);'
+                          then:
+                            - voice_assistant.stop:
                     else:
                       - if:
                           condition:
