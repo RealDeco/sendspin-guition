@@ -1012,9 +1012,6 @@ text_sensor:
     id: sendspin_title
     type: title
     on_value:
-      - lambda: |-
-          id(sendspin_album_art_valid) = false;
-      - script.execute: album_art_timeout_fallback
       - component.update: now_playing_text
       - lvgl.label.update:
           id: controls_title_label
@@ -1033,6 +1030,9 @@ text_sensor:
     id: sendspin_album
     type: album
     on_value:
+      - lambda: |-
+          id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_timeout_fallback
       - component.update: now_playing_text
       - lvgl.label.update:
           id: controls_artist_label
