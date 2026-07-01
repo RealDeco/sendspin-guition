@@ -1254,8 +1254,6 @@ text_sensor:
     id: sendspin_title
     type: title
     on_value:
-      - lambda: |-
-          lv_img_set_src(id(album_art_widget), id(fallback_playing_image1));
       - lvgl.label.update:
           id: controls_title_label
           text: !lambda return x;
@@ -1272,6 +1270,8 @@ text_sensor:
     id: sendspin_album
     type: album
     on_value:
+      - lambda: |-
+          lv_img_set_src(id(album_art_widget), id(fallback_playing_image1));
       - lvgl.label.update:
           id: controls_artist_label
           text: !lambda return x;
