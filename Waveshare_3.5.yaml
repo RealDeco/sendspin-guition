@@ -595,13 +595,13 @@ media_player:
 
 switch:
   - platform: gpio
-    name: Speaker Enable
+    name: Internal Speaker Enable
     icon: "mdi:speaker"
     entity_category: config
     pin:
       pca9554: pca9554a_device
       number: 7
-    restore_mode: ALWAYS_ON
+    restore_mode: RESTORE_DEFAULT_OFF
 
   - platform: template
     id: startup_sound_switch
