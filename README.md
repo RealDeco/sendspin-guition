@@ -102,6 +102,10 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 Guition 1.85" Rotary Knob:
 [https://www.aliexpress.com/item/1005011771382178.html](https://www.aliexpress.com/item/1005011771382178.html)
 
+## BEWARE THIS VERSION IS CURRENTLY SOLD OUT, DONT MISTAKE V1 FOR IT.
+
+(V2 has a LED ring in the middle, v1 does not and v1 does NOT work for this project)
+
 ---
 
 ## Guition 7"
@@ -133,7 +137,42 @@ Guition 7" 1024x600:
 DAC
 [https://www.aliexpress.com/item/1005008130629022.html](https://www.aliexpress.com/item/1005008130629022.html)
 
-(DAC comes with male header, for this display you need a female header)
+(DAC comes with male header, for this display you need a female header and only use 5 pins, not all 6)
+
+---
+
+## Waveshare 3.5"
+
+Added this device because i had it, and because it's just as easy to add a DAC for stereo outout and make it a nice little Sendspin Player for the desk.
+
+<div align="center">
+
+
+### Flash Firmware
+
+<a href="https://realdeco.github.io/sendspin-guition/Waveshare_3.5/index.html">
+  <strong>Waveshare 3.5"</strong>
+</a>
+
+<br><br>
+<img height="300"  src="https://github.com/user-attachments/assets/44811973-4d9e-4f3c-9bcd-4a55bd37e3aa" />
+<img height="300"  src="https://github.com/user-attachments/assets/c620f79e-4f62-4bf2-8d6e-1d7a7bf76e22" />
+
+<img height="300" src="https://github.com/user-attachments/assets/422d539c-de26-4fdc-9145-7fd6f576d417" />
+<img height="300" src="https://github.com/user-attachments/assets/5272e353-e266-465e-9185-7f9c045fad9f" />
+
+
+</div>
+
+### Where to buy
+
+Waveshare 3.5c:
+[https://www.aliexpress.com/item/1005010597169509.html](https://www.aliexpress.com/item/1005010597169509.html)
+
+DAC
+[https://www.aliexpress.com/item/1005008130629022.html](https://www.aliexpress.com/item/1005008130629022.html)
+
+(for this display you need a female header as the DAC come with and only use 5 pins, not all 6)
 
 ---
 
