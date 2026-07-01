@@ -660,11 +660,11 @@ media_player:
 
 switch:
   - platform: gpio
-    name: Speaker Enable
+    name: Internal Speaker Enable
     icon: "mdi:speaker"
     entity_category: config
     pin: GPIO11
-    restore_mode: ALWAYS_ON
+    restore_mode: RESTORE_DEFAULT_OFF
 
   - platform: template
     id: startup_sound_switch
