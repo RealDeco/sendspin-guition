@@ -48,7 +48,6 @@ packages: # github
 
 esp32:
   board: esp32-p4-evboard
-  variant: esp32p4
   flash_size: 16Mb
   cpu_frequency: 360MHz
   framework:
@@ -58,7 +57,7 @@ esp32:
     sdkconfig_options:
       CONFIG_SPIRAM_XIP_FROM_PSRAM: y
       CONFIG_SPIRAM_USE_MALLOC: y
-      
+
 psram:
   speed: 200MHz
   ignore_not_found: false
@@ -112,16 +111,25 @@ logger:
 
 api:
   on_client_connected:
-    - lambda: |-
-        if (!id(boot_sound_played)) {
-          id(boot_sound_played) = true;
-          if (id(startup_sound_switch).state) {
-            id(play_sound)->execute(true, std::string("ready_sound"));
-          }
-        }
+    - if:
+        condition:
+          lambda: 'return !id(boot_sound_played);'
+        then:
+          - lambda: 'id(boot_sound_played) = true;'
+          - if:
+              condition:
+                switch.is_on: startup_sound_switch
+              then:
+                - lambda: 'id(play_sound)->execute(true, std::string("ready_sound"));'
+              else:
+                - delay: 1s
+                - script.execute:
+                    id: set_ui_phase
+                    phase: !lambda 'return id(ui_phase);'
 
 ota:
   - platform: esphome
+
 ### REM THIS OUT IF USING ETHERNET *START* ***
 wifi:
   on_connect:
@@ -145,6 +153,13 @@ captive_portal:
 #    pin: GPIO50
 #    mode: CLK_EXT_IN
 #  phy_addr: 1
+#  on_connect:
+#    - delay: 1s
+#    - if:
+#        condition:
+#          switch.is_on: standby_background_enabled
+#        then:
+#          - script.execute: load_standby_background
   
 time:
   - platform: homeassistant
@@ -614,6 +629,9 @@ media_player:
             condition:
               lambda: 'return id(boot_announce_active);'
             then:
+              - lvgl.label.update:
+                  id: boot_sound_label
+                  text: "Home Connected"
               - lvgl.page.show: boot_sound_page
               - delay: 2s
               - script.execute:
@@ -660,11 +678,11 @@ media_player:
 
 switch:
   - platform: gpio
-    name: Internal Speaker Enable
+    name: Speaker Enable
     icon: "mdi:speaker"
     entity_category: config
     pin: GPIO11
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: ALWAYS_ON
 
   - platform: template
     id: startup_sound_switch
@@ -858,7 +876,11 @@ select:
       - News Ticker
       - Family Photo
     set_action:
-      - lvgl.page.show: home_page
+      - if:
+          condition:
+            lambda: 'return id(boot_sound_played);'
+          then:
+            - lvgl.page.show: home_page
       - lambda: |-
           std::string content = x.str();
           if (id(ui_phase) == ${ui_phase_standby}) {
@@ -899,7 +921,7 @@ select:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_option: Internal Speaker
+    initial_option: External Speaker
     options:
       - "Internal Speaker"
       - "External Speaker"
@@ -1289,7 +1311,17 @@ voice_assistant:
     - script.execute: refresh_timer_display
     - switch.turn_on: timer_ringing
 
+debug:
+
 sensor:
+  - platform: debug
+    free:
+      name: "SRAM Free Memory"
+    block:
+      name: "SRAM Largest Contiguous Block"
+    psram:
+      name: "PSRAM Free Memory"
+      
   - platform: homeassistant
     id: ha_weather_temperature
     entity_id: ${ha_weather_entity}
@@ -1939,7 +1971,11 @@ script:
       - lambda: |-
           id(ui_phase) = phase;
       - script.execute: standby_screen_activity
-      - lvgl.page.show: home_page
+      - if:
+          condition:
+            lambda: 'return id(boot_sound_played);'
+          then:
+            - lvgl.page.show: home_page
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_standby};'
@@ -3086,6 +3122,12 @@ touchscreen:
                   } else {
                     id(standby_frame_content).make_call().select_previous(true).perform();
                   }
+                } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
+                  if (dy < 0) {
+                    id(start_manual_va)->execute();
+                  } else {
+                    id(set_ui_phase)->execute(${ui_phase_playlist_menu});
+                  }
                 }
               }
               return;
@@ -3141,8 +3183,9 @@ lvgl:
       bg_opa: TRANSP
       widgets:
         - label:
+            id: boot_sound_label
             align: CENTER
-            text: "Home Connected"
+            text: "Loading..."
             text_color: 0xFFFFFF
             text_font: font_boot
             width: 230
