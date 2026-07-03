@@ -751,7 +751,7 @@ select:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_option: Internal Speaker
+    initial_option: External Speaker
     options:
       - "Internal Speaker"
       - "External Speaker"
