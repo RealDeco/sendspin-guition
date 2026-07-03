@@ -75,13 +75,21 @@ logger:
 
 api:
   on_client_connected:
-    - lambda: |-
-        if (!id(boot_sound_played)) {
-          id(boot_sound_played) = true;
-          if (id(startup_sound_switch).state) {
-            id(play_sound)->execute(true, std::string("ready_sound"));
-          }
-        }
+    - if:
+        condition:
+          lambda: 'return !id(boot_sound_played);'
+        then:
+          - lambda: 'id(boot_sound_played) = true;'
+          - if:
+              condition:
+                switch.is_on: startup_sound_switch
+              then:
+                - lambda: 'id(play_sound)->execute(true, std::string("ready_sound"));'
+              else:
+                - delay: 1s
+                - script.execute:
+                    id: set_ui_phase
+                    phase: !lambda 'return id(ui_phase);'
 
 ota:
   - platform: esphome
@@ -550,6 +558,9 @@ media_player:
             condition:
               lambda: 'return id(boot_announce_active);'
             then:
+              - lvgl.label.update:
+                  id: boot_sound_label
+                  text: "Home Connected"
               - lvgl.page.show: boot_sound_page
               - delay: 2s
               - script.execute:
@@ -595,7 +606,7 @@ media_player:
 
 switch:
   - platform: gpio
-    name: Internal Speaker Enable
+    name: Speaker Enable
     icon: "mdi:speaker"
     entity_category: config
     pin:
@@ -814,7 +825,11 @@ select:
       - News Ticker
       - Family Photo
     set_action:
-      - lvgl.page.show: home_page
+      - if:
+          condition:
+            lambda: 'return id(boot_sound_played);'
+          then:
+            - lvgl.page.show: home_page
       - lambda: |-
           std::string content = x.str();
           if (id(ui_phase) == ${ui_phase_standby}) {
@@ -1254,6 +1269,8 @@ text_sensor:
     id: sendspin_title
     type: title
     on_value:
+      - lambda: |-
+          lv_img_set_src(id(album_art_widget), id(fallback_playing_image1));
       - lvgl.label.update:
           id: controls_title_label
           text: !lambda return x;
@@ -1270,8 +1287,6 @@ text_sensor:
     id: sendspin_album
     type: album
     on_value:
-      - lambda: |-
-          lv_img_set_src(id(album_art_widget), id(fallback_playing_image1));
       - lvgl.label.update:
           id: controls_artist_label
           text: !lambda return x;
@@ -1820,7 +1835,11 @@ script:
       - lambda: |-
           id(ui_phase) = phase;
       - script.execute: standby_screen_activity
-      - lvgl.page.show: home_page
+      - if:
+          condition:
+            lambda: 'return id(boot_sound_played);'
+          then:
+            - lvgl.page.show: home_page
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_standby};'
@@ -2944,6 +2963,9 @@ touchscreen:
                 if (abs_x >= abs_y) {
                   if (dx < 0) { id(standby_frame_content).make_call().select_next(true).perform(); }
                   else { id(standby_frame_content).make_call().select_previous(true).perform(); }
+                } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
+                  if (dy < 0) { id(start_manual_va)->execute(); }
+                  else { id(set_ui_phase)->execute(${ui_phase_playlist_menu}); }
                 }
               }
               return;
@@ -3009,8 +3031,9 @@ lvgl:
       bg_opa: TRANSP
       widgets:
         - label:
+            id: boot_sound_label
             align: CENTER
-            text: "Home Connected"
+            text: "Loading..."
             text_color: 0xFFFFFF
             text_font: font_boot
             width: 220
@@ -3024,10 +3047,10 @@ lvgl:
         - obj:
             id: left_zone
             align: TOP_LEFT
-            x: 0
-            y: 0
+            x: 8
+            y: 8
             width: ${imagewidth}
-            height: ${screenheight}
+            height: 312
             bg_opa: TRANSP
             border_opa: TRANSP
             pad_all: 0
@@ -3261,7 +3284,7 @@ lvgl:
             align: RIGHT_MID
             x: 0
             y: 0
-            width: 240
+            width: 232
             height: ${screenheight}
             bg_opa: TRANSP
             border_opa: TRANSP
@@ -3271,7 +3294,7 @@ lvgl:
               - obj:
                   id: standby_panel
                   align: CENTER
-                  width: 240
+                  width: 232
                   height: ${screenheight}
                   bg_opa: TRANSP
                   border_opa: TRANSP
@@ -3280,9 +3303,10 @@ lvgl:
                   widgets:
                     - obj:
                         id: idle_center_block
-                        align: CENTER
-                        width: 232
-                        height: 270
+                        align: TOP_MID
+                        y: 25
+                        width: 224
+                        height: 222
                         bg_opa: TRANSP
                         border_opa: TRANSP
                         pad_all: 0
@@ -3292,7 +3316,7 @@ lvgl:
                               id: clock_label
                               align: TOP_MID
                               y: 0
-                              width: 232
+                              width: 224
                               text: "--:--:--"
                               text_color: 0xFFFF00
                               text_font: font_7seg
@@ -3302,8 +3326,8 @@ lvgl:
                           - label:
                               id: date_label
                               align: TOP_MID
-                              y: 54
-                              width: 232
+                              y: 50
+                              width: 224
                               text: "------"
                               text_color: 0xFFFFFF
                               text_font: font_date
@@ -3312,8 +3336,8 @@ lvgl:
                           - obj:
                               id: weather_header
                               align: TOP_MID
-                              y: 84
-                              width: 232
+                              y: 74
+                              width: 224
                               height: 84
                               bg_opa: TRANSP
                               border_opa: TRANSP
@@ -3360,9 +3384,9 @@ lvgl:
                               id: weather_label
                               align: TOP_MID
                               x: 0
-                              y: 178
-                              width: 220
-                              height: 68
+                              y: 162
+                              width: 212
+                              height: 60
                               text: "Weather..."
                               text_color: 0x66CCFF
                               text_font: font_display
@@ -3372,7 +3396,7 @@ lvgl:
                     - obj:
                         id: idle_timer_block
                         align: CENTER
-                        width: 232
+                        width: 224
                         height: 100
                         bg_opa: TRANSP
                         border_opa: TRANSP
@@ -3384,7 +3408,7 @@ lvgl:
                               id: idle_timer_title
                               align: TOP_MID
                               y: 4
-                              width: 220
+                              width: 212
                               text: "Timer Running"
                               text_color: 0xFFFFFF
                               text_font: font_date
@@ -3394,7 +3418,7 @@ lvgl:
                               id: idle_timer_countdown
                               align: CENTER
                               y: 16
-                              width: 232
+                              width: 224
                               text: "0:00"
                               text_color: 0xFFFF00
                               text_font: font_7seg
@@ -3404,7 +3428,7 @@ lvgl:
               - obj:
                   id: controls_panel
                   align: CENTER
-                  width: 240
+                  width: 232
                   height: ${screenheight}
                   bg_opa: TRANSP
                   border_opa: TRANSP
@@ -3415,7 +3439,7 @@ lvgl:
                     - obj:
                         id: controls_content_block
                         align: CENTER
-                        width: 232
+                        width: 224
                         height: 290
                         bg_opa: TRANSP
                         border_opa: TRANSP
@@ -3636,7 +3660,7 @@ lvgl:
               - obj:
                   id: playlist_panel
                   align: CENTER
-                  width: 240
+                  width: 232
                   height: ${screenheight}
                   bg_opa: TRANSP
                   border_opa: TRANSP
@@ -3646,9 +3670,10 @@ lvgl:
                   widgets:
                     - obj:
                         id: playlist_content_block
-                        align: CENTER
-                        width: 236
-                        height: 276
+                        align: TOP_MID
+                        y: 24
+                        width: 228
+                        height: 216
                         bg_opa: TRANSP
                         border_opa: TRANSP
                         pad_all: 0
@@ -3660,7 +3685,7 @@ lvgl:
                               x: -60
                               y: 0
                               width: 106
-                              height: 84
+                              height: 64
                               radius: 14
                               bg_color: 0x181800
                               bg_opa: 94%
@@ -3697,7 +3722,7 @@ lvgl:
                               x: 60
                               y: 0
                               width: 106
-                              height: 84
+                              height: 64
                               radius: 14
                               bg_color: 0x181800
                               bg_opa: 94%
@@ -3732,9 +3757,9 @@ lvgl:
                               id: playlist_3_button
                               align: TOP_MID
                               x: -60
-                              y: 96
+                              y: 72
                               width: 106
-                              height: 84
+                              height: 64
                               radius: 14
                               bg_color: 0x181800
                               bg_opa: 94%
@@ -3769,9 +3794,9 @@ lvgl:
                               id: playlist_4_button
                               align: TOP_MID
                               x: 60
-                              y: 96
+                              y: 72
                               width: 106
-                              height: 84
+                              height: 64
                               radius: 14
                               bg_color: 0x181800
                               bg_opa: 94%
@@ -3806,9 +3831,9 @@ lvgl:
                               id: playlist_5_button
                               align: TOP_MID
                               x: -60
-                              y: 192
+                              y: 144
                               width: 106
-                              height: 84
+                              height: 64
                               radius: 14
                               bg_color: 0x181800
                               bg_opa: 94%
@@ -3843,9 +3868,9 @@ lvgl:
                               id: playlist_6_button
                               align: TOP_MID
                               x: 60
-                              y: 192
+                              y: 144
                               width: 106
-                              height: 84
+                              height: 64
                               radius: 14
                               bg_color: 0x181800
                               bg_opa: 94%
