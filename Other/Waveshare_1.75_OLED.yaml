@@ -1,0 +1,2233 @@
+substitutions:
+  name: esphome-web-6eac80
+  friendly_name: Waveshare 1.75
+
+## SETTINGS ######################################################################################################################################
+
+  startup_sound_file: Home_Connected # options are: Home_Connected or Home_Connected_Male
+  imagemodel: "Gwen" # options are: AlbertQuackmore, Alita, Casita, Gwen, HA-character, ha-girl, Hacker, Salem, Sarah, Shaun
+
+  # your home assistant weather entity, in most cases the same.
+  ha_weather_entity: weather.forecast_home
+
+  display_model: "WAVESHARE-ESP32-S3-TOUCH-AMOLED-1.75"
+  pdm_mic_type: "false"
+
+  imagewidth:  "466"
+  imageheight: "466"
+
+  screenwidth:  "466"
+  screenheight: "466"
+  rotate_display: "180"
+
+  media_sample_rate: 48000
+  ui_phase_standby: "0"
+  ui_phase_player_controls: "1"
+  ui_phase_now_playing: "2"
+  ui_phase_playlist_menu: "3"
+
+spi:
+  id: display_qspi
+  type: quad
+  clk_pin: GPIO38
+  data_pins: [GPIO4, GPIO5, GPIO6, GPIO7]
+
+i2c:
+  id: bus_a
+  sda: GPIO15
+  scl: GPIO14
+
+  ## SENDSPIN SETTINGS #############################################################################################################################
+
+packages:
+  extcomp:
+    url: https://github.com/RealDeco/xiaozhi-esphome.git
+    ref: main
+    refresh: 0s
+    files:
+      - devices/Under_Development/Modular/HW/sendspin-external_components.yaml
+
+external_components:
+  - source: 
+      type: git
+#      url: https://github.com/shelson/esphome-cst9217
+      url: https://github.com/YOUR-WORST-TACO/esphome-cst9217
+## END OF SETTINGS ###############################################################################################################################
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.6.0
+  name_add_mac_suffix: false
+  project:
+    name: realdeco.sendspin_guition
+    version: "2026.6.0"
+  on_boot:
+    priority: -100
+    then:
+      - script.execute:
+          id: set_ui_phase
+          phase: ${ui_phase_standby}
+      - script.execute: refresh_playlist_labels
+
+esp32:
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+logger:
+  level: WARN
+
+api:
+  on_client_connected:
+    - lambda: |-
+        if (!id(boot_sound_played)) {
+          id(boot_sound_played) = true;
+          if (id(startup_sound_switch).state) {
+            id(play_sound)->execute(true, std::string("ready_sound"));
+          }
+        }
+ota:
+  - platform: esphome
+
+wifi:
+  on_connect:
+    - delay: 1s
+    - if:
+        condition:
+          switch.is_on: standby_background_enabled
+        then:
+          - script.execute: load_standby_background
+  ap:
+
+improv_serial:
+
+psram:
+  mode: octal
+  speed: 80MHz
+  ignore_not_found: false
+  
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+globals:
+  - id: sendspin_album_art_valid
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: album_art_slide_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: boot_sound_played
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: boot_announce_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: weather_available
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: ui_phase
+    type: int
+    restore_value: no
+    initial_value: "${ui_phase_standby}"
+  - id: touch_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: touch_swipe_detected
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: touch_start_x
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_start_y
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_last_x
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_last_y
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_start_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: preferred_screen_brightness
+    type: float
+    restore_value: yes
+    initial_value: "1.0"
+  - id: screen_timeout_dimmed
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+image:
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/${imagewidth}x${imageheight}/playing.png
+    id: fallback_playing_image
+    resize: ${imagewidth}x${imageheight}
+    type: RGB565
+    dither: NONE
+
+generic_image:
+  - platform: sendspin
+    id: sendspin_album_art
+    format: jpeg
+    type: RGB565
+    resize: ${imagewidth}x${imageheight}
+    source: ALBUM
+    on_image_display:
+      - script.stop: album_art_timeout_fallback
+      - lambda: |-
+          id(sendspin_album_art_valid) = true;
+      - if:
+          condition:
+            lambda: 'return !id(album_art_slide_active);'
+          then:
+            - script.execute: album_art_apply_decoded
+    on_image_error:
+      - lambda: |-
+          id(sendspin_album_art_valid) = false;
+          if (!id(album_art_slide_active)) {
+            lv_obj_add_flag(id(album_art_transition_widget), LV_OBJ_FLAG_HIDDEN);
+          }
+      - lvgl.image.update:
+          id: album_art_widget
+          src: fallback_playing_image
+      - lvgl.image.update:
+          id: controls_album_art_widget
+          src: fallback_playing_image
+      - lvgl.image.update:
+          id: playlist_album_art_widget
+          src: fallback_playing_image
+
+sendspin:
+  id: sendspin_hub
+  task_stack_in_psram: false
+
+audio_file:
+  - id: ready_sound
+    file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${startup_sound_file}.flac
+
+http_request:
+
+online_image:
+  - id: standby_background_image
+    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/${screenwidth}x${screenheight}/clock.png
+    format: PNG
+    type: RGB565
+    resize: ${screenwidth}x${screenheight}
+    update_interval: never
+    on_download_finished:
+      - if:
+          condition:
+            switch.is_on: standby_background_enabled
+          then:
+            - lvgl.image.update:
+                id: standby_background_widget
+                src: standby_background_image
+            - lambda: |-
+                lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
+
+switch:
+  - platform: gpio
+    name: Speaker Enable
+    icon: "mdi:speaker"
+    entity_category: config
+    pin: GPIO46
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
+    id: startup_sound_switch
+    name: Startup sound
+    icon: "mdi:card-text-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  - platform: template
+    id: standby_screen_timeout_enabled
+    name: Standby screen timeout
+    icon: "mdi:monitor-off"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - script.execute: standby_screen_activity
+    on_turn_off:
+      - script.execute: standby_screen_activity
+
+  - platform: template
+    id: standby_background_enabled
+    name: Standby clock background
+    icon: "mdi:image-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - script.execute: load_standby_background
+    on_turn_off:
+      - lambda: |-
+          lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
+      - online_image.release: standby_background_image
+
+number:
+  - platform: template
+    id: player_controls_timeout_seconds
+    name: Player controls timeout delay
+    unit_of_measurement: "s"
+    icon: "mdi:timer-outline"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    mode: box
+    min_value: 1
+    max_value: 60
+    step: 1
+    initial_value: 5
+    set_action:
+      - if:
+          condition:
+            lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+          then:
+            - script.execute: player_controls_timeout
+
+  - platform: template
+    id: standby_screen_timeout_seconds
+    name: Standby screen timeout delay
+    unit_of_measurement: "s"
+    icon: "mdi:timer-outline"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    mode: box
+    min_value: 15
+    max_value: 3600
+    step: 5
+    initial_value: 60
+    set_action:
+      - script.execute: standby_screen_activity
+
+select:
+  - platform: template
+    name: "Audio Output"
+    icon: "mdi:volume-high"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: External Speaker
+    options:
+      - "Internal Speaker"
+      - "External Speaker"
+    on_value:
+      - router.speaker.switch_output:
+          id: box_speaker
+          target_speaker: !lambda |-
+            if (x == "Internal Speaker") {
+              return id(internal_speaker);
+            }
+            return id(external_speaker);
+
+  - platform: template
+    id: standby_background_choice
+    name: Standby clock background image
+    icon: "mdi:image-multiple-outline"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: clock
+    options:
+      - chip
+      - clock
+      - hacker
+      - mission
+      - starrysky
+      - tron
+      - waterdrops
+      - waves
+    set_action:
+      - script.execute: standby_screen_activity
+      - if:
+          condition:
+            switch.is_on: standby_background_enabled
+          then:
+            - online_image.set_url:
+                id: standby_background_image
+                url: !lambda |-
+                  return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/${screenwidth}x${screenheight}/" + x + ".png";
+
+text:
+  - platform: template
+    id: playlist_media_player_entity
+    name: Playlist media player entity
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+  - platform: template
+    id: playlist_1_name
+    name: Playlist 1 name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: My playlist 1
+    mode: text
+    on_value:
+      - script.execute: refresh_playlist_labels
+  - platform: template
+    id: playlist_1_uri
+    name: Playlist 1 URI
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+  - platform: template
+    id: playlist_2_name
+    name: Playlist 2 name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: My playlist 2
+    mode: text
+    on_value:
+      - script.execute: refresh_playlist_labels
+  - platform: template
+    id: playlist_2_uri
+    name: Playlist 2 URI
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+  - platform: template
+    id: playlist_3_name
+    name: Playlist 3 name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: My playlist 3
+    mode: text
+    on_value:
+      - script.execute: refresh_playlist_labels
+  - platform: template
+    id: playlist_3_uri
+    name: Playlist 3 URI
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+  - platform: template
+    id: playlist_4_name
+    name: Playlist 4 name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: My playlist 4
+    mode: text
+    on_value:
+      - script.execute: refresh_playlist_labels
+  - platform: template
+    id: playlist_4_uri
+    name: Playlist 4 URI
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+  - platform: template
+    id: playlist_5_name
+    name: Playlist 5 name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: My playlist 5
+    mode: text
+    on_value:
+      - script.execute: refresh_playlist_labels
+  - platform: template
+    id: playlist_5_uri
+    name: Playlist 5 URI
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+  - platform: template
+    id: playlist_6_name
+    name: Playlist 6 name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: My playlist 6
+    mode: text
+    on_value:
+      - script.execute: refresh_playlist_labels
+  - platform: template
+    id: playlist_6_uri
+    name: Playlist 6 URI
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+
+audio_dac:
+  - platform: es8311
+    id: es8311_dac
+    bits_per_sample: 16bit
+    sample_rate: 48000
+
+audio_adc:
+  - platform: es7210
+    id: es7210_adc
+    bits_per_sample: 16bit
+    sample_rate: 16000
+    
+i2s_audio:
+  - id: i2s_audio_bus
+    i2s_lrclk_pin: GPIO45
+    i2s_bclk_pin: GPIO9
+    i2s_mclk_pin: GPIO42
+  - id: i2s_lineout
+    i2s_lrclk_pin: GPIO17
+    i2s_bclk_pin: GPIO16
+    
+microphone:
+  - platform: i2s_audio
+    id: box_mic
+    i2s_audio_id: i2s_audio_bus
+    i2s_din_pin: GPIO10
+    adc_type: external
+    channel: left
+    pdm: ${pdm_mic_type}
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    
+speaker:
+  - platform: i2s_audio
+    id: internal_speaker
+    i2s_audio_id: i2s_audio_bus
+    i2s_dout_pin: GPIO8
+    dac_type: external
+    audio_dac: es8311_dac
+    sample_rate: 48000
+    channel: mono
+
+  - platform: i2s_audio
+    id: external_speaker
+    i2s_audio_id: i2s_lineout
+    i2s_dout_pin: GPIO44
+    dac_type: external
+    channel: mono
+    bits_per_sample: 16bit
+    sample_rate: 48000
+
+  - platform: router
+    id: box_speaker
+    output_speakers:
+      - internal_speaker
+      - external_speaker
+    bits_per_sample: 16
+    num_channels: 2
+    sample_rate: 48000
+    
+  - platform: mixer
+    id: mixing_speaker
+    output_speaker: box_speaker
+    num_channels: 2
+    task_stack_in_psram: true
+    source_speakers:
+      - id: announcement_mixing_input
+      - id: media_mixing_input
+
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+    
+media_source:
+  - platform: audio_file
+    id: audio_file_announcement_source
+  - platform: audio_http
+    id: http_announcement_source
+  - platform: audio_http
+    id: http_media_source
+  - platform: sendspin
+    id: sendspin_media_source
+
+media_player:
+  - platform: sendspin
+    id: sendspin_group_media_player
+    name: Sendspin Group Media Player
+
+  - platform: speaker_source
+    id: external_media_player
+    name: Media Player
+
+    announcement_pipeline:
+      format: FLAC
+      num_channels: 1
+      sample_rate: ${media_sample_rate}
+      speaker: announcement_resampling_speaker
+      sources:
+        - audio_file_announcement_source
+        - http_announcement_source
+
+    media_pipeline:
+      format: FLAC
+      num_channels: 2
+      sample_rate: ${media_sample_rate}
+      speaker: media_resampling_speaker
+      sources:
+        - http_media_source
+        - sendspin_media_source
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 0.85
+
+    on_play:
+      then:
+        - script.stop: mp_idle_debounce
+        - if:
+            condition:
+              lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+            then:
+              - script.execute:
+                  id: set_ui_phase
+                  phase: ${ui_phase_player_controls}
+            else:
+              - script.execute:
+                  id: set_ui_phase
+                  phase: ${ui_phase_now_playing}
+
+    on_announcement:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(boot_announce_active);'
+            then:
+              - lvgl.page.show: boot_sound_page
+              - delay: 2s
+              - script.execute:
+                  id: set_ui_phase
+                  phase: !lambda 'return id(ui_phase);'
+              - lambda: 'id(boot_announce_active) = false;'
+
+    on_idle:
+      then:
+        - script.execute: mp_idle_debounce
+
+    on_pause:
+      then:
+        - script.execute:
+            id: set_ui_phase
+            phase: ${ui_phase_player_controls}
+
+i2c_device:
+  - id: axp2101_dev
+    i2c_id: bus_a
+    address: 0x34
+            
+sensor:
+  - platform: homeassistant
+    id: ha_weather_temperature
+    entity_id: ${ha_weather_entity}
+    attribute: temperature
+  - platform: homeassistant
+    id: ha_weather_wind_speed
+    entity_id: ${ha_weather_entity}
+    attribute: wind_speed
+
+  - platform: template
+    id: axp2101_batt_v
+    name: "Battery Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    accuracy_decimals: 2
+    update_interval: 120s
+    lambda: |-
+      uint8_t data[2] = {0, 0};
+      if (!id(axp2101_dev).read_bytes(0x34, data, 2)) {
+        ESP_LOGW("axp2101", "Failed to read VBAT");
+        return NAN;
+      }
+      uint16_t mv = ((data[0] & 0x3F) << 8) | data[1];
+      return mv / 1000.0f;
+
+    on_value:
+      then:
+        - sensor.template.publish:
+            id: battery_percentage
+            state: !lambda 'return x;'
+
+  - platform: template
+    id: battery_percentage
+    name: "Battery Percentage"
+    update_interval: never
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    icon: mdi:battery-medium
+    filters:
+      - calibrate_linear:
+          method: exact
+          datapoints:
+            - 2.80 -> 0.0
+            - 3.10 -> 10.0
+            - 3.30 -> 20.0
+            - 3.45 -> 30.0
+            - 3.60 -> 40.0
+            - 3.70 -> 50.0
+            - 3.75 -> 60.0
+            - 3.80 -> 70.0
+            - 3.90 -> 80.0
+            - 4.00 -> 90.0
+            - 4.20 -> 100.0
+      - lambda: |-
+          if (x > 100) return 100;
+          if (x < 0) return 0;
+          return x;
+            
+text_sensor:
+  - platform: homeassistant
+    id: ha_weather_condition
+    entity_id: ${ha_weather_entity}
+    on_value:
+      - lambda: |-
+          const char* icon = "\U000F0590";
+          auto c = id(ha_weather_condition).state;
+          if (c == "sunny" || c == "clear") {
+            icon = "\U000F0599";
+          } else if (c == "partlycloudy") {
+            icon = "\U000F0595";
+          } else if (c == "cloudy") {
+            icon = "\U000F0590";
+          } else if (c == "rainy") {
+            icon = "\U000F0597";
+          } else if (c == "pouring") {
+            icon = "\U000F0596";
+          } else if (c == "snowy") {
+            icon = "\U000F0598";
+          } else if (c == "lightning") {
+            icon = "\U000F0593";
+          } else if (c == "hail") {
+            icon = "\U000F0592";
+          }
+          lv_label_set_text(id(weather_icon_glow), icon);
+          lv_label_set_text(id(weather_icon), icon);
+  - platform: homeassistant
+    id: ha_weather_temperature_unit
+    entity_id: ${ha_weather_entity}
+    attribute: temperature_unit
+
+  - platform: homeassistant
+    id: ha_weather_wind_speed_unit
+    entity_id: ${ha_weather_entity}
+    attribute: wind_speed_unit
+
+  - platform: sendspin
+    id: sendspin_title
+    type: title
+    on_value:
+      - component.update: now_playing_text
+      - lvgl.label.update:
+          id: controls_title_label
+          text: !lambda return x;
+
+  - platform: sendspin
+    id: sendspin_artist
+    type: artist
+    on_value:
+      - component.update: now_playing_text
+      - lvgl.label.update:
+          id: controls_artist_label
+          text: !lambda return x;
+
+  - platform: sendspin
+    id: sendspin_album
+    type: album
+    on_value:
+      - lambda: |-
+          id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_timeout_fallback
+      - component.update: now_playing_text
+      - lvgl.label.update:
+          id: controls_artist_label
+          text: !lambda return x;
+
+  - platform: template
+    id: now_playing_text
+    update_interval: never
+    lambda: |-
+      std::string s = id(sendspin_title).get_state();
+      auto a = id(sendspin_artist).get_state();
+      if (!a.empty()) {
+        if (!s.empty()) s += " - ";
+        s += a;
+      }
+      return s;
+    on_value:
+      - lvgl.label.update:
+          id: now_playing_label
+          text: !lambda return x;
+
+  - platform: template
+    id: clock_hms
+    update_interval: 1s
+    lambda: |-
+      auto t = id(homeassistant_time).now();
+      if (!t.is_valid()) return std::string("--:--:--");
+      bool hide_colons = ((t.second % 2) == 0);
+      char buf[9];
+      if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d %02d", t.hour, t.minute, t.second);
+      else snprintf(buf, sizeof(buf), "%02d:%02d:%02d", t.hour, t.minute, t.second);
+      return std::string(buf);
+    on_value:
+      - if:
+          condition:
+            lvgl.page.is_showing: idle_page
+          then:
+            - lvgl.label.update:
+                id: clock_label
+                text: !lambda return x;
+
+  - platform: template
+    id: clock_date
+    update_interval: 30s
+    lambda: |-
+      auto t = id(homeassistant_time).now();
+      if (!t.is_valid()) return std::string("------");
+      static const char* months[] = {
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December"
+      };
+      const char* mon = (t.month >= 1 && t.month <= 12) ? months[t.month - 1] : "???";
+      char buf[32];
+      snprintf(buf, sizeof(buf), "%d %s", t.day_of_month, mon);
+      return std::string(buf);
+    on_value:
+      - if:
+          condition:
+            lvgl.page.is_showing: idle_page
+          then:
+            - lvgl.label.update:
+                id: date_label
+                text: !lambda return x;
+
+  - platform: template
+    id: weather_temp_big
+    update_interval: 15s
+    lambda: |-
+      if (!id(ha_weather_temperature).has_state()) return std::string("--");
+      std::string tunit = id(ha_weather_temperature_unit).state.c_str();
+      if (tunit.empty()) tunit = "\u00B0C";
+      lv_label_set_text(id(weather_big_temp_unit), tunit.c_str());
+      int ti = (int) lroundf(id(ha_weather_temperature).state);
+      char buf[8];
+      snprintf(buf, sizeof(buf), "%d", ti);
+      return std::string(buf);
+    on_value:
+      - if:
+          condition:
+            lvgl.page.is_showing: idle_page
+          then:
+            - lvgl.label.update:
+                id: weather_big_temp
+                text: !lambda return x;
+
+  - platform: template
+    id: weather_line
+    update_interval: 15s
+    lambda: |-
+      if (!id(ha_weather_temperature).has_state() || !id(ha_weather_wind_speed).has_state()) {
+        return std::string("Weather unavailable");
+      }
+      std::string tunit = id(ha_weather_temperature_unit).state.c_str();
+      if (tunit.empty()) tunit = "\u00B0C";
+      std::string wunit = id(ha_weather_wind_speed_unit).state.c_str();
+      if (wunit.empty()) wunit = "m/s";
+      float temp_c = id(ha_weather_temperature).state;
+      float wind_ms = id(ha_weather_wind_speed).state;
+      float feels_c = temp_c;
+      if (temp_c <= 10.0f && wind_ms > 1.3f) {
+        float wind_kmh = wind_ms * 3.6f;
+        float v16 = powf(wind_kmh, 0.16f);
+        feels_c = 13.12f + 0.6215f * temp_c - 11.37f * v16 + 0.3965f * temp_c * v16;
+      }
+      char buf[160];
+      snprintf(buf, sizeof(buf),
+               "Temp: %.1f%s  -  Feels like: %.1f%s  -  Wind speed: %.1f %s",
+               temp_c, tunit.c_str(),
+               feels_c, tunit.c_str(),
+               wind_ms, wunit.c_str());
+      return std::string(buf);
+    on_value:
+      - lambda: |-
+          id(weather_available) = (x != "Weather unavailable");
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: return id(weather_available);
+          then:
+            - lvgl.widget.show: weather_header
+            - lvgl.widget.show: weather_label
+            - lvgl.widget.show: weather_label_glow
+            - lvgl.label.update:
+                id: weather_label_glow
+                text: !lambda return x;
+            - lvgl.label.update:
+                id: weather_label
+                text: !lambda return x;
+          else:
+            - if:
+                condition:
+                  lvgl.page.is_showing: idle_page
+                then:
+                  - lvgl.widget.hide: weather_header
+                  - lvgl.widget.hide: weather_label
+                  - lvgl.widget.hide: weather_label_glow
+
+font:
+  - file:
+      type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_display
+    size: 22
+    glyphsets:
+      - GF_Latin_Core
+      - GF_Cyrillic_Core
+
+  - file:
+      type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_playlist
+    size: 18
+    glyphsets:
+      - GF_Latin_Core
+      - GF_Cyrillic_Core
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 300
+    id: font_date
+    size: 28
+    glyphsets:
+      - GF_Latin_Core
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 600
+    id: font_boot
+    size: 42
+    glyphsets:
+      - GF_Latin_Core
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 700
+    id: font_temp_big
+    size: 78
+    glyphs: "0123456789+-"
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 700
+    id: font_temp_unit
+    size: 30
+    glyphs: "\u00B0CF"
+
+  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+    id: font_7seg
+    size: 50
+    glyphs: "0123456789:- "
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_weather
+    size: 76
+    glyphs:
+      - "\U000F0590"
+      - "\U000F0592"
+      - "\U000F0593"
+      - "\U000F0595"
+      - "\U000F0596"
+      - "\U000F0597"
+      - "\U000F0598"
+      - "\U000F0599"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_controls
+    size: 44
+    glyphs:
+      - "\U000F03E3"
+      - "\U000F040E"
+      - "\U000F04AD"
+      - "\U000F04AE"
+      - "\U000F075D"
+      - "\U000F075E"
+      - "\U000F075F"
+
+script:
+  - id: set_ui_phase
+    mode: restart
+    parameters:
+      phase: int
+    then:
+      - script.stop: player_controls_timeout
+      - lambda: |-
+          id(ui_phase) = phase;
+      - script.execute: standby_screen_activity
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_standby};'
+          then:
+            - lvgl.page.show: idle_page
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_player_controls};'
+          then:
+            - lvgl.page.show: player_controls_page
+            - script.execute: player_controls_timeout
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_now_playing};'
+          then:
+            - lvgl.page.show: sendspin_page
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_playlist_menu};'
+          then:
+            - lvgl.page.show: playlist_menu_page
+            - script.execute: player_controls_timeout
+
+  - id: player_controls_timeout
+    mode: restart
+    then:
+      - delay: !lambda |-
+          return (uint32_t) (id(player_controls_timeout_seconds).state * 1000.0f);
+      - if:
+          condition:
+            media_player.is_idle: external_media_player
+          then:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_standby}
+          else:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_now_playing}
+
+  - id: open_playlist_menu
+    then:
+      - script.stop: player_controls_timeout
+      - lambda: |-
+          id(ui_phase) = ${ui_phase_playlist_menu};
+      - lvgl.page.show:
+          id: playlist_menu_page
+          animation: MOVE_BOTTOM
+          time: 160ms
+      - script.execute: player_controls_timeout
+
+  - id: close_playlist_menu
+    then:
+      - script.stop: player_controls_timeout
+      - lambda: |-
+          id(ui_phase) = ${ui_phase_player_controls};
+      - lvgl.page.show:
+          id: player_controls_page
+          animation: MOVE_TOP
+          time: 160ms
+      - script.execute: player_controls_timeout
+
+  - id: refresh_playlist_labels
+    mode: restart
+    then:
+      - lvgl.label.update:
+          id: playlist_1_label
+          text: !lambda return id(playlist_1_name).state;
+      - lvgl.label.update:
+          id: playlist_2_label
+          text: !lambda return id(playlist_2_name).state;
+      - lvgl.label.update:
+          id: playlist_3_label
+          text: !lambda return id(playlist_3_name).state;
+      - lvgl.label.update:
+          id: playlist_4_label
+          text: !lambda return id(playlist_4_name).state;
+      - lvgl.label.update:
+          id: playlist_5_label
+          text: !lambda return id(playlist_5_name).state;
+      - lvgl.label.update:
+          id: playlist_6_label
+          text: !lambda return id(playlist_6_name).state;
+
+  - id: play_playlist
+    parameters:
+      uri: string
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected) && !id(playlist_media_player_entity).state.empty() && !uri.empty();'
+          then:
+            - homeassistant.action:
+                action: media_player.play_media
+                data:
+                  media_content_type: music
+                data_template:
+                  entity_id: "{{ media_player_entity }}"
+                  media_content_id: "{{ media_url }}"
+                variables:
+                  media_player_entity: |-
+                    return id(playlist_media_player_entity).state;
+                  media_url: |-
+                    return uri;
+
+  - id: load_standby_background
+    mode: restart
+    then:
+      - online_image.set_url:
+          id: standby_background_image
+          url: !lambda |-
+            return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/${screenwidth}x${screenheight}/" + id(standby_background_choice).current_option().str() + ".png";
+
+  - id: standby_screen_activity
+    mode: restart
+    then:
+      - script.stop: standby_screen_timeout
+      - if:
+          condition:
+            lambda: 'return id(screen_timeout_dimmed);'
+          then:
+            - light.turn_on:
+                id: Sled
+                brightness: !lambda 'return id(preferred_screen_brightness);'
+            - lambda: |-
+                id(screen_timeout_dimmed) = false;
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+          then:
+            - script.execute: standby_screen_timeout
+
+  - id: standby_screen_timeout
+    mode: restart
+    then:
+      - delay: !lambda |-
+          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+          then:
+            - lambda: |-
+                id(preferred_screen_brightness) = id(Sled).remote_values.get_brightness();
+                id(screen_timeout_dimmed) = true;
+            - light.turn_on:
+                id: Sled
+                brightness: !lambda 'return id(preferred_screen_brightness) * 0.60f;'
+          else:
+            - script.stop: standby_screen_timeout
+      - delay: !lambda |-
+          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+          then:
+            - light.turn_on:
+                id: Sled
+                brightness: !lambda 'return id(preferred_screen_brightness) * 0.25f;'
+          else:
+            - script.stop: standby_screen_timeout
+      - delay: !lambda |-
+          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+          then:
+            - light.turn_off: Sled
+
+  - id: now_playing_swipe_left
+    then:
+      - script.execute:
+          id: album_art_slide
+          direction: -1
+      - media_player.next: sendspin_group_media_player
+
+  - id: now_playing_swipe_right
+    then:
+      - script.execute:
+          id: album_art_slide
+          direction: 1
+      - media_player.previous: sendspin_group_media_player
+
+  - id: now_playing_swipe_up
+    then:
+      - media_player.volume_up: external_media_player
+      - script.execute:
+          id: show_volume_feedback
+          text: "+5"
+
+  - id: now_playing_swipe_down
+    then:
+      - media_player.volume_down: external_media_player
+      - script.execute:
+          id: show_volume_feedback
+          text: "-5"
+
+  - id: player_controls_keep_open
+    then:
+      - script.execute:
+          id: set_ui_phase
+          phase: ${ui_phase_player_controls}
+
+  - id: player_controls_toggle
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.toggle: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_previous
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.previous: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_next
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.next: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_volume_down
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.volume_down: external_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_volume_up
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.volume_up: external_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_mute
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.mute: external_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: album_art_slide
+    mode: restart
+    parameters:
+      direction: int
+    then:
+      - script.stop: album_art_fade_cleanup
+      - lambda: |-
+          id(album_art_slide_active) = true;
+          id(sendspin_album_art_valid) = false;
+          lv_obj_t *current_art = id(album_art_widget);
+          lv_obj_t *incoming_art = id(album_art_transition_widget);
+          lv_anim_del(current_art, nullptr);
+          lv_anim_del(incoming_art, nullptr);
+          lv_img_set_src(incoming_art, id(fallback_playing_image));
+          lv_obj_set_x(current_art, 0);
+          lv_obj_set_x(incoming_art, -direction * ${screenwidth});
+          lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
+          lv_obj_set_style_img_opa(incoming_art, LV_OPA_COVER, 0);
+          lv_obj_clear_flag(incoming_art, LV_OBJ_FLAG_HIDDEN);
+
+          lv_anim_t current_slide;
+          lv_anim_init(&current_slide);
+          lv_anim_set_var(&current_slide, current_art);
+          lv_anim_set_values(&current_slide, 0, direction * ${screenwidth});
+          lv_anim_set_time(&current_slide, 300);
+          lv_anim_set_exec_cb(&current_slide, [](void *obj, int32_t x) {
+            lv_obj_set_x((lv_obj_t *) obj, x);
+          });
+          lv_anim_start(&current_slide);
+
+          lv_anim_t incoming_slide;
+          lv_anim_init(&incoming_slide);
+          lv_anim_set_var(&incoming_slide, incoming_art);
+          lv_anim_set_values(&incoming_slide, -direction * ${screenwidth}, 0);
+          lv_anim_set_time(&incoming_slide, 300);
+          lv_anim_set_exec_cb(&incoming_slide, [](void *obj, int32_t x) {
+            lv_obj_set_x((lv_obj_t *) obj, x);
+          });
+          lv_anim_start(&incoming_slide);
+      - delay: 300ms
+      - lambda: |-
+          lv_obj_t *current_art = id(album_art_widget);
+          lv_obj_t *incoming_art = id(album_art_transition_widget);
+          lv_img_set_src(current_art, id(fallback_playing_image));
+          lv_obj_set_x(current_art, 0);
+          lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
+          lv_obj_add_flag(incoming_art, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_set_x(incoming_art, 0);
+          id(album_art_slide_active) = false;
+      - if:
+          condition:
+            lambda: 'return id(sendspin_album_art_valid);'
+          then:
+            - script.execute: album_art_apply_decoded
+
+  - id: album_art_apply_decoded
+    mode: restart
+    then:
+      - script.stop: album_art_fade_cleanup
+      - lambda: |-
+          lv_obj_t *now_playing_art = id(album_art_widget);
+          lv_obj_t *transition_art = id(album_art_transition_widget);
+          lv_obj_t *controls_art = id(controls_album_art_widget);
+          lv_obj_t *playlist_art = id(playlist_album_art_widget);
+          lv_img_set_src(controls_art, id(sendspin_album_art));
+          lv_img_set_zoom(controls_art, LV_ZOOM_NONE);
+          lv_img_set_src(playlist_art, id(sendspin_album_art));
+          lv_img_set_zoom(playlist_art, LV_ZOOM_NONE);
+
+          if (id(ui_phase) == ${ui_phase_now_playing}) {
+            lv_anim_del(transition_art, nullptr);
+            lv_img_set_src(transition_art, id(sendspin_album_art));
+            lv_img_set_zoom(transition_art, LV_ZOOM_NONE);
+            lv_obj_set_x(transition_art, 0);
+            lv_obj_set_style_img_opa(transition_art, LV_OPA_TRANSP, 0);
+            lv_obj_clear_flag(transition_art, LV_OBJ_FLAG_HIDDEN);
+
+            lv_anim_t fade_in;
+            lv_anim_init(&fade_in);
+            lv_anim_set_var(&fade_in, transition_art);
+            lv_anim_set_values(&fade_in, LV_OPA_TRANSP, LV_OPA_COVER);
+            lv_anim_set_time(&fade_in, 300);
+            lv_anim_set_exec_cb(&fade_in, [](void *obj, int32_t opacity) {
+              lv_obj_set_style_img_opa((lv_obj_t *) obj, opacity, 0);
+            });
+            lv_anim_start(&fade_in);
+          } else {
+            lv_img_set_src(now_playing_art, id(sendspin_album_art));
+            lv_img_set_zoom(now_playing_art, LV_ZOOM_NONE);
+          }
+      - if:
+          condition:
+            lambda: 'return id(ui_phase) == ${ui_phase_now_playing};'
+          then:
+            - script.execute: album_art_fade_cleanup
+
+  - id: album_art_fade_cleanup
+    mode: restart
+    then:
+      - delay: 320ms
+      - lambda: |-
+          lv_obj_t *now_playing_art = id(album_art_widget);
+          lv_obj_t *transition_art = id(album_art_transition_widget);
+          lv_img_set_src(now_playing_art, id(sendspin_album_art));
+          lv_img_set_zoom(now_playing_art, LV_ZOOM_NONE);
+          lv_obj_set_x(now_playing_art, 0);
+          lv_obj_set_style_img_opa(now_playing_art, LV_OPA_COVER, 0);
+          lv_obj_add_flag(transition_art, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_set_x(transition_art, 0);
+
+  - id: show_volume_feedback
+    mode: restart
+    parameters:
+      text: string
+    then:
+      - lambda: |-
+          lv_label_set_text(id(volume_feedback_label), text.c_str());
+          lv_obj_clear_flag(id(volume_feedback_box), LV_OBJ_FLAG_HIDDEN);
+      - delay: 1200ms
+      - lambda: |-
+          lv_obj_add_flag(id(volume_feedback_box), LV_OBJ_FLAG_HIDDEN);
+
+  - id: album_art_timeout_fallback
+    mode: restart
+    then:
+      - delay: 800ms
+      - if:
+          condition:
+            lambda: 'return !id(sendspin_album_art_valid);'
+          then:
+            - lvgl.image.update:
+                id: album_art_widget
+                src: fallback_playing_image
+            - lvgl.image.update:
+                id: controls_album_art_widget
+                src: fallback_playing_image
+            - lvgl.image.update:
+                id: playlist_album_art_widget
+                src: fallback_playing_image
+            - lambda: |-
+                if (!id(album_art_slide_active)) {
+                  lv_obj_add_flag(id(album_art_transition_widget), LV_OBJ_FLAG_HIDDEN);
+                }
+
+  - id: mp_idle_debounce
+    mode: restart
+    then:
+      - delay: 1200ms
+      - if:
+          condition:
+            and:
+              - media_player.is_idle: external_media_player
+              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+          then:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_standby}
+
+  - id: play_sound
+    parameters:
+      priority: bool
+      sound_file: string
+    then:
+      - if:
+          condition:
+            lambda: 'return sound_file == "ready_sound";'
+          then:
+            - lambda: 'id(boot_announce_active) = true;'
+
+      - if:
+          condition:
+            lambda: return priority;
+          then:
+            - media_player.stop:
+                id: external_media_player
+                announcement: true
+
+      - lambda: |-
+          if ((id(external_media_player).state != media_player::MediaPlayerState::MEDIA_PLAYER_STATE_ANNOUNCING) || priority) {
+            id(external_media_player)
+              ->make_call()
+              .set_media_url("audio-file://" + sound_file)
+              .set_announcement(true)
+              .perform();
+          }
+
+output:
+  - platform: template
+    id: backlight_brightness
+    type: float
+    write_action:
+      then:
+        - lambda: |-
+            id(main_display).set_brightness(state*255);
+
+light:
+  - platform: monochromatic
+    id: Sled
+    name: "Backlight"
+    output: backlight_brightness
+    default_transition_length:
+      milliseconds: 0
+    initial_state:
+      brightness: 81%
+    restore_mode:
+      ALWAYS_ON
+
+touchscreen:
+  - platform: cst9217
+    id: my_touchscreen
+    interrupt_pin: GPIO11
+    reset_pin: GPIO40
+    display: main_display
+    i2c_id: bus_a
+    transform:
+      swap_xy: false
+      mirror_x: true
+      mirror_y: true
+    on_touch:
+      then:
+        - script.execute: standby_screen_activity
+        - lambda: |-
+            id(touch_active) = true;
+            id(touch_start_x) = touch.x;
+            id(touch_start_y) = touch.y;
+            id(touch_last_x) = touch.x;
+            id(touch_last_y) = touch.y;
+            id(touch_start_ms) = millis();
+            id(touch_swipe_detected) = false;
+    on_update:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            for (auto &touch : touches) {
+              if (touch.state >= 1 && touch.state <= 2) {
+                id(touch_last_x) = touch.x;
+                id(touch_last_y) = touch.y;
+                const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+                const int swipe_min_dist = std::max(16, min_dim / 8);
+                if (std::abs(id(touch_last_x) - id(touch_start_x)) >= swipe_min_dist ||
+                    std::abs(id(touch_last_y) - id(touch_start_y)) >= swipe_min_dist) {
+                  id(touch_swipe_detected) = true;
+                  lv_obj_remove_state(id(controls_mute_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_previous_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_next_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
+                }
+                break;
+              }
+            }
+    on_release:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            id(touch_active) = false;
+
+            const int dx = id(touch_last_x) - id(touch_start_x);
+            const int dy = id(touch_last_y) - id(touch_start_y);
+            const int abs_x = std::abs(dx);
+            const int abs_y = std::abs(dy);
+            const uint32_t elapsed = millis() - id(touch_start_ms);
+            const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+            const int swipe_min_dist = std::max(16, min_dim / 8);
+            const int tap_max_dist = std::max(14, min_dim / 12);
+
+            if (elapsed <= 1500 && (abs_x >= swipe_min_dist || abs_y >= swipe_min_dist)) {
+              if (id(ui_phase) == ${ui_phase_now_playing}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(now_playing_swipe_left)->execute();
+                  } else {
+                    id(now_playing_swipe_right)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(now_playing_swipe_up)->execute();
+                } else {
+                  id(now_playing_swipe_down)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_player_controls} && abs_y > abs_x && dy > 0) {
+                id(open_playlist_menu)->execute();
+              } else if (id(ui_phase) == ${ui_phase_playlist_menu} && abs_y > abs_x && dy < 0) {
+                id(close_playlist_menu)->execute();
+              }
+              return;
+            }
+
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
+              id(set_ui_phase)->execute(${ui_phase_player_controls});
+            }
+
+display:
+  - platform: mipi_spi
+    id: main_display
+    model: ${display_model}
+#    transform:
+#      swap_xy: false
+#      mirror_x: true
+#      mirror_y: true
+    update_interval: never
+#    dimensions:
+#        height: ${screenheight}
+#        width: ${screenwidth}
+
+lvgl:
+  displays:
+    - main_display
+  buffer_size: 12%
+  color_depth: 16
+  bg_color: 0x000000
+  default_font: font_display
+
+  pages:
+    - id: boot_sound_page
+      bg_color: 0x000000
+      widgets:
+        - label:
+            align: CENTER
+            text: "Home Connected"
+            text_color: 0xFFFFFF
+            text_font: font_boot
+            width: 230
+            long_mode: WRAP
+            text_align: CENTER
+
+    - id: idle_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: standby_background_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: standby_background_image
+            width: ${screenwidth}
+            height: ${screenheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: idle_center_block
+            align: CENTER
+            y: 18
+            width: 310
+            height: 300
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label:
+                  id: clock_label
+                  align: TOP_MID
+                  y: 0
+                  width: 310
+                  text: "--:--:--"
+                  text_color: 0xFFFF00
+                  text_font: font_7seg
+                  text_letter_space: 0
+                  text_align: CENTER
+
+              - label:
+                  id: date_label
+                  align: TOP_MID
+                  y: 76
+                  width: 310
+                  text: "------"
+                  text_color: 0xFFFFFF
+                  text_font: font_date
+                  text_align: CENTER
+
+              - obj:
+                  id: weather_header
+                  align: TOP_MID
+                  y: 112
+                  width: 310
+                  height: 100
+                  bg_opa: TRANSP
+                  border_opa: TRANSP
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: weather_icon_glow
+                        align: CENTER
+                        x: -54
+                        y: 1
+                        text: "\U000F0590"
+                        text_color: 0x404040
+                        text_font: font_mdi_weather
+
+                    - label:
+                        id: weather_icon
+                        align: CENTER
+                        x: -55
+                        y: 0
+                        text: "\U000F0590"
+                        text_color: 0xFFFFFF
+                        text_font: font_mdi_weather
+
+                    - label:
+                        id: weather_big_temp
+                        align: CENTER
+                        x: 48
+                        y: 3
+                        text: "--"
+                        text_color: 0xFFFF00
+                        text_font: font_temp_big
+
+                    - label:
+                        id: weather_big_temp_unit
+                        align: CENTER
+                        x: 102
+                        y: -20
+                        text: "\u00B0C"
+                        text_color: 0xFFFF00
+                        text_font: font_temp_unit
+
+              - label:
+                  id: weather_label_glow
+                  align: TOP_MID
+                  x: 1
+                  y: 242
+                  width: 285
+                  text: "Weather..."
+                  text_color: 0x1AA6C8
+                  text_font: font_display
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: CENTER
+
+              - label:
+                  id: weather_label
+                  align: TOP_MID
+                  x: 0
+                  y: 241
+                  width: 285
+                  text: "Weather..."
+                  text_color: 0x66CCFF
+                  text_font: font_display
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: CENTER
+
+    - id: player_controls_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: controls_album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+
+        - obj:
+            align: CENTER
+            width: 466
+            height: 466
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
+
+        - label:
+            id: controls_title_label
+            align: TOP_MID
+            y: 46
+            width: 285
+            text: ""
+            text_color: 0xFFFFFF
+            text_font: font_date
+            long_mode: SCROLL_CIRCULAR
+            text_align: CENTER
+
+        - label:
+            id: controls_artist_label
+            align: TOP_MID
+            y: 82
+            width: 265
+            text: ""
+            text_color: 0x66CCFF
+            text_font: font_display
+            long_mode: SCROLL_CIRCULAR
+            text_align: CENTER
+
+        - button:
+            id: controls_mute_button
+            align: BOTTOM_MID
+            y: -58
+            width: 58
+            height: 48
+            radius: 24
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_mute
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F075F"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_previous_button
+            align: CENTER
+            x: -104
+            y: 0
+            width: 84
+            height: 84
+            radius: 42
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_previous
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F04AE"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_toggle_button
+            align: CENTER
+            y: 0
+            width: 104
+            height: 104
+            radius: 52
+            bg_color: 0xFFFF00
+            bg_opa: COVER
+            border_color: 0xFFFFFF
+            border_width: 2
+            pressed:
+              bg_color: 0xFFFFFF
+              border_color: 0x66CCFF
+              border_width: 4
+            on_click:
+              - script.execute: player_controls_toggle
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F040E"
+                  text_color: 0x101010
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_next_button
+            align: CENTER
+            x: 104
+            y: 0
+            width: 84
+            height: 84
+            radius: 42
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_next
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F04AD"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_volume_down_button
+            align: BOTTOM_MID
+            x: -72
+            y: -58
+            width: 58
+            height: 48
+            radius: 24
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_volume_down
+            on_long_press_repeat:
+              - script.execute: player_controls_volume_down
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F075E"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_volume_up_button
+            align: BOTTOM_MID
+            x: 72
+            y: -58
+            width: 58
+            height: 48
+            radius: 24
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_volume_up
+            on_long_press_repeat:
+              - script.execute: player_controls_volume_up
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F075D"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+    - id: sendspin_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+
+        - image:
+            id: album_art_transition_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: now_playing_bar
+            align: BOTTOM_MID
+            y: -28
+            width: 300
+            height: 36
+            bg_color: 0x000000
+            bg_opa: 75%
+            border_opa: TRANSP
+            radius: 4
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label:
+                  id: now_playing_label
+                  align: CENTER
+                  width: 284
+                  text: ""
+                  text_color: 0xFFFFFF
+                  text_font: font_display
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: CENTER
+
+        - obj:
+            id: volume_feedback_box
+            align: CENTER
+            width: 126
+            height: 92
+            bg_color: 0x000000
+            bg_opa: 75%
+            border_color: 0x66CCFF
+            border_width: 2
+            radius: 18
+            scrollable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: volume_feedback_label
+                  align: CENTER
+                  text: "+5"
+                  text_color: 0xFFFFFF
+                  text_font: font_temp_big
+
+    - id: playlist_menu_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: playlist_album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+
+        - obj:
+            align: CENTER
+            width: 466
+            height: 466
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
+
+        - button:
+            align: TOP_MID
+            x: -74
+            y: 28
+            width: 138
+            height: 86
+            radius: 18
+            bg_color: 0x181800
+            bg_opa: 94%
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            pressed:
+              bg_color: 0xFFFF00
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 5
+              shadow_color: 0xFFFFFF
+              shadow_width: 24
+              shadow_opa: 80%
+            on_click:
+              - script.execute:
+                  id: play_playlist
+                  uri: !lambda return id(playlist_1_uri).state;
+            widgets:
+              - label:
+                  id: playlist_1_label
+                  align: CENTER
+                  width: 116
+                  text: "My playlist 1"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            align: TOP_MID
+            x: 74
+            y: 28
+            width: 138
+            height: 86
+            radius: 18
+            bg_color: 0x181800
+            bg_opa: 94%
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            pressed:
+              bg_color: 0xFFFF00
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 5
+              shadow_color: 0xFFFFFF
+              shadow_width: 24
+              shadow_opa: 80%
+            on_click:
+              - script.execute:
+                  id: play_playlist
+                  uri: !lambda return id(playlist_2_uri).state;
+            widgets:
+              - label:
+                  id: playlist_2_label
+                  align: CENTER
+                  width: 116
+                  text: "My playlist 2"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            align: TOP_MID
+            x: -74
+            y: 134
+            width: 138
+            height: 86
+            radius: 18
+            bg_color: 0x181800
+            bg_opa: 94%
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            pressed:
+              bg_color: 0xFFFF00
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 5
+              shadow_color: 0xFFFFFF
+              shadow_width: 24
+              shadow_opa: 80%
+            on_click:
+              - script.execute:
+                  id: play_playlist
+                  uri: !lambda return id(playlist_3_uri).state;
+            widgets:
+              - label:
+                  id: playlist_3_label
+                  align: CENTER
+                  width: 116
+                  text: "My playlist 3"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            align: TOP_MID
+            x: 74
+            y: 134
+            width: 138
+            height: 86
+            radius: 18
+            bg_color: 0x181800
+            bg_opa: 94%
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            pressed:
+              bg_color: 0xFFFF00
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 5
+              shadow_color: 0xFFFFFF
+              shadow_width: 24
+              shadow_opa: 80%
+            on_click:
+              - script.execute:
+                  id: play_playlist
+                  uri: !lambda return id(playlist_4_uri).state;
+            widgets:
+              - label:
+                  id: playlist_4_label
+                  align: CENTER
+                  width: 116
+                  text: "My playlist 4"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            align: TOP_MID
+            x: -74
+            y: 240
+            width: 138
+            height: 86
+            radius: 18
+            bg_color: 0x181800
+            bg_opa: 94%
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            pressed:
+              bg_color: 0xFFFF00
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 5
+              shadow_color: 0xFFFFFF
+              shadow_width: 24
+              shadow_opa: 80%
+            on_click:
+              - script.execute:
+                  id: play_playlist
+                  uri: !lambda return id(playlist_5_uri).state;
+            widgets:
+              - label:
+                  id: playlist_5_label
+                  align: CENTER
+                  width: 116
+                  text: "My playlist 5"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            align: TOP_MID
+            x: 74
+            y: 240
+            width: 138
+            height: 86
+            radius: 18
+            bg_color: 0x181800
+            bg_opa: 94%
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            pressed:
+              bg_color: 0xFFFF00
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 5
+              shadow_color: 0xFFFFFF
+              shadow_width: 24
+              shadow_opa: 80%
+            on_click:
+              - script.execute:
+                  id: play_playlist
+                  uri: !lambda return id(playlist_6_uri).state;
+            widgets:
+              - label:
+                  id: playlist_6_label
+                  align: CENTER
+                  width: 116
+                  text: "My playlist 6"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+                  
