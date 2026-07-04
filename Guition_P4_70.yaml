@@ -1612,6 +1612,7 @@ font:
       - "\U000F040E"
       - "\U000F04AD"
       - "\U000F04AE"
+      - "\U000F057E"
       - "\U000F075D"
       - "\U000F075E"
       - "\U000F075F"
@@ -2043,6 +2044,7 @@ script:
                 if (id(va_phase) == ${va_phase_idle}) {
                   lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                 }
+                lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
       - if:
           condition:
@@ -2482,7 +2484,12 @@ script:
           condition:
             lambda: 'return !id(touch_swipe_detected);'
           then:
-            - media_player.mute: external_media_player
+            - lambda: |-
+                bool new_muted = !id(external_media_player).is_muted();
+                auto call = id(external_media_player).make_call();
+                call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                call.perform();
+                lv_label_set_text(id(controls_mute_icon), new_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_keep_open
 
   - id: player_controls_previous
@@ -3776,6 +3783,7 @@ lvgl:
                                 - script.execute: player_controls_mute
                               widgets:
                                 - label:
+                                    id: controls_mute_icon
                                     align: CENTER
                                     text: "\U000F075F"
                                     text_color: 0xFFFFFF
