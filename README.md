@@ -4,6 +4,8 @@
 
 Sendspin player firmware for Guition devices with Line Out.
 
+(and other devices where you can easily ADD a Line Out)
+
 Turn any amplifier, active speaker, or existing hi-fi setup into part of a perfectly synchronized multi-room audio system. With microsecond-precise timing, automatic local discovery, encrypted pairing, and support for mixed brands, it delivers “one song, every room” without cloud lock-in, accounts, or Big Tech telemetry.
 
 Not many esp32 devices include Line Out, but Guition has made two: the 1.80" silver puck and a new version of the 1.85" rotary dial knob. These devices are perfect for Sendspin players because they support Line Out through the 3.5 mm mini-jack connector.
@@ -16,9 +18,11 @@ There are two versions available in this project:
 
 Both versions can be flashed directly from the project webpage for users who simply want everything to work without having to compile the firmware themselves.
 
+---
+
 NEW!: Added the bigger 7" display from guition (JC1060P470C-I-W-Y) to the project because it's "almost" DIY free like the others, the DAC module does require soldering but thats it. 
 
-NEW: Added Waveshare's 3.5"
+NEW: Added Waveshare's 3.5" with Line Out DAC
 
 </div>
 
