@@ -13,7 +13,6 @@ substitutions:
 # Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
 
   display_model: "WAVESHARE-ESP32-S3-TOUCH-AMOLED-1.75" # JC3636W518 for v1, JC3636W518V2 for v2
-  pdm_mic_type: "false" # false for v1, true for v2
 
   # Home Assistant weather entity.
   ha_weather_entity: weather.forecast_home
@@ -37,30 +36,33 @@ substitutions:
   va_phase_error: "5"
   va_phase_timer_ringing: "6"
 
-#packages: # github
-#  core:
-#    url: https://github.com/RealDeco/sendspin-guition.git
-#    ref: main
-#    refresh: 0s
-#    files:
-#      - HW/waveshare_1.75-VA-modular_hw.yaml
-#  extcomp:
-#    url: https://github.com/RealDeco/xiaozhi-esphome.git
-#    ref: main
-#    refresh: 0s
-#    files:
-#      - devices/Under_Development/Modular/HW/sendspin-external_components.yaml
+packages: # github
+  core:
+    url: https://github.com/RealDeco/sendspin-guition.git
+    ref: main
+    refresh: 0s
+    files:
+      - HW/waveshare_1.75-VA-modular_hw.yaml
+  extcomp:
+    url: https://github.com/RealDeco/xiaozhi-esphome.git
+    ref: main
+    refresh: 0s
+    files:
+      - devices/Under_Development/Modular/HW/sendspin-external_components.yaml
 
-packages: # local
-  hardware: !include sendspin-guition/HW/waveshare_1.75-VA-modular_hw.yaml
-  extcomp: !include localtest/HW/sendspin-external_components.yaml
+#packages: # local
+#  hardware: !include sendspin-guition/HW/waveshare_1.75-VA-modular_hw.yaml
+#  extcomp: !include localtest/HW/sendspin-external_components.yaml
 
 external_components:
+  - source: github://pr#16882
+    components: [audio, i2s_audio, micro_wake_word, resampler]
+    refresh: 1h
   - source: 
       type: git
 #      url: https://github.com/shelson/esphome-cst9217
       url: https://github.com/YOUR-WORST-TACO/esphome-cst9217
-  
+      
 esp32:
   variant: esp32s3
   flash_size: 16MB
@@ -486,10 +488,12 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_off:
       - microphone.unmute:
+          id: voice_microphone
       - script.execute: start_wake_word
     on_turn_on:
       - script.execute: stop_wake_word
       - microphone.mute:
+          id: voice_microphone
 
   - platform: template
     id: timer_ringing
@@ -816,6 +820,8 @@ text:
 
 micro_wake_word:
   id: mww
+  microphone: voice_microphone
+  ring_buffer_duration: 500ms
   stop_after_detection: false
   models:
     - model: okay_nabu
@@ -901,7 +907,7 @@ micro_wake_word:
 
 voice_assistant:
   id: va
-  microphone: box_mic
+  microphone: voice_microphone
   media_player: external_media_player
   micro_wake_word: mww
   noise_suppression_level: 2
