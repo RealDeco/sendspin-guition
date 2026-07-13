@@ -142,22 +142,6 @@ media_player:
                         id: set_ui_phase
                         phase: ${ui_phase_now_playing}
 
-    on_announcement:
-      then:
-        - if:
-            condition:
-              lambda: 'return id(boot_announce_active);'
-            then:
-              - lvgl.label.update:
-                  id: boot_sound_label
-                  text: "Home Connected"
-              - lvgl.page.show: boot_sound_page
-              - delay: 2s
-              - script.execute:
-                  id: set_ui_phase
-                  phase: !lambda 'return id(ui_phase);'
-              - lambda: 'id(boot_announce_active) = false;'
-
     on_idle:
       then:
         - if:
