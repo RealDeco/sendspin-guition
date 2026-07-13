@@ -1,8 +1,6 @@
-# Hardware package for Guition Silver Puck v2.
+# Hardware package for Guition Silver Puck v1 and V2.
 
 substitutions:
-  display_model: "JC3636W518V2"
-  pdm_mic_type: "true"
   media_sample_rate: 48000
   
 spi:
