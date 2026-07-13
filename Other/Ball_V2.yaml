@@ -9,8 +9,9 @@ substitutions:
   imagemodel2: "Alfred"
 
   ## available models:
-  # AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, HA-character, ha-girl, Hacker, Harley,
-  # Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
+  # AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, Gwen_Black, 
+  # HA-character, ha-girl, Hacker, Harley, Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
+
   
   ha_weather_entity: weather.forecast_home
 
@@ -549,19 +550,6 @@ media_player:
                     - script.execute:
                         id: set_ui_phase
                         phase: ${ui_phase_now_playing}
-
-    on_announcement:
-      then:
-        - if:
-            condition:
-              lambda: 'return id(boot_announce_active);'
-            then:
-              - lvgl.page.show: boot_sound_page
-              - delay: 2s
-              - script.execute:
-                  id: set_ui_phase
-                  phase: !lambda 'return id(ui_phase);'
-              - lambda: 'id(boot_announce_active) = false;'
 
     on_idle:
       then:
@@ -1307,7 +1295,7 @@ text_sensor:
     lambda: |-
       if (!id(ha_weather_temperature).has_state()) return std::string("--");
       std::string tunit = id(ha_weather_temperature_unit).state.c_str();
-      if (tunit.empty()) tunit = "°C";
+      if (tunit.empty()) tunit = "\u00B0C";
       lv_label_set_text(id(weather_big_temp_unit), tunit.c_str());
       int ti = (int) lroundf(id(ha_weather_temperature).state);
       char buf[8];
@@ -1330,7 +1318,7 @@ text_sensor:
         return std::string("Weather unavailable");
       }
       std::string tunit = id(ha_weather_temperature_unit).state.c_str();
-      if (tunit.empty()) tunit = "°C";
+      if (tunit.empty()) tunit = "\u00B0C";
       std::string wunit = id(ha_weather_wind_speed_unit).state.c_str();
       if (wunit.empty()) wunit = "m/s";
       float temp_c = id(ha_weather_temperature).state;
@@ -3041,7 +3029,7 @@ lvgl:
                         align: CENTER
                         x: 68
                         y: -13
-                        text: "°C"
+                        text: "\u00B0C"
                         text_color: 0xFFFF00
                         text_font: font_temp_unit
 
