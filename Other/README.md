@@ -42,6 +42,10 @@ Full-duplex audio eliminates the clicking normally heard when switching between 
 
 Shown here with a custom 3D-printed stand and enclosure designed to hold a 3-inch speaker.
 
+This device has no built-in speaker and a JST 1.25mm female cable is needed for external speaker.
+
+Example: https://www.aliexpress.com/item/1005007635720202.html
+
 <img width="600" alt="Guition 4.3-inch display with 3D-printed speaker stand" src="https://github.com/user-attachments/assets/308514c7-2f10-44e5-85ee-2f26ee065190" />
 
 ---
@@ -57,5 +61,9 @@ Shown here with a custom 3D-printed stand and enclosure designed to hold a 3-inc
 * LVGL interface
 
 Shown here with a custom 3D-printed enclosure designed to hold a 3-inch speaker.
+
+This device has no built-in speaker and a JST 1.25mm female cable is needed for external speaker.
+
+Example: https://www.aliexpress.com/item/1005007635720202.html
 
 <img width="600" alt="Waveshare 1.75-inch OLED with 3D-printed speaker enclosure" src="https://github.com/user-attachments/assets/c34e9f5b-d0f8-4e54-b574-7316cd7962b5" />
