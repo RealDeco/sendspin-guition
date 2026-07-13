@@ -2,9 +2,14 @@ substitutions:
   name: waveshare-35
   friendly_name: Waveshare 3.5
 
-  startup_sound_file: Home_Connected
+  startup_sound_file: "Home_Connected" # (options are: available, Home_Connected, Home_Connected_Male, Computer_Ready)
+  wakeup_sound: "popup" # (options are: popup, wake_word_triggered)
   imagemodel1: "Gwen"
   imagemodel2: "Alfred"
+
+  ## available models:
+  # AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, Gwen_Black, 
+  # HA-character, ha-girl, Hacker, Harley, Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
 
   media_sample_rate: "48000"
 
@@ -77,19 +82,26 @@ api:
   on_client_connected:
     - if:
         condition:
-          lambda: 'return !id(boot_sound_played);'
+          lambda: 'return !id(boot_sound_played) && !id(boot_announce_active);'
         then:
-          - lambda: 'id(boot_sound_played) = true;'
+          - lambda: 'id(boot_announce_active) = true;'
+          - lvgl.label.update:
+              id: boot_sound_label
+              text: "Home Connected"
           - if:
               condition:
                 switch.is_on: startup_sound_switch
               then:
                 - lambda: 'id(play_sound)->execute(true, std::string("ready_sound"));'
+                - delay: 3500ms
               else:
-                - delay: 1s
-                - script.execute:
-                    id: set_ui_phase
-                    phase: !lambda 'return id(ui_phase);'
+                - delay: 2s
+          - lambda: |-
+              id(boot_sound_played) = true;
+              id(boot_announce_active) = false;
+          - script.execute:
+              id: set_ui_phase
+              phase: !lambda 'return id(ui_phase);'
 
 ota:
   - platform: esphome
@@ -255,49 +267,49 @@ globals:
     initial_value: "false"
 
 image:
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imageheight}x${imageheight}/playing.png
-    id: fallback_playing_image1
-    resize: ${imageheight}x${imageheight}
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/playing.png
+    id: fallback_playing_image
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imageheight}x${imageheight}/idle.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/idle.png
     id: va_waiting_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imageheight}x${imageheight}/listening.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/listening.png
     id: va_listening_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imageheight}x${imageheight}/thinking.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/thinking.png
     id: va_thinking_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imageheight}x${imageheight}/replying.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/replying.png
     id: va_replying_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imageheight}x${imageheight}/idle.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/idle.png
     id: va_waiting_image2
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imageheight}x${imageheight}/listening.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/listening.png
     id: va_listening_image2
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imageheight}x${imageheight}/thinking.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/thinking.png
     id: va_thinking_image2
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imageheight}x${imageheight}/replying.png
+  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/replying.png
     id: va_replying_image2
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
@@ -306,7 +318,7 @@ generic_image:
     id: sendspin_album_art
     format: jpeg
     type: RGB565
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     source: ALBUM
     on_image_display:
       - lambda: |-
@@ -314,7 +326,7 @@ generic_image:
           if (id(sendspin_album_art)->is_loaded()) {
             lv_img_set_src(img, id(sendspin_album_art));
           } else {
-            lv_img_set_src(img, id(fallback_playing_image1));
+            lv_img_set_src(img, id(fallback_playing_image));
           }
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_anim_del(img, nullptr);
@@ -332,7 +344,7 @@ generic_image:
       - lambda: |-
           ESP_LOGW("album_art", "failed to decode album art");
           lv_obj_t *img = id(album_art_widget);
-          lv_img_set_src(img, id(fallback_playing_image1));
+          lv_img_set_src(img, id(fallback_playing_image));
           lv_anim_del(img, nullptr);
           lv_obj_set_style_translate_x(img, 0, 0);
           lv_anim_t fade_in;
@@ -354,6 +366,8 @@ audio_file:
     file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac
   - id: ready_sound
     file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${startup_sound_file}.flac
+  - id: wake_word_sound
+    file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${wakeup_sound}.flac
 
 http_request:
 
@@ -552,22 +566,6 @@ media_player:
                         id: set_ui_phase
                         phase: ${ui_phase_now_playing}
 
-    on_announcement:
-      then:
-        - if:
-            condition:
-              lambda: 'return id(boot_announce_active);'
-            then:
-              - lvgl.label.update:
-                  id: boot_sound_label
-                  text: "Home Connected"
-              - lvgl.page.show: boot_sound_page
-              - delay: 2s
-              - script.execute:
-                  id: set_ui_phase
-                  phase: !lambda 'return id(ui_phase);'
-              - lambda: 'id(boot_announce_active) = false;'
-
     on_idle:
       then:
         - if:
@@ -618,6 +616,14 @@ switch:
     id: startup_sound_switch
     name: Startup sound
     icon: "mdi:card-text-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  - platform: template
+    id: wake_word_sound_switch
+    name: Wake word sound
+    icon: "mdi:ear-hearing"
     entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
@@ -797,6 +803,7 @@ select:
       - clock
       - hacker
       - mission
+      - redmarble
       - starrysky
       - tron
       - waterdrops
@@ -1061,6 +1068,11 @@ micro_wake_word:
         }
     - if:
         condition:
+          switch.is_on: wake_word_sound_switch
+        then:
+          - lambda: 'id(play_sound)->execute(false, std::string("wake_word_sound"));'
+    - if:
+        condition:
           switch.is_off: mute
         then:
           - if:
@@ -1270,7 +1282,7 @@ text_sensor:
     type: title
     on_value:
       - lambda: |-
-          lv_img_set_src(id(album_art_widget), id(fallback_playing_image1));
+          lv_img_set_src(id(album_art_widget), id(fallback_playing_image));
       - lvgl.label.update:
           id: controls_title_label
           text: !lambda return x;
@@ -2081,7 +2093,7 @@ script:
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
-          lv_img_set_src(incoming, id(fallback_playing_image1));
+          lv_img_set_src(incoming, id(fallback_playing_image));
           lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
           lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
           lv_obj_set_style_translate_x(incoming, ${imagewidth}, 0);
@@ -2115,7 +2127,7 @@ script:
           }
           lv_obj_t *img = id(album_art_widget);
           lv_anim_del(img, nullptr);
-          lv_img_set_src(img, id(fallback_playing_image1));
+          lv_img_set_src(img, id(fallback_playing_image));
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_set_style_translate_x(img, 0, 0);
@@ -2132,7 +2144,7 @@ script:
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
-          lv_img_set_src(incoming, id(fallback_playing_image1));
+          lv_img_set_src(incoming, id(fallback_playing_image));
           lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
           lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
           lv_obj_set_style_translate_x(incoming, -${imagewidth}, 0);
@@ -2166,7 +2178,7 @@ script:
           }
           lv_obj_t *img = id(album_art_widget);
           lv_anim_del(img, nullptr);
-          lv_img_set_src(img, id(fallback_playing_image1));
+          lv_img_set_src(img, id(fallback_playing_image));
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_set_style_translate_x(img, 0, 0);
@@ -2981,7 +2993,9 @@ touchscreen:
             if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
               const bool just_waking = id(standby_screen_timeout_enabled).state && id(touch_started_while_dimmed);
               if (!just_waking) {
-                id(set_ui_phase)->execute(${ui_phase_player_controls});
+                if (id(ui_phase) != ${ui_phase_standby} || id(touch_start_x) >= ${imagewidth}) {
+                  id(set_ui_phase)->execute(${ui_phase_player_controls});
+                }
               }
             }
 
@@ -3081,7 +3095,7 @@ lvgl:
                         align: TOP_MID
                         x: 0
                         y: 0
-                        src: fallback_playing_image1
+                        src: fallback_playing_image
                         width: ${imagewidth}
                         height: ${imageheight}
                         antialias: false
