@@ -150,6 +150,9 @@ media_player:
             condition:
               lambda: 'return id(boot_announce_active);'
             then:
+              - lvgl.label.update:
+                  id: boot_sound_label
+                  text: "Home Connected"
               - lvgl.page.show: boot_sound_page
               - delay: 2s
               - script.execute:
