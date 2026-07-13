@@ -1,0 +1,414 @@
+# Hardware package for waveshare 1.75 OLED
+substitutions:
+  media_sample_rate: 48000
+
+spi:
+  id: display_qspi
+  type: quad
+  clk_pin: GPIO38
+  data_pins: [GPIO4, GPIO5, GPIO6, GPIO7]
+
+i2c:
+  id: bus_a
+  sda: GPIO15
+  scl: GPIO14
+
+i2c_device:
+  - id: axp2101_dev
+    i2c_id: bus_a
+    address: 0x34
+
+sensor:
+  - platform: template
+    id: axp2101_batt_v
+    name: "Battery Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    accuracy_decimals: 2
+    update_interval: 120s
+    lambda: |-
+      uint8_t data[2] = {0, 0};
+      if (!id(axp2101_dev).read_bytes(0x34, data, 2)) {
+        ESP_LOGW("axp2101", "Failed to read VBAT");
+        return NAN;
+      }
+      uint16_t mv = ((data[0] & 0x3F) << 8) | data[1];
+      return mv / 1000.0f;
+
+    on_value:
+      then:
+        - sensor.template.publish:
+            id: battery_percentage
+            state: !lambda 'return x;'
+
+  - platform: template
+    id: battery_percentage
+    name: "Battery Percentage"
+    update_interval: never
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    icon: mdi:battery-medium
+    filters:
+      - calibrate_linear:
+          method: exact
+          datapoints:
+            - 2.80 -> 0.0
+            - 3.10 -> 10.0
+            - 3.30 -> 20.0
+            - 3.45 -> 30.0
+            - 3.60 -> 40.0
+            - 3.70 -> 50.0
+            - 3.75 -> 60.0
+            - 3.80 -> 70.0
+            - 3.90 -> 80.0
+            - 4.00 -> 90.0
+            - 4.20 -> 100.0
+      - lambda: |-
+          if (x > 100) return 100;
+          if (x < 0) return 0;
+          return x;
+
+audio_dac:
+  - platform: es8311
+    id: es8311_dac
+    bits_per_sample: 16bit
+    sample_rate: 48000
+
+audio_adc:
+  - platform: es7210
+    id: es7210_adc
+    bits_per_sample: 16bit
+    sample_rate: 16000
+    
+i2s_audio:
+  - id: i2s_audio_bus
+    i2s_lrclk_pin: GPIO45
+    i2s_bclk_pin: GPIO9
+    i2s_mclk_pin: GPIO42
+    full_duplex: true
+
+microphone:
+  - platform: i2s_audio
+    id: raw_microphone
+    i2s_audio_id: i2s_audio_bus
+    i2s_din_pin: GPIO10
+    adc_type: external
+    channel: stereo
+    pdm: false
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16bit
+  - platform: resampler
+    id: voice_microphone
+    microphone:
+      microphone: raw_microphone
+      channels: [0]
+    sample_rate: 16000
+    buffer_duration: 500ms
+    
+speaker:
+  - platform: i2s_audio
+    id: box_speaker
+    i2s_audio_id: i2s_audio_bus
+    i2s_dout_pin: GPIO8
+    dac_type: external
+    audio_dac: es8311_dac
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16bit
+    channel: mono
+
+  - platform: mixer
+    id: mixing_speaker
+    output_speaker: box_speaker
+    num_channels: 2
+    task_stack_in_psram: true
+    source_speakers:
+      - id: announcement_mixing_input
+      - id: media_mixing_input
+
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+    
+media_source:
+  - platform: audio_file
+    id: audio_file_announcement_source
+  - platform: audio_http
+    id: http_announcement_source
+  - platform: audio_http
+    id: http_media_source
+  - platform: sendspin
+    id: sendspin_media_source
+
+
+media_player:
+  - platform: sendspin
+    id: sendspin_group_media_player
+    name: Sendspin Group Media Player
+
+  - platform: speaker_source
+    id: external_media_player
+    name: Media Player
+
+    announcement_pipeline:
+      format: FLAC
+      num_channels: 1
+      sample_rate: ${media_sample_rate}
+      speaker: announcement_resampling_speaker
+      sources:
+        - audio_file_announcement_source
+        - http_announcement_source
+
+    media_pipeline:
+      format: FLAC
+      num_channels: 2
+      sample_rate: ${media_sample_rate}
+      speaker: media_resampling_speaker
+      sources:
+        - http_media_source
+        - sendspin_media_source
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 0.85
+
+    on_play:
+      then:
+        - script.stop: mp_idle_debounce
+        - if:
+            condition:
+              and:
+                - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                - lambda: 'return !id(va_reply_active);'
+                - not:
+                    media_player.is_announcing:
+                      id: external_media_player
+            then:
+              - lambda: |-
+                  ESP_LOGW("va", "stopping wake word for media playback");
+              - script.execute: stop_wake_word
+        - script.execute: led_ring_apply_state
+        - if:
+            condition:
+              lambda: 'return id(va_phase) == ${va_phase_idle};'
+            then:
+              - if:
+                  condition:
+                    lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+                  then:
+                    - script.execute:
+                        id: set_ui_phase
+                        phase: ${ui_phase_player_controls}
+                  else:
+                    - script.execute:
+                        id: set_ui_phase
+                        phase: ${ui_phase_now_playing}
+
+    on_announcement:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(boot_announce_active);'
+            then:
+              - lvgl.page.show: boot_sound_page
+              - delay: 2s
+              - script.execute:
+                  id: set_ui_phase
+                  phase: !lambda 'return id(ui_phase);'
+              - lambda: 'id(boot_announce_active) = false;'
+
+    on_idle:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(va_reply_active);'
+            then:
+              - lambda: |-
+                  id(va_reply_active) = false;
+              - script.execute: finish_va_reply
+            else:
+              - if:
+                  condition:
+                    and:
+                      - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                      - not:
+                          media_player.is_announcing:
+                            id: external_media_player
+                  then:
+                    - script.execute: start_wake_word
+              - if:
+                  condition:
+                    lambda: 'return id(va_phase) == ${va_phase_idle};'
+                  then:
+                    - script.execute: mp_idle_debounce
+              - script.execute: led_ring_apply_state
+
+    on_pause:
+      then:
+        - script.execute: led_ring_apply_state
+        - if:
+            condition:
+              lambda: 'return id(va_phase) == ${va_phase_idle};'
+            then:
+              - script.execute: start_wake_word
+              - script.execute:
+                  id: set_ui_phase
+                  phase: ${ui_phase_player_controls}
+
+switch:
+  - platform: gpio
+    name: Speaker Enable
+    icon: "mdi:speaker"
+    entity_category: config
+    pin: GPIO46
+    restore_mode: RESTORE_DEFAULT_ON
+
+output:
+  - platform: template
+    id: backlight_brightness
+    type: float
+    write_action:
+      then:
+        - lambda: |-
+            id(main_display).set_brightness(state*255);
+
+light:
+  - platform: monochromatic
+    id: Sled
+    name: "Backlight"
+    output: backlight_brightness
+    default_transition_length:
+      milliseconds: 0
+    initial_state:
+      brightness: 81%
+    restore_mode:
+      ALWAYS_ON
+
+
+script:
+  - id: led_ring_apply_state
+    mode: restart
+    then:
+      - lambda: |-
+          return;
+
+touchscreen:
+  - platform: cst9217
+    id: my_touchscreen
+    interrupt_pin: GPIO11
+    reset_pin: GPIO40
+    display: main_display
+    i2c_id: bus_a
+    transform:
+      swap_xy: false
+      mirror_x: true
+      mirror_y: true
+    on_touch:
+      then:
+        - script.execute: standby_screen_activity
+        - lambda: |-
+            id(touch_active) = true;
+            id(touch_start_x) = touch.x;
+            id(touch_start_y) = touch.y;
+            id(touch_last_x) = touch.x;
+            id(touch_last_y) = touch.y;
+            id(touch_start_ms) = millis();
+            id(touch_swipe_detected) = false;
+    on_update:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            for (auto &touch : touches) {
+              if (touch.state >= 1 && touch.state <= 2) {
+                id(touch_last_x) = touch.x;
+                id(touch_last_y) = touch.y;
+                const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+                const int swipe_min_dist = std::max(16, min_dim / 8);
+                if (std::abs(id(touch_last_x) - id(touch_start_x)) >= swipe_min_dist ||
+                    std::abs(id(touch_last_y) - id(touch_start_y)) >= swipe_min_dist) {
+                  id(touch_swipe_detected) = true;
+                  lv_obj_remove_state(id(controls_mute_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_repeat_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_shuffle_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
+                }
+                break;
+              }
+            }
+    on_release:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            id(touch_active) = false;
+
+            const int dx = id(touch_last_x) - id(touch_start_x);
+            const int dy = id(touch_last_y) - id(touch_start_y);
+            const int abs_x = std::abs(dx);
+            const int abs_y = std::abs(dy);
+            const uint32_t elapsed = millis() - id(touch_start_ms);
+            const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+            const int swipe_min_dist = std::max(16, min_dim / 8);
+            const int tap_max_dist = std::max(14, min_dim / 12);
+
+            if (id(va_phase) != ${va_phase_idle}) {
+              id(stop_active_va)->execute();
+              return;
+            }
+
+            if (elapsed <= 1500 && (abs_x >= swipe_min_dist || abs_y >= swipe_min_dist)) {
+              if (id(ui_phase) == ${ui_phase_now_playing}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(now_playing_swipe_left)->execute();
+                  } else {
+                    id(now_playing_swipe_right)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(start_manual_va)->execute();
+                } else {
+                  id(open_playlist_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_player_controls}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(player_controls_swipe_next)->execute();
+                  } else {
+                    id(player_controls_swipe_previous)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(start_manual_va)->execute();
+                } else {
+                  id(open_playlist_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_playlist_menu}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(player_controls_swipe_next)->execute();
+                  } else {
+                    id(player_controls_swipe_previous)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(close_playlist_menu)->execute();
+                }
+              }
+              return;
+            }
+
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
+              id(set_ui_phase)->execute(${ui_phase_player_controls});
+            }
+
+
+display:
+  - platform: mipi_spi
+    id: main_display
+    model: ${display_model}
+    update_interval: never
