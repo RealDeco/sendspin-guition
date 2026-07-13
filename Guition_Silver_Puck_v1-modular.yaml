@@ -4,12 +4,14 @@ substitutions:
 
   # User settings
 
-  startup_sound_file: Home_Connected # options are: Home_Connected or Home_Connected_Male
+  startup_sound_file: "Home_Connected" # (options are: available, Home_Connected, Home_Connected_Male, Computer_Ready)
+  wakeup_sound: "popup" # (options are: popup, wake_word_triggered)
   imagemodel1: "Gwen" # options are: below
   imagemodel2: "Alfred" # options are below
 
-# AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, HA-character, ha-girl, Hacker, Harley,
-# Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
+# AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, Gwen_Black, 
+# HA-character, ha-girl, Hacker, Harley, Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
+
 
   display_model: "JC3636W518" # JC3636W518 for v1, JC3636W518V2 for v2
   pdm_mic_type: "false" # false for v1, true for v2
@@ -93,13 +95,28 @@ logger:
 
 api:
   on_client_connected:
-    - lambda: |-
-        if (!id(boot_sound_played)) {
-          id(boot_sound_played) = true;
-          if (id(startup_sound_switch).state) {
-            id(play_sound)->execute(true, std::string("ready_sound"));
-          }
-        }
+    - if:
+        condition:
+          lambda: 'return !id(boot_sound_played) && !id(boot_announce_active);'
+        then:
+          - lambda: 'id(boot_announce_active) = true;'
+          - lvgl.label.update:
+              id: boot_sound_label
+              text: "Home Connected"
+          - if:
+              condition:
+                switch.is_on: startup_sound_switch
+              then:
+                - lambda: 'id(play_sound)->execute(true, std::string("ready_sound"));'
+                - delay: 3500ms
+              else:
+                - delay: 2s
+          - lambda: |-
+              id(boot_sound_played) = true;
+              id(boot_announce_active) = false;
+          - script.execute:
+              id: set_ui_phase
+              phase: !lambda 'return id(ui_phase);'
 
 ota:
   - platform: esphome
@@ -244,10 +261,6 @@ globals:
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
-  - id: timer_progress_label
-    type: lv_obj_t*
-    restore_value: no
-    initial_value: "nullptr"
   - id: accent_red
     type: int
     restore_value: yes
@@ -272,76 +285,57 @@ globals:
 image:
 ### model 1
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/playing.png
-    id: fallback_playing_image1
-    resize: ${imageheight}x${imageheight}
+    id: fallback_playing_image
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/idle.png
     id: va_waiting_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/listening.png
     id: va_listening_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/thinking.png
     id: va_thinking_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/replying.png
     id: va_replying_image1
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
 ### model 2
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/playing.png
-    id: fallback_playing_image2
-    resize: ${imageheight}x${imageheight}
-    type: RGB565
-    dither: NONE
-
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/idle.png
     id: va_waiting_image2
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/listening.png
     id: va_listening_image2
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/thinking.png
     id: va_thinking_image2
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
   - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/replying.png
     id: va_replying_image2
-    resize: ${imageheight}x${imageheight}
-    type: RGB565
-    dither: NONE
-
-### other
-  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/error.png
-    id: va_error_image
-    resize: ${imageheight}x${imageheight}
-    type: RGB565
-    dither: NONE
-
-  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/timer_finished.png
-    id: va_timer_finished_image
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
@@ -352,7 +346,7 @@ generic_image:
     id: sendspin_album_art
     format: jpeg
     type: RGB565
-    resize: ${imageheight}x${imageheight}
+    resize: ${imagewidth}x${imageheight}
     source: ALBUM
     on_image_display:
       - script.stop: album_art_timeout_fallback
@@ -371,13 +365,13 @@ generic_image:
           }
       - lvgl.image.update:
           id: album_art_widget
-          src: fallback_playing_image1
+          src: fallback_playing_image
       - lvgl.image.update:
           id: controls_album_art_widget
-          src: fallback_playing_image1
+          src: fallback_playing_image
       - lvgl.image.update:
           id: playlist_album_art_widget
-          src: fallback_playing_image1
+          src: fallback_playing_image
 
 sendspin:
   id: sendspin_hub
@@ -388,6 +382,8 @@ audio_file:
     file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac
   - id: ready_sound
     file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${startup_sound_file}.flac
+  - id: wake_word_sound
+    file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${wakeup_sound}.flac
 
 http_request:
 
@@ -414,6 +410,14 @@ switch:
     id: startup_sound_switch
     name: Startup sound
     icon: "mdi:card-text-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  - platform: template
+    id: wake_word_sound_switch
+    name: Wake word sound
+    icon: "mdi:ear-hearing"
     entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
@@ -559,6 +563,7 @@ select:
       - clock
       - hacker
       - mission
+      - redmarble
       - starrysky
       - tron
       - waterdrops
@@ -806,6 +811,11 @@ micro_wake_word:
           ESP_LOGW("va", "wake word did not match configured labels, falling back to image set 1");
         }
         ESP_LOGW("va", "using image set %d for wake word: %s", id(active_image_set), wake_word.c_str());
+    - if:
+        condition:
+          switch.is_on: wake_word_sound_switch
+        then:
+          - lambda: 'id(play_sound)->execute(false, std::string("wake_word_sound"));'
     - if:
         condition:
           switch.is_off: mute
@@ -1247,6 +1257,7 @@ font:
       - "\U000F040E"
       - "\U000F04AD"
       - "\U000F04AE"
+      - "\U000F057E"
       - "\U000F075D"
       - "\U000F075E"
       - "\U000F075F"
@@ -1255,6 +1266,13 @@ font:
       - "\U000F0458"
       - "\U000F049D"
       - "\U000F049E"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_status
+    size: 140
+    glyphs:
+      - "\U000F0026"
+      - "\U000F0020"
 
 script:
   - id: finish_va_reply
@@ -1319,6 +1337,8 @@ script:
           then:
             - lambda: |-
                 lv_img_set_src(id(va_phase_image_widget), id(active_image_set) == 2 ? id(va_waiting_image2) : id(va_waiting_image1));
+                lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
             - if:
                 condition:
                   lambda: return id(manual_va_slide_up);
@@ -1336,6 +1356,8 @@ script:
           then:
             - lambda: |-
                 lv_img_set_src(id(va_phase_image_widget), id(active_image_set) == 2 ? id(va_listening_image2) : id(va_listening_image1));
+                lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: va_page
       - if:
           condition:
@@ -1343,6 +1365,8 @@ script:
           then:
             - lambda: |-
                 lv_img_set_src(id(va_phase_image_widget), id(active_image_set) == 2 ? id(va_thinking_image2) : id(va_thinking_image1));
+                lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: va_page
       - if:
           condition:
@@ -1350,17 +1374,40 @@ script:
           then:
             - lambda: |-
                 lv_img_set_src(id(va_phase_image_widget), id(active_image_set) == 2 ? id(va_replying_image2) : id(va_replying_image1));
+                lv_obj_add_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
             - lvgl.page.show: va_page
       - if:
           condition:
             lambda: return phase == ${va_phase_error};
           then:
-            - lvgl.page.show: va_error_page
+            - lambda: |-
+                lv_label_set_text(id(va_status_icon), "\U000F0026");
+                lv_label_set_text(id(va_status_icon_glow), "\U000F0026");
+                lv_obj_set_style_text_color(id(va_status_icon), lv_color_hex(0xFF6666), 0);
+                lv_obj_set_style_text_color(id(va_status_icon_glow), lv_color_hex(0x803333), 0);
+                lv_label_set_text(id(va_status_title), "ERROR");
+                lv_obj_set_style_text_color(id(va_status_title), lv_color_hex(0xFF6666), 0);
+                lv_obj_clear_flag(id(va_status_subtitle), LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(id(va_status_subtitle), "Something went wrong");
+                lv_obj_add_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+            - lvgl.page.show: va_page
       - if:
           condition:
             lambda: return phase == ${va_phase_timer_ringing};
           then:
-            - lvgl.page.show: va_timer_done_page
+            - lambda: |-
+                lv_label_set_text(id(va_status_icon), "\U000F0020");
+                lv_label_set_text(id(va_status_icon_glow), "\U000F0020");
+                lv_obj_set_style_text_color(id(va_status_icon), lv_color_hex(0xFFA030), 0);
+                lv_obj_set_style_text_color(id(va_status_icon_glow), lv_color_hex(0x805020), 0);
+                lv_label_set_text(id(va_status_title), "TIMER FINISHED");
+                lv_obj_set_style_text_color(id(va_status_title), lv_color_hex(0xFFA030), 0);
+                lv_obj_add_flag(id(va_status_subtitle), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(va_phase_image_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(va_status_block), LV_OBJ_FLAG_HIDDEN);
+            - lvgl.page.show: va_page
       - if:
           condition:
             lambda: return phase != ${va_phase_idle};
@@ -1542,23 +1589,25 @@ script:
       - script.execute: standby_screen_activity
       - if:
           condition:
-            lambda: 'return phase == ${ui_phase_standby};'
+            lambda: 'return id(boot_sound_played) && phase == ${ui_phase_standby};'
           then:
             - lvgl.page.show: idle_page
       - if:
           condition:
-            lambda: 'return phase == ${ui_phase_player_controls};'
+            lambda: 'return id(boot_sound_played) && phase == ${ui_phase_player_controls};'
           then:
             - lvgl.page.show: player_controls_page
+            - lambda: |-
+                lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
       - if:
           condition:
-            lambda: 'return phase == ${ui_phase_now_playing};'
+            lambda: 'return id(boot_sound_played) && phase == ${ui_phase_now_playing};'
           then:
             - lvgl.page.show: sendspin_page
       - if:
           condition:
-            lambda: 'return phase == ${ui_phase_playlist_menu};'
+            lambda: 'return id(boot_sound_played) && phase == ${ui_phase_playlist_menu};'
           then:
             - lvgl.page.show: playlist_menu_page
             - script.execute: player_controls_timeout
@@ -1925,7 +1974,12 @@ script:
           condition:
             lambda: 'return !id(touch_swipe_detected);'
           then:
-            - media_player.mute: external_media_player
+            - lambda: |-
+                bool new_muted = !id(external_media_player).is_muted();
+                auto call = id(external_media_player).make_call();
+                call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                call.perform();
+                lv_label_set_text(id(controls_mute_icon), new_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_keep_open
 
   - id: player_controls_slide_to_now_playing
@@ -1954,7 +2008,7 @@ script:
           lv_obj_t *incoming_art = id(album_art_transition_widget);
           lv_anim_del(current_art, nullptr);
           lv_anim_del(incoming_art, nullptr);
-          lv_img_set_src(incoming_art, id(fallback_playing_image1));
+          lv_img_set_src(incoming_art, id(fallback_playing_image));
           lv_obj_set_x(current_art, 0);
           lv_obj_set_x(incoming_art, -direction * ${screenwidth});
           lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
@@ -1984,7 +2038,7 @@ script:
       - lambda: |-
           lv_obj_t *current_art = id(album_art_widget);
           lv_obj_t *incoming_art = id(album_art_transition_widget);
-          lv_img_set_src(current_art, id(fallback_playing_image1));
+          lv_img_set_src(current_art, id(fallback_playing_image));
           lv_obj_set_x(current_art, 0);
           lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
           lv_obj_add_flag(incoming_art, LV_OBJ_FLAG_HIDDEN);
@@ -2056,7 +2110,6 @@ script:
     mode: restart
     then:
       - lambda: |-
-          static constexpr int TIMER_SEGMENTS = 144;
           bool found = false;
           int left = 0;
           int total = 0;
@@ -2072,6 +2125,8 @@ script:
           id(timer_seconds_left) = found ? left : 0;
           id(timer_total_seconds) = found && total > 0 ? total : 0;
 
+          static constexpr int TIMER_SEGMENTS = 144;
+
           if (id(timer_progress_arc) == nullptr) {
             id(timer_progress_arc) = lv_obj_create(lv_layer_top());
             lv_obj_remove_style_all(id(timer_progress_arc));
@@ -2079,7 +2134,6 @@ script:
             lv_obj_center(id(timer_progress_arc));
             lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_CLICKABLE);
             lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_SCROLLABLE);
-
             const float cx = ${screenwidth} / 2.0f;
             const float cy = ${screenheight} / 2.0f;
             const float radius = 169.0f;
@@ -2097,26 +2151,21 @@ script:
             }
           }
 
-          if (id(timer_progress_label) == nullptr) {
-            id(timer_progress_label) = lv_label_create(lv_layer_top());
-            lv_obj_set_width(id(timer_progress_label), 180);
-            lv_obj_align(id(timer_progress_label), LV_ALIGN_TOP_MID, 0, 6);
-            lv_obj_set_style_text_align(id(timer_progress_label), LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_set_style_text_color(id(timer_progress_label), lv_color_hex(0xFFFFFF), 0);
-            lv_obj_set_style_text_font(id(timer_progress_label), id(font_date), 0);
-            lv_obj_add_flag(id(timer_progress_label), LV_OBJ_FLAG_HIDDEN);
-          }
-
           if (!found || total <= 0) {
             lv_obj_add_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(timer_progress_label), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
             if (id(standby_background_enabled).state) {
               lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_move_background(id(standby_background_widget));
             }
             return;
           }
+
+          float remain = (float) left / (float) total;
+          if (remain < 0.0f) remain = 0.0f;
+          if (remain > 1.0f) remain = 1.0f;
 
           int active_segments = (int) lroundf((float) left * (float) TIMER_SEGMENTS / (float) total);
           active_segments = std::max(0, std::min(TIMER_SEGMENTS, active_segments));
@@ -2129,7 +2178,113 @@ script:
           }
           lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
           lv_obj_move_foreground(id(timer_progress_arc));
-          lv_obj_add_flag(id(timer_progress_label), LV_OBJ_FLAG_HIDDEN);
+
+          lv_obj_t *canvas = id(hourglass_canvas);
+          lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_TRANSP);
+
+          lv_layer_t layer;
+          lv_canvas_init_layer(canvas, &layer);
+
+          auto fill_rect = [&](int x, int y, int w, int h, lv_color_t color, int radius) {
+            lv_draw_rect_dsc_t dsc;
+            lv_draw_rect_dsc_init(&dsc);
+            dsc.bg_color = color;
+            dsc.bg_opa = LV_OPA_COVER;
+            dsc.border_width = 0;
+            dsc.radius = radius;
+            lv_area_t area{x, y, x + w - 1, y + h - 1};
+            lv_draw_rect(&layer, &dsc, &area);
+          };
+          auto fill_circle = [&](int cx, int cy, int r, lv_color_t color) {
+            fill_rect(cx - r, cy - r, r * 2 + 1, r * 2 + 1, color, LV_RADIUS_CIRCLE);
+          };
+          auto thick_line = [&](int x1, int y1, int x2, int y2, lv_color_t color, int width) {
+            lv_draw_line_dsc_t dsc;
+            lv_draw_line_dsc_init(&dsc);
+            dsc.color = color;
+            dsc.width = width;
+            dsc.opa = LV_OPA_COVER;
+            dsc.round_start = true;
+            dsc.round_end = true;
+            dsc.p1.x = x1; dsc.p1.y = y1;
+            dsc.p2.x = x2; dsc.p2.y = y2;
+            lv_draw_line(&layer, &dsc);
+          };
+
+          const lv_color_t outline_c  = lv_color_hex(0xFFFFFF);
+          const lv_color_t sand_c     = lv_color_hex(0xFFC107);
+          const lv_color_t sand_dim_c = lv_color_hex(0xB88812);
+
+          const int hourglass_w = 100, hourglass_h = 190;
+          const int hg_x = 64;
+          const int hg_y = (360 - hourglass_h) / 2;
+          const int hg_cx = hg_x + hourglass_w / 2;
+          const int hg_top = hg_y;
+          const int hg_mid = hg_y + hourglass_h / 2;
+          const int hg_bot = hg_y + hourglass_h;
+          const int rim_h = 6;
+          const int throat_w = 8;
+          const int chamber_pad = 8;
+          const int top_inner_y = hg_top + rim_h + 2;
+          const int bot_inner_y = hg_bot - rim_h - 2;
+          const int line_thick = 2;
+          const int drop_radius = 3;
+
+          fill_rect(hg_x, hg_top, hourglass_w, rim_h, outline_c, 0);
+          fill_rect(hg_x, hg_bot - rim_h, hourglass_w, rim_h, outline_c, 0);
+
+          thick_line(hg_x + chamber_pad, top_inner_y, hg_cx - throat_w / 2, hg_mid, outline_c, line_thick);
+          thick_line(hg_x + hourglass_w - chamber_pad, top_inner_y, hg_cx + throat_w / 2, hg_mid, outline_c, line_thick);
+          thick_line(hg_cx - throat_w / 2, hg_mid, hg_x + chamber_pad, bot_inner_y, outline_c, line_thick);
+          thick_line(hg_cx + throat_w / 2, hg_mid, hg_x + hourglass_w - chamber_pad, bot_inner_y, outline_c, line_thick);
+
+          const int top_chamber_h = std::max(1, hg_mid - top_inner_y - 3);
+          const int bot_chamber_h = std::max(1, bot_inner_y - hg_mid - 3);
+          const int top_surface_y = top_inner_y + (int) lroundf(top_chamber_h * (1.0f - remain));
+          const int bot_fill_h    = (int) lroundf(bot_chamber_h * (1.0f - remain));
+          const int wide = hourglass_w / 2 - chamber_pad;
+          const int neck = std::max(throat_w / 2, 2);
+
+          if (remain > 0.0f) {
+            const int y_end   = hg_mid - 4;
+            const int y_start = std::min(std::max(top_surface_y, top_inner_y), y_end);
+            for (int y = y_start; y <= y_end; ++y) {
+              float t = (float) (y - top_inner_y) / (float) std::max(1, hg_mid - top_inner_y);
+              t = std::min(1.0f, std::max(0.0f, t));
+              int hw = wide - (int) lroundf((wide - neck) * t);
+              lv_color_t col = (y == y_start) ? sand_c : sand_dim_c;
+              fill_rect(hg_cx - hw, y, hw * 2 + 1, 1, col, 0);
+            }
+          }
+
+          if (bot_fill_h > 0) {
+            const int y_end   = bot_inner_y;
+            const int y_start = std::max(hg_mid + 4, bot_inner_y - bot_fill_h);
+            for (int y = y_start; y <= y_end; ++y) {
+              float t = (float) (y - hg_mid) / (float) std::max(1, bot_inner_y - hg_mid);
+              t = std::min(1.0f, std::max(0.0f, t));
+              int hw = neck + (int) lroundf((wide - neck) * t);
+              lv_color_t col = (y > y_start + (y_end - y_start) / 2) ? sand_dim_c : sand_c;
+              fill_rect(hg_cx - hw, y, hw * 2 + 1, 1, col, 0);
+            }
+          }
+
+          if (remain > 0.0f) {
+            const int drop_top = hg_mid + 3;
+            const int bottom_surface_y = (bot_fill_h > 0) ? std::max(hg_mid + 5, bot_inner_y - bot_fill_h) : bot_inner_y;
+            const int drop_bot   = std::max(drop_top + 1, bottom_surface_y - 2);
+            const int drop_steps = std::max(4, std::min(10, (drop_bot - drop_top) / 3));
+            const uint32_t elapsed_seconds = total > left ? (uint32_t) (total - left) : 0;
+            const int drop_step        = elapsed_seconds % drop_steps;
+            const int second_drop_step = (drop_step + drop_steps / 2) % drop_steps;
+            const int drop_y1 = drop_top + ((drop_bot - drop_top) * drop_step)        / std::max(1, drop_steps - 1);
+            const int drop_y2 = drop_top + ((drop_bot - drop_top) * second_drop_step) / std::max(1, drop_steps - 1);
+            fill_circle(hg_cx, drop_y1, drop_radius, sand_c);
+            fill_circle(hg_cx, drop_y2, drop_radius, sand_dim_c);
+          }
+
+          lv_canvas_finish_layer(canvas, &layer);
+          lv_obj_clear_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
 
           char text[16];
           if (left >= 3600) {
@@ -2219,13 +2374,13 @@ script:
           then:
             - lvgl.image.update:
                 id: album_art_widget
-                src: fallback_playing_image1
+                src: fallback_playing_image
             - lvgl.image.update:
                 id: controls_album_art_widget
-                src: fallback_playing_image1
+                src: fallback_playing_image
             - lvgl.image.update:
                 id: playlist_album_art_widget
-                src: fallback_playing_image1
+                src: fallback_playing_image
             - lambda: |-
                 if (!id(album_art_slide_active)) {
                   lv_obj_add_flag(id(album_art_transition_widget), LV_OBJ_FLAG_HIDDEN);
@@ -2377,8 +2532,9 @@ lvgl:
       bg_color: 0x000000
       widgets:
         - label:
+            id: boot_sound_label
             align: CENTER
-            text: "Home Connected"
+            text: "Loading..."
             text_color: 0xFFFFFF
             text_font: font_boot
             width: 230
@@ -2399,31 +2555,57 @@ lvgl:
             antialias: false
             clickable: false
 
-    - id: va_error_page
-      bg_color: 0x000000
-      widgets:
-        - image:
-            align: TOP_MID
-            x: 0
-            y: 0
-            src: va_error_image
-            width: ${imagewidth}
-            height: ${imageheight}
-            antialias: false
-            clickable: false
 
-    - id: va_timer_done_page
-      bg_color: 0x000000
-      widgets:
-        - image:
+        - obj:
+            id: va_status_block
             align: TOP_MID
             x: 0
             y: 0
-            src: va_timer_finished_image
             width: ${imagewidth}
             height: ${imageheight}
-            antialias: false
-            clickable: false
+            bg_color: 0x000000
+            bg_opa: COVER
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: va_status_icon_glow
+                  align: CENTER
+                  x: 1
+                  y: -61
+                  text: "\U000F0026"
+                  text_color: 0x803333
+                  text_font: font_mdi_status
+
+              - label:
+                  id: va_status_icon
+                  align: CENTER
+                  y: -62
+                  text: "\U000F0026"
+                  text_color: 0xFF6666
+                  text_font: font_mdi_status
+
+              - label:
+                  id: va_status_title
+                  align: CENTER
+                  y: 80
+                  width: 280
+                  text: "ERROR"
+                  text_color: 0xFF6666
+                  text_font: font_boot
+                  text_align: CENTER
+
+              - label:
+                  id: va_status_subtitle
+                  align: CENTER
+                  y: 116
+                  width: 260
+                  text: "Something went wrong"
+                  text_color: 0xCCCCCC
+                  text_font: font_display
+                  text_align: CENTER
 
     - id: idle_page
       bg_color: 0x000000
@@ -2531,11 +2713,25 @@ lvgl:
                   long_mode: SCROLL_CIRCULAR
                   text_align: CENTER
 
+        - canvas:
+            id: hourglass_canvas
+            align: TOP_MID
+            x: 0
+            y: 0
+            width: ${imagewidth}
+            height: ${imageheight}
+            transparent: true
+            clickable: false
+            scrollable: false
+            hidden: true
+
         - obj:
             id: idle_timer_block
             align: CENTER
-            width: 320
-            height: 190
+            x: 70
+            y: 0
+            width: 160
+            height: 60
             bg_opa: TRANSP
             border_opa: TRANSP
             pad_all: 0
@@ -2543,20 +2739,9 @@ lvgl:
             hidden: true
             widgets:
               - label:
-                  id: idle_timer_title
-                  align: TOP_MID
-                  y: 6
-                  width: 300
-                  text: "Timer Running"
-                  text_color: 0xFFFFFF
-                  text_font: font_date
-                  text_align: CENTER
-
-              - label:
                   id: idle_timer_countdown
                   align: CENTER
-                  y: 26
-                  width: 320
+                  width: 160
                   text: "0:00"
                   text_color: 0xFFFF00
                   text_font: font_7seg
@@ -2571,7 +2756,7 @@ lvgl:
             align: TOP_MID
             x: 0
             y: 0
-            src: fallback_playing_image1
+            src: fallback_playing_image
             width: ${imagewidth}
             height: ${imageheight}
             antialias: false
@@ -2629,8 +2814,9 @@ lvgl:
               - script.execute: player_controls_mute
             widgets:
               - label:
+                  id: controls_mute_icon
                   align: CENTER
-                  text: "\U000F075F"
+                  text: "\U000F057E"
                   text_color: 0xFFFFFF
                   text_font: font_mdi_controls
 
@@ -2776,7 +2962,7 @@ lvgl:
             align: TOP_MID
             x: 0
             y: 0
-            src: fallback_playing_image1
+            src: fallback_playing_image
             width: ${imagewidth}
             height: ${imageheight}
             antialias: false
@@ -2787,7 +2973,7 @@ lvgl:
             align: TOP_MID
             x: 0
             y: 0
-            src: fallback_playing_image1
+            src: fallback_playing_image
             width: ${imagewidth}
             height: ${imageheight}
             antialias: false
@@ -2847,7 +3033,7 @@ lvgl:
             align: TOP_MID
             x: 0
             y: 0
-            src: fallback_playing_image1
+            src: fallback_playing_image
             width: ${imagewidth}
             height: ${imageheight}
             antialias: false
