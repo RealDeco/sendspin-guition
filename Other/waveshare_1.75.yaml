@@ -916,6 +916,12 @@ voice_assistant:
   on_start:
     - lambda: |-
         ESP_LOGW("va", "assist pipeline started");
+    - text_sensor.template.publish:
+        id: text_request
+        state: "..."
+    - text_sensor.template.publish:
+        id: text_response
+        state: "..."
     - script.execute:
         id: set_va_phase
         phase: ${va_phase_waiting_for_command}
@@ -940,9 +946,15 @@ voice_assistant:
   on_stt_end:
     - lambda: |-
         ESP_LOGW("va", "STT result: %s", x.c_str());
+    - text_sensor.template.publish:
+        id: text_request
+        state: !lambda return x;
   on_tts_start:
     - lambda: |-
         ESP_LOGW("va", "TTS text: %s", x.c_str());
+    - text_sensor.template.publish:
+        id: text_response
+        state: !lambda return x;
     - script.execute:
         id: set_va_phase
         phase: ${va_phase_replying}
@@ -1007,6 +1019,21 @@ voice_assistant:
     - switch.turn_on: timer_ringing
 
 text_sensor:
+  - platform: template
+    id: text_request
+    name: Last Voice Request
+    icon: "mdi:account-voice"
+
+  - platform: template
+    id: text_response
+    name: Last Voice Response
+    icon: "mdi:assistant"
+    on_value:
+      lambda: |-
+        if (x.length() > 255) {
+          id(text_response).publish_state(x.substr(0, 253) + "..");
+        }
+
   - platform: template
     id: va_phase_text
     name: Voice assistant phase
