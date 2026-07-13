@@ -113,19 +113,26 @@ api:
   on_client_connected:
     - if:
         condition:
-          lambda: 'return !id(boot_sound_played);'
+          lambda: 'return !id(boot_sound_played) && !id(boot_announce_active);'
         then:
-          - lambda: 'id(boot_sound_played) = true;'
+          - lambda: 'id(boot_announce_active) = true;'
+          - lvgl.label.update:
+              id: boot_sound_label
+              text: "Home Connected"
           - if:
               condition:
                 switch.is_on: startup_sound_switch
               then:
                 - lambda: 'id(play_sound)->execute(true, std::string("ready_sound"));'
+                - delay: 3500ms
               else:
-                - delay: 1s
-                - script.execute:
-                    id: set_ui_phase
-                    phase: !lambda 'return id(ui_phase);'
+                - delay: 2s
+          - lambda: |-
+              id(boot_sound_played) = true;
+              id(boot_announce_active) = false;
+          - script.execute:
+              id: set_ui_phase
+              phase: !lambda 'return id(ui_phase);'
 
 ota:
   - platform: esphome
@@ -1109,10 +1116,10 @@ micro_wake_word:
       id: hey_alfred
 
 ### other wakewords to use at own risk.
-    - model: okay_nabu
-      id: okay_nabu
-    - model: hey_jarvis
-      id: hey_jarvis
+#    - model: okay_nabu
+#      id: okay_nabu
+#    - model: hey_jarvis
+#      id: hey_jarvis
 #    - alexa
 #      id: 
 #    - hey_mycroft
