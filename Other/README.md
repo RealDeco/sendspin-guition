@@ -2,32 +2,60 @@
 
 This directory contains configurations for devices that do not have a dedicated line-out connection.
 
-Instead, these devices use their built-in speaker together with an experimental full-duplex external component.
+Instead, these devices use their built-in speaker together with an experimental full-duplex audio component.
+
+Full-duplex audio eliminates the clicking normally heard when switching between the microphone and speaker. It also makes it possible to use a **stop word** to interrupt the Voice Assistant while it is speaking or to stop a ringing timer.
 
 > [!WARNING]
-> Full-duplex audio support is still experimental and may not be fully stable.
+> Full-duplex audio support is still experimental and may change during development.
 
-> currently STOP word does not work but expect it to when it's final.
+> [!NOTE]
+> Stop-word detection is not currently working, but support is expected when the full-duplex component is finalized.
+
 ---
 
 ## Ball v2
 
-Dual Voice Assistant, Sendspin Player, Playlist Menu & Player control. LVGL.
+### Features
 
-<img width="600" alt="Ball v2" src="https://github.com/user-attachments/assets/9715a9f5-95d1-4579-ba55-8f59ec0783d3" />
+* Dual Voice Assistant
+* Sendspin player
+* Playlist menu
+* Media player controls
+* LVGL interface
+
+<img width="600" alt="Ball v2 with built-in speaker" src="https://github.com/user-attachments/assets/3d6a9d27-57fb-43e0-bad7-55e59d0b380c" />
 
 ---
 
 ## Guition 4.3"
 
-Dual Voice Assistant, Sendspin Player, Playlist Menu & Player control, RSS news feed, Family Photos. LVGL.
+### Features
 
-<img width="600" alt="Guition 4.3-inch display" src="https://github.com/user-attachments/assets/9a38202e-7b34-44fc-8fd4-10509224bebf" />
+* Dual Voice Assistant
+* Sendspin player
+* Playlist menu
+* Media player controls
+* RSS news feed
+* Family photo viewer
+* LVGL interface
+
+Shown here with a custom 3D-printed stand and enclosure designed to hold a 3-inch speaker.
+
+<img width="600" alt="Guition 4.3-inch display with 3D-printed speaker stand" src="https://github.com/user-attachments/assets/308514c7-2f10-44e5-85ee-2f26ee065190" />
 
 ---
 
 ## Waveshare 1.75" OLED
 
-Dual Voice Assistant, Sendspin Player, Playlist Menu & Player control. LVGL.
+### Features
 
-<img width="600" alt="waveshare_1 75" src="https://github.com/user-attachments/assets/88c86c1b-a288-48ae-a8c5-e0638e87c590" />
+* Dual Voice Assistant
+* Sendspin player
+* Playlist menu
+* Media player controls
+* LVGL interface
+
+Shown here with a custom 3D-printed enclosure designed to hold a 3-inch speaker.
+
+<img width="600" alt="Waveshare 1.75-inch OLED with 3D-printed speaker enclosure" src="https://github.com/user-attachments/assets/c34e9f5b-d0f8-4e54-b574-7316cd7962b5" />
