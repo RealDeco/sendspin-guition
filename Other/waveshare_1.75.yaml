@@ -9,10 +9,10 @@ substitutions:
   imagemodel1: "Gwen_Black" # options are: below
   imagemodel2: "Alfred" # options are below
 
-# AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, HA-character, ha-girl, Hacker, Harley,
-# Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
+# AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, Gwen_Black, 
+# HA-character, ha-girl, Hacker, Harley, Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
 
-  display_model: "WAVESHARE-ESP32-S3-TOUCH-AMOLED-1.75" # JC3636W518 for v1, JC3636W518V2 for v2
+  display_model: "WAVESHARE-ESP32-S3-TOUCH-AMOLED-1.75"
 
   # Home Assistant weather entity.
   ha_weather_entity: weather.forecast_home
@@ -3096,7 +3096,7 @@ lvgl:
             id: playlist_1_button
             align: TOP_MID
             x: -74
-            y: 28
+            y: 84
             width: 138
             height: 86
             radius: 18
@@ -3133,7 +3133,7 @@ lvgl:
             id: playlist_2_button
             align: TOP_MID
             x: 74
-            y: 28
+            y: 84
             width: 138
             height: 86
             radius: 18
@@ -3170,7 +3170,7 @@ lvgl:
             id: playlist_3_button
             align: TOP_MID
             x: -74
-            y: 134
+            y: 190
             width: 138
             height: 86
             radius: 18
@@ -3207,7 +3207,7 @@ lvgl:
             id: playlist_4_button
             align: TOP_MID
             x: 74
-            y: 134
+            y: 190
             width: 138
             height: 86
             radius: 18
@@ -3244,7 +3244,7 @@ lvgl:
             id: playlist_5_button
             align: TOP_MID
             x: -74
-            y: 240
+            y: 296
             width: 138
             height: 86
             radius: 18
@@ -3281,7 +3281,7 @@ lvgl:
             id: playlist_6_button
             align: TOP_MID
             x: 74
-            y: 240
+            y: 296
             width: 138
             height: 86
             radius: 18
