@@ -28,4 +28,6 @@ Dual Voice Assistant, Sendspin Player, Playlist Menu & Player control, RSS news 
 
 ## Waveshare 1.75" OLED
 
-*Image coming soon.*
+Dual Voice Assistant, Sendspin Player, Playlist Menu & Player control. LVGL.
+
+<img width="600" alt="waveshare_1 75" src="https://github.com/user-attachments/assets/88c86c1b-a288-48ae-a8c5-e0638e87c590" />
