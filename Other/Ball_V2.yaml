@@ -603,6 +603,16 @@ media_player:
                   id: set_ui_phase
                   phase: ${ui_phase_player_controls}
 
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Button"
+    on_press:
+      - sendspin.switch:
+
 switch:
   - platform: gpio
     name: Speaker Enable
