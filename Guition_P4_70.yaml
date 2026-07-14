@@ -105,6 +105,7 @@ esphome:
           phase: ${va_phase_idle}
       - script.execute: refresh_playlist_labels
       - script.execute: apply_accent_color_debounced
+      - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
 logger:
   level: WARN
@@ -943,7 +944,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: hey_gwen
+    initial_value: "Okay Nabu"
     mode: text
 
   - platform: template
@@ -952,7 +953,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: hey_alfred
+    initial_value: "Hey Jarvis"
     mode: text
 
   - platform: template
@@ -1110,16 +1111,16 @@ micro_wake_word:
   id: mww
   stop_after_detection: false
   models:
-    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_gwen.json
-      id: hey_gwen
-    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_alfred.json
-      id: hey_alfred
+    - model: okay_nabu
+      id: okay_nabu
+    - model: hey_jarvis
+      id: hey_jarvis
+#    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_gwen.json
+#      id: hey_gwen
+#    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_alfred.json
+#      id: hey_alfred
 
 ### other wakewords to use at own risk.
-#    - model: okay_nabu
-#      id: okay_nabu
-#    - model: hey_jarvis
-#      id: hey_jarvis
 #    - alexa
 #      id: 
 #    - hey_mycroft
@@ -1358,6 +1359,13 @@ sensor:
   - platform: sendspin
     id: sendspin_track_duration
     type: track_duration
+  - platform: template
+    id: timer_seconds_remaining
+    name: "Timer Seconds Remaining"
+    unit_of_measurement: "s"
+    icon: "mdi:timer"
+    state_class: measurement
+    accuracy_decimals: 0
 
 text_sensor:
   - platform: template
@@ -2683,6 +2691,7 @@ script:
           id(timer_is_active) = found;
           id(timer_seconds_left) = found ? left : 0;
           id(timer_total_seconds) = found && total > 0 ? total : 0;
+          id(timer_seconds_remaining).publish_state(id(timer_seconds_left));
 
           if (!found || total <= 0) {
             lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
@@ -3635,7 +3644,7 @@ lvgl:
                         id: controls_content_block
                         align: CENTER
                         width: 480
-                        height: 280
+                        height: 360
                         bg_opa: TRANSP
                         border_opa: TRANSP
                         pad_all: 0
@@ -3852,6 +3861,32 @@ lvgl:
                                     text: "\U000F075D"
                                     text_color: 0xFFFFFF
                                     text_font: font_mdi_controls
+
+                          - button:
+                              id: controls_group_button
+                              align: TOP_MID
+                              x: 0
+                              y: 296
+                              width: 240
+                              height: 52
+                              radius: 14
+                              bg_color: 0x202020
+                              bg_opa: 85%
+                              border_color: 0x505050
+                              border_width: 1
+                              pressed:
+                                bg_color: 0x66CCFF
+                                bg_opa: COVER
+                                border_color: 0xFFFFFF
+                                border_width: 3
+                              on_click:
+                                - sendspin.switch:
+                              widgets:
+                                - label:
+                                    align: CENTER
+                                    text: "GROUP"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_display
               - obj:
                   id: playlist_panel
                   align: CENTER
