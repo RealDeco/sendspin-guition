@@ -5,7 +5,7 @@ substitutions:
   startup_sound_file: "Home_Connected" # (options are: available, Home_Connected, Home_Connected_Male, Computer_Ready)
   wakeup_sound: "popup" # (options are: popup, wake_word_triggered)
 
-  imagemodel1: "Gwen"
+  imagemodel1: "Gwen_Black"
   imagemodel2: "Alfred"
 
   ## available models:
@@ -84,9 +84,10 @@ esphome:
       - script.execute: refresh_playlist_labels
       - script.execute: apply_accent_color_debounced
       - script.execute: led_ring_apply_state
+      - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
 logger:
-  level: DEBUG
+  level: WARN
 
 api:
   on_client_connected:
@@ -112,6 +113,11 @@ api:
           - script.execute:
               id: set_ui_phase
               phase: !lambda 'return id(ui_phase);'
+          - if:
+              condition:
+                switch.is_on: battery_display_switch
+              then:
+                - script.execute: refresh_battery_display
 
 ota:
   - platform: esphome
@@ -253,6 +259,14 @@ globals:
     restore_value: no
     initial_value: "nullptr"
   - id: timer_progress_arc
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: battery_bar_widget
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: battery_bar_fill
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
@@ -614,6 +628,20 @@ switch:
     restore_mode: RESTORE_DEFAULT_ON
 
   - platform: template
+    id: battery_display_switch
+    name: Show battery
+    icon: "mdi:battery"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - script.execute: refresh_battery_display
+    on_turn_off:
+      - lambda: |-
+          if (id(battery_bar_widget) != nullptr)
+            lv_obj_add_flag(id(battery_bar_widget), LV_OBJ_FLAG_HIDDEN);
+
+  - platform: template
     id: mute
     name: Mute microphone
     icon: "mdi:microphone-off"
@@ -823,7 +851,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: hey_gwen
+    initial_value: "Okay Nabu"
     mode: text
 
   - platform: template
@@ -832,7 +860,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: hey_alfred
+    initial_value: "Hey Jarvis"
     mode: text
 
   - platform: template
@@ -958,13 +986,21 @@ micro_wake_word:
   ring_buffer_duration: 500ms
 #  stop_after_detection: false
   models:
-    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_gwen.json
-      id: hey_gwen
-    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_alfred.json
-      id: hey_alfred
+    - model: okay_nabu
+      id: okay_nabu
+    - model: hey_jarvis
+      id: hey_jarvis
     - model: https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json
       id: stop
       internal: true
+
+#    - alexa
+#    - hey_mycroft
+#    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_gwen.json
+#      id: hey_gwen
+#    - model: https://raw.githubusercontent.com/TaterTotterson/microWakeWords/refs/heads/main/microWakeWordsV3/hey_alfred.json
+#      id: hey_alfred
+
   on_wake_word_detected:
     - lambda: |-
         ESP_LOGW("va", "micro wake word detected: %s", wake_word.c_str());
@@ -1157,6 +1193,48 @@ sensor:
           send_every: 7
           send_first_at: 1
       - throttle: 1min
+    on_value:
+      - component.update: battery_percentage
+  - platform: template
+    id: battery_percentage
+    name: "Battery Percentage"
+    update_interval: never
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    icon: mdi:battery-medium
+    lambda: return id(battery_voltage).state;
+    filters:
+      - calibrate_linear:
+          method: exact
+          datapoints:
+            - 2.80 -> 0.0
+            - 3.10 -> 10.0
+            - 3.30 -> 20.0
+            - 3.45 -> 30.0
+            - 3.60 -> 40.0
+            - 3.70 -> 50.0
+            - 3.75 -> 60.0
+            - 3.80 -> 70.0
+            - 3.90 -> 80.0
+            - 4.00 -> 90.0
+            - 4.20 -> 100.0
+      - lambda: |-
+          if (x > 100) return 100;
+          if (x < 0) return 0;
+          return x;
+    on_value:
+      - if:
+          condition:
+            switch.is_on: battery_display_switch
+          then:
+            - script.execute: refresh_battery_display
+  - platform: template
+    id: timer_seconds_remaining
+    name: "Timer Seconds Remaining"
+    unit_of_measurement: "s"
+    icon: "mdi:timer"
+    state_class: measurement
+    accuracy_decimals: 0
 
 text_sensor:
   - platform: template
@@ -1559,6 +1637,73 @@ light:
     default_transition_length: 0s
 
 script:
+  - id: refresh_battery_display
+    then:
+      - lambda: |-
+          if (!id(boot_sound_played)) return;
+          if (id(battery_bar_widget) == nullptr) {
+            lv_obj_t *cont = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(cont);
+            lv_obj_set_size(cont, 47, 18);
+            lv_obj_set_pos(cont, 96, 10);
+            lv_obj_clear_flag(cont, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
+            id(battery_bar_widget) = cont;
+
+            lv_obj_t *body = lv_obj_create(cont);
+            lv_obj_remove_style_all(body);
+            lv_obj_set_size(body, 40, 18);
+            lv_obj_set_pos(body, 0, 0);
+            lv_obj_set_style_border_color(body, lv_color_white(), 0);
+            lv_obj_set_style_border_width(body, 2, 0);
+            lv_obj_set_style_outline_color(body, lv_color_black(), 0);
+            lv_obj_set_style_outline_width(body, 1, 0);
+            lv_obj_set_style_outline_pad(body, 0, 0);
+            lv_obj_set_style_bg_color(body, lv_color_hex(0x1A1A1A), 0);
+            lv_obj_set_style_bg_opa(body, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(body, 4, 0);
+            lv_obj_clear_flag(body, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+
+            lv_obj_t *fill = lv_obj_create(cont);
+            lv_obj_remove_style_all(fill);
+            lv_obj_set_size(fill, 0, 12);
+            lv_obj_set_pos(fill, 3, 3);
+            lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(fill, 2, 0);
+            lv_obj_clear_flag(fill, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
+            id(battery_bar_fill) = fill;
+
+            lv_obj_t *nub = lv_obj_create(cont);
+            lv_obj_remove_style_all(nub);
+            lv_obj_set_size(nub, 5, 9);
+            lv_obj_set_pos(nub, 40, 5);
+            lv_obj_set_style_bg_color(nub, lv_color_white(), 0);
+            lv_obj_set_style_bg_opa(nub, LV_OPA_COVER, 0);
+            lv_obj_set_style_outline_color(nub, lv_color_black(), 0);
+            lv_obj_set_style_outline_width(nub, 1, 0);
+            lv_obj_set_style_outline_pad(nub, 0, 0);
+            lv_obj_set_style_radius(nub, 2, 0);
+            lv_obj_clear_flag(nub, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(nub, LV_OBJ_FLAG_SCROLLABLE);
+          }
+
+          float pct = id(battery_percentage).state;
+          if (isnan(pct)) pct = 0;
+          int fill_w = (int)(pct / 100.0f * 34.0f);
+          fill_w = std::max(0, std::min(34, fill_w));
+          lv_obj_set_width(id(battery_bar_fill), fill_w);
+
+          lv_color_t color;
+          if (pct >= 50) color = lv_color_hex(0x4CAF50);
+          else if (pct >= 20) color = lv_color_hex(0xFFC107);
+          else color = lv_color_hex(0xF44336);
+          lv_obj_set_style_bg_color(id(battery_bar_fill), color, 0);
+
+          lv_obj_clear_flag(id(battery_bar_widget), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(battery_bar_widget));
+
   - id: led_ring_apply_state
     mode: restart
     then:
@@ -2406,8 +2551,9 @@ script:
           id(timer_is_active) = found;
           id(timer_seconds_left) = found ? left : 0;
           id(timer_total_seconds) = found && total > 0 ? total : 0;
+          id(timer_seconds_remaining).publish_state(id(timer_seconds_left));
 
-          static constexpr int TIMER_SEGMENTS = 144;
+          static constexpr int TIMER_SEGMENTS = 60;
 
           if (id(timer_progress_arc) == nullptr) {
             id(timer_progress_arc) = lv_obj_create(lv_layer_top());
