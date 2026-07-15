@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esphome/core/defines.h"
 #ifdef USE_LVGL
 
 #include "esphome/core/component.h"
