@@ -7,6 +7,7 @@
 #include "esphome/core/hal.h"
 #include <cstring>
 #include <cstdio>
+#include <cmath>
 #include <algorithm>
 
 #ifdef USE_ESP32
@@ -18,7 +19,7 @@ namespace flappy_bird {
 
 static const char *const TAG = "flappy_bird";
 
-// 3×5 pixel digit bitmaps (3 bits per row, MSB = left column)
+// 3×5 pixel digit bitmaps (3 bits/row, MSB = left column)
 static const uint8_t DIGIT_FONT[10][5] = {
     {0b111, 0b101, 0b101, 0b101, 0b111},  // 0
     {0b010, 0b110, 0b010, 0b010, 0b111},  // 1
@@ -32,7 +33,7 @@ static const uint8_t DIGIT_FONT[10][5] = {
     {0b111, 0b101, 0b111, 0b001, 0b111},  // 9
 };
 
-// ---- ESPHome loop — drives game tick independent of LVGL timer scheduler ----
+// ---- ESPHome loop — drives game tick independent of LVGL scheduler ----
 
 void FlappyBirdGame::loop() {
     if (state_ == FBState::IDLE || !canvas_) return;
@@ -49,10 +50,21 @@ void FlappyBirdGame::start_game() {
     if (state_ != FBState::IDLE) stop_game();
     init_();
     if (!canvas_) return;
-    reset_();
+
+    // Position bird and clouds; pipes stay off-screen until PLAYING
+    bird_y_     = FB_H / 2.0f - 15;
+    bird_vel_   = 0;
+    bird_frame_ = 0;
+    bob_phase_  = 0;
+    frame_cnt_  = 0;
+    score_      = 0;
+    clouds_[0]  = {10.0f,  28, CLOUD_SPR_W};
+    clouds_[1]  = {120.0f, 38, CLOUD_SPR_W};
+    clouds_[2]  = {195.0f, 18, CLOUD_SPR_W};
+
     last_tick_ms_ = millis();
-    state_ = FBState::PLAYING;
-    ESP_LOGI(TAG, "Game started");
+    state_ = FBState::READY;
+    ESP_LOGI(TAG, "Game ready");
 }
 
 void FlappyBirdGame::stop_game() {
@@ -67,20 +79,39 @@ void FlappyBirdGame::toggle_game() {
 }
 
 void FlappyBirdGame::flap() {
-    if (state_ == FBState::PLAYING) {
+    if (state_ == FBState::READY) {
+        // First tap: launch into gameplay with an initial flap
+        reset_pipes_();
+        death_ticks_ = 0;
+        state_       = FBState::PLAYING;
+        bird_vel_    = flap_str_;
+        bird_frame_  = 1;
+    } else if (state_ == FBState::PLAYING) {
         bird_vel_   = flap_str_;
         bird_frame_ = 1;
     } else if (state_ == FBState::DEAD && death_ticks_ > 30) {
-        // Tap to restart after a brief pause so death tap doesn't immediately re-flap
-        start_game();
+        // Tap to restart — go back to READY screen
+        score_      = 0;
+        bob_phase_  = 0;
+        bird_y_     = FB_H / 2.0f - 15;
+        bird_vel_   = 0;
+        frame_cnt_  = 0;
+        clouds_[0]  = {10.0f,  28, CLOUD_SPR_W};
+        clouds_[1]  = {120.0f, 38, CLOUD_SPR_W};
+        clouds_[2]  = {195.0f, 18, CLOUD_SPR_W};
+        state_      = FBState::READY;
     }
 }
 
 void FlappyBirdGame::game_tick() {
     if (!canvas_) return;
     frame_cnt_++;
-    if      (state_ == FBState::PLAYING) tick_playing_();
-    else if (state_ == FBState::DEAD)    tick_dead_();
+    switch (state_) {
+        case FBState::READY:   tick_ready_();   break;
+        case FBState::PLAYING: tick_playing_(); break;
+        case FBState::DEAD:    tick_dead_();    break;
+        default: break;
+    }
 }
 
 // ---- lifecycle ----
@@ -117,27 +148,29 @@ void FlappyBirdGame::cleanup_() {
     }
 }
 
-void FlappyBirdGame::reset_() {
-    bird_y_      = FB_H / 2.0f - 10;
-    bird_vel_    = 0;
-    bird_frame_  = 0;
-    frame_cnt_   = 0;
-    score_       = 0;
-    death_ticks_ = 0;
-
+void FlappyBirdGame::reset_pipes_() {
     int min_gy = 35, max_gy = FB_H - FB_GROUND - gap_size_ - 35;
     if (max_gy < min_gy) max_gy = min_gy;
-
     for (int i = 0; i < FB_NPIPES; i++) {
         pipes_[i] = {(float)(FB_W + 50 + i * (FB_W / FB_NPIPES + 20)),
                      min_gy + rand() % (max_gy - min_gy + 1), false};
     }
-    clouds_[0] = {10.0f,  28, CLOUD_SPR_W};
-    clouds_[1] = {120.0f, 38, CLOUD_SPR_W};
-    clouds_[2] = {195.0f, 18, CLOUD_SPR_W};
 }
 
 // ---- game logic ----
+
+void FlappyBirdGame::tick_ready_() {
+    // Clouds drift slowly
+    for (auto &c : clouds_) {
+        c.x -= pipe_speed_ * 0.15f;
+        if (c.x + c.w < 0) { c.x = FB_W + 5; c.y = 12 + rand() % 40; c.w = CLOUD_SPR_W; }
+    }
+    // Bird bobs up/down gently
+    bob_phase_ += 0.2f;
+    bird_y_     = (FB_H / 2.0f) - 20 + 8.0f * sinf(bob_phase_);
+    bird_frame_ = (frame_cnt_ / 8) % 3;
+    render_();
+}
 
 void FlappyBirdGame::tick_playing_() {
     bird_vel_ += gravity_;
@@ -148,6 +181,8 @@ void FlappyBirdGame::tick_playing_() {
     if (bird_y_ >= FB_H - FB_GROUND - FB_BIRD_R) {
         bird_y_ = FB_H - FB_GROUND - FB_BIRD_R;
         state_ = FBState::DEAD; death_ticks_ = 0;
+        if (score_ > high_score_) high_score_ = score_;
+        if (game_over_trigger_) game_over_trigger_->trigger(score_);
         render_(); return;
     }
 
@@ -175,7 +210,11 @@ void FlappyBirdGame::tick_playing_() {
         }
     }
 
-    if (check_collision_()) { state_ = FBState::DEAD; death_ticks_ = 0; }
+    if (check_collision_()) {
+        state_ = FBState::DEAD; death_ticks_ = 0;
+        if (score_ > high_score_) high_score_ = score_;
+        if (game_over_trigger_) game_over_trigger_->trigger(score_);
+    }
     render_();
 }
 
@@ -208,7 +247,6 @@ void FlappyBirdGame::fb_fill(int x, int y, int w, int h, uint16_t c) {
     int x0 = std::max(0, x),  x1 = std::min(FB_W, x + w);
     int y0 = std::max(0, y),  y1 = std::min(FB_H, y + h);
     if (x0 >= x1 || y0 >= y1) return;
-    int rw = x1 - x0;
     for (int row = y0; row < y1; row++)
         std::fill(fb_ + row * FB_W + x0, fb_ + row * FB_W + x1, c);
 }
@@ -257,7 +295,6 @@ void FlappyBirdGame::fb_blend_rect(int x, int y, int w, int h, uint8_t opa) {
     }
 }
 
-// Draw one digit at (x,y) using pixel-art 3×5 font scaled up by `scale`
 void FlappyBirdGame::fb_digit(int x, int y, int d, int scale, uint16_t c) {
     if (d < 0 || d > 9) return;
     for (int row = 0; row < 5; row++) {
@@ -269,33 +306,29 @@ void FlappyBirdGame::fb_digit(int x, int y, int d, int scale, uint16_t c) {
     }
 }
 
-// Draw score centred at top of screen
 void FlappyBirdGame::fb_score(int score) {
     const int scale = 3;
-    const int dw = 3 * scale + scale;  // digit width + gap
+    const int dw    = 3 * scale + scale;
     char buf[8];
     snprintf(buf, sizeof(buf), "%d", score);
-    int len = (int) strlen(buf);
-    int total_w = len * dw - scale;  // no gap after last digit
-    int sx = (FB_W - total_w) / 2;
-    for (int i = 0; i < len; i++) {
+    int len     = (int) strlen(buf);
+    int total_w = len * dw - scale;
+    int sx      = (FB_W - total_w) / 2;
+    for (int i = 0; i < len; i++)
         fb_digit(sx + i * dw, 16, buf[i] - '0', scale, COL_WHITE);
-    }
 }
 
-// ---- render ----
+// ---- shared scene drawing ----
 
-void FlappyBirdGame::render_() {
-    // ---- All drawing is direct pixel writes — no LVGL layer involved ----
-
-    // Sky
+void FlappyBirdGame::draw_scene_() {
     fb_fill(0, 0, FB_W, FB_H, COL_SKY);
-
-    // Clouds (sprite, alpha-blended onto sky)
     for (auto &c : clouds_)
         fb_blit_alpha((int)c.x, c.y, spr_cloud_px, CLOUD_SPR_W, CLOUD_SPR_H);
+    fb_fill(0, FB_H - FB_GROUND, FB_W, FB_GROUND, COL_GROUND);
+    fb_fill(0, FB_H - FB_GROUND, FB_W, 7,         COL_GRASS);
+}
 
-    // Pipes
+void FlappyBirdGame::draw_pipes_() {
     for (auto &p : pipes_) {
         int px = (int)p.x;
         int gt = p.gap_y;
@@ -306,47 +339,76 @@ void FlappyBirdGame::render_() {
         int bt = gb + FB_CAP_H, bh = FB_H - FB_GROUND - bt;
         if (bh > 0) fb_fill(px, bt, FB_PIPE_W, bh, COL_PIPE);
     }
+}
 
-    // Ground
-    fb_fill(0, FB_H - FB_GROUND, FB_W, FB_GROUND, COL_GROUND);
-    fb_fill(0, FB_H - FB_GROUND, FB_W, 7,         COL_GRASS);
-
-    // Bird
+void FlappyBirdGame::draw_bird_() {
     static const uint8_t *bird_px[3] = {spr_bird_mid_px, spr_bird_up_px, spr_bird_dn_px};
     fb_blit_alpha(120 - BIRD_SPR_W / 2, (int)bird_y_ - BIRD_SPR_H / 2,
                   bird_px[bird_frame_], BIRD_SPR_W, BIRD_SPR_H);
+}
 
-    // Score (pixel-art font — no LVGL needed)
-    fb_score(score_);
+// ---- render ----
 
-    // Game-over overlay + text (LVGL layer, fires once on death then idles)
-    if (state_ == FBState::DEAD) {
-        fb_blend_rect(20, 76, 200, 108, 153);
+void FlappyBirdGame::render_() {
+    draw_scene_();
 
-        lv_layer_t layer;
-        lv_canvas_init_layer(canvas_, &layer);
-
-        auto txt = [&](int y, lv_color_t c, const char *s) {
-            lv_draw_label_dsc_t d;
-            lv_draw_label_dsc_init(&d);
-            d.font       = LV_FONT_DEFAULT;
-            d.color      = c;
-            d.align      = LV_TEXT_ALIGN_CENTER;
-            d.text       = s;
-            d.text_local = 1;
-            lv_area_t a  = {0, (lv_coord_t)y, (lv_coord_t)(FB_W - 1), (lv_coord_t)(y + 24)};
-            lv_draw_label(&layer, &d, &a);
-        };
-        txt(88,  lv_color_make(255, 80, 80), "GAME OVER");
-        char sc[24];
-        snprintf(sc, sizeof(sc), "Score: %d", score_);
-        txt(116, lv_color_white(), sc);
-        txt(134, lv_color_make(180, 255, 180), "Tap to play again");
-        txt(152, lv_color_make(180, 180, 180), "Hold to exit");
-
-        lv_canvas_finish_layer(canvas_, &layer);
+    if (state_ == FBState::PLAYING || state_ == FBState::DEAD) {
+        draw_pipes_();
     }
 
+    draw_bird_();
+
+    if (state_ == FBState::PLAYING) {
+        fb_score(score_);
+        lv_obj_invalidate(canvas_);
+        return;
+    }
+
+    // READY and DEAD need LVGL layer for text overlays
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas_, &layer);
+
+    auto txt = [&](int y, lv_color_t c, const char *s) {
+        lv_draw_label_dsc_t d;
+        lv_draw_label_dsc_init(&d);
+        d.font       = LV_FONT_DEFAULT;
+        d.color      = c;
+        d.align      = LV_TEXT_ALIGN_CENTER;
+        d.text       = s;
+        d.text_local = 1;
+        lv_area_t a  = {0, (lv_coord_t)y, (lv_coord_t)(FB_W - 1), (lv_coord_t)(y + 24)};
+        lv_draw_label(&layer, &d, &a);
+    };
+
+    if (state_ == FBState::READY) {
+        // Semi-transparent title panel
+        fb_blend_rect(30, 68, 180, 56, 120);
+        txt(72,  lv_color_make(255, 220, 50), "FLAPPY BALL");
+        txt(94,  lv_color_make(200, 255, 200), "Tap to flap!");
+        if (high_score_ > 0) {
+            char hs[24];
+            snprintf(hs, sizeof(hs), "Best: %d", high_score_);
+            txt(148, lv_color_make(255, 220, 100), hs);
+        }
+    }
+
+    if (state_ == FBState::DEAD) {
+        fb_score(score_);
+        fb_blend_rect(20, 76, 200, 110, 153);
+        txt(82,  lv_color_make(255, 80,  80),  "GAME OVER");
+        char sc[24];
+        snprintf(sc, sizeof(sc), "Score: %d", score_);
+        txt(104, lv_color_white(), sc);
+        if (high_score_ > 0) {
+            char hs[24];
+            snprintf(hs, sizeof(hs), "Best: %d", high_score_);
+            txt(124, lv_color_make(255, 220, 100), hs);
+        }
+        txt(146, lv_color_make(180, 255, 180), "Tap to play again");
+        txt(162, lv_color_make(160, 160, 160), "Hold to exit");
+    }
+
+    lv_canvas_finish_layer(canvas_, &layer);
     lv_obj_invalidate(canvas_);
 }
 
