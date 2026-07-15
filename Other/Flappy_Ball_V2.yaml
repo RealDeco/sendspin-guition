@@ -100,6 +100,8 @@ esphome:
       - script.execute: refresh_playlist_labels
       - script.execute: apply_accent_color_debounced
       - script.execute: led_ring_apply_state
+      - component.update: flappy_hs_sensor
+      - lambda: id(flappy_game)->set_high_score(id(flappy_high_score));
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
 logger:
@@ -1205,6 +1207,8 @@ sensor:
     accuracy_decimals: 0
     icon: mdi:bird
     entity_category: diagnostic
+    lambda: return (float) id(flappy_high_score);
+    update_interval: never
 
   - platform: homeassistant
     id: ha_weather_temperature
