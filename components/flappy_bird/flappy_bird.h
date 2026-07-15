@@ -46,6 +46,7 @@ class FlappyBirdGame : public Component {
     void set_flap_strength(float v) { flap_str_   = v; }
     void set_pipe_speed(float v)    { pipe_speed_ = v; }
     void set_gap_size(int v)        { gap_size_   = v; }
+    void set_high_score(int v)      { high_score_ = v; }
 
     void register_game_over_trigger(FlappyBirdGameOverTrigger *t) { game_over_trigger_ = t; }
 
