@@ -4,6 +4,7 @@
 #include "flappy_bird.h"
 #include "sprites.h"
 #include "esphome/core/log.h"
+#include "esphome/core/hal.h"
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
@@ -17,12 +18,29 @@ namespace flappy_bird {
 
 static const char *const TAG = "flappy_bird";
 
-static FlappyBirdGame *g_game = nullptr;
+// 3×5 pixel digit bitmaps (3 bits per row, MSB = left column)
+static const uint8_t DIGIT_FONT[10][5] = {
+    {0b111, 0b101, 0b101, 0b101, 0b111},  // 0
+    {0b010, 0b110, 0b010, 0b010, 0b111},  // 1
+    {0b111, 0b001, 0b111, 0b100, 0b111},  // 2
+    {0b111, 0b001, 0b111, 0b001, 0b111},  // 3
+    {0b101, 0b101, 0b111, 0b001, 0b001},  // 4
+    {0b111, 0b100, 0b111, 0b001, 0b111},  // 5
+    {0b111, 0b100, 0b111, 0b101, 0b111},  // 6
+    {0b111, 0b001, 0b001, 0b001, 0b001},  // 7
+    {0b111, 0b101, 0b111, 0b101, 0b111},  // 8
+    {0b111, 0b101, 0b111, 0b001, 0b111},  // 9
+};
 
-// ---- timer callback ----
+// ---- ESPHome loop — drives game tick independent of LVGL timer scheduler ----
 
-void FlappyBirdGame::timer_cb_(lv_timer_t *) {
-    if (g_game) g_game->game_tick();
+void FlappyBirdGame::loop() {
+    if (state_ == FBState::IDLE || !canvas_) return;
+    uint32_t now = millis();
+    if (now - last_tick_ms_ >= FB_TICK_MS) {
+        last_tick_ms_ = now;
+        game_tick();
+    }
 }
 
 // ---- public API ----
@@ -32,6 +50,7 @@ void FlappyBirdGame::start_game() {
     init_();
     if (!canvas_) return;
     reset_();
+    last_tick_ms_ = millis();
     state_ = FBState::PLAYING;
     ESP_LOGI(TAG, "Game started");
 }
@@ -64,7 +83,7 @@ void FlappyBirdGame::game_tick() {
 // ---- lifecycle ----
 
 void FlappyBirdGame::init_() {
-    size_t sz = (size_t)FB_W * FB_H * 2;  // RGB565: 2 bytes per pixel
+    size_t sz = (size_t)FB_W * FB_H * 2;
 #ifdef USE_ESP32
     fb_ = (uint16_t *) heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!fb_)
@@ -81,14 +100,9 @@ void FlappyBirdGame::init_() {
     lv_obj_remove_flag(canvas_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(canvas_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_move_foreground(canvas_);
-
-    g_game = this;
-    timer_ = lv_timer_create(timer_cb_, 50, nullptr);  // 20 fps
 }
 
 void FlappyBirdGame::cleanup_() {
-    g_game = nullptr;
-    if (timer_)  { lv_timer_delete(timer_);  timer_  = nullptr; }
     if (canvas_) { lv_obj_delete(canvas_);   canvas_ = nullptr; }
     if (fb_) {
 #ifdef USE_ESP32
@@ -185,21 +199,17 @@ bool FlappyBirdGame::check_collision_() {
     return false;
 }
 
-// ---- direct-buffer drawing primitives ----
+// ---- direct-buffer primitives ----
 
-// Clipped fill into fb_
 void FlappyBirdGame::fb_fill(int x, int y, int w, int h, uint16_t c) {
     int x0 = std::max(0, x),  x1 = std::min(FB_W, x + w);
     int y0 = std::max(0, y),  y1 = std::min(FB_H, y + h);
     if (x0 >= x1 || y0 >= y1) return;
     int rw = x1 - x0;
-    for (int row = y0; row < y1; row++) {
-        uint16_t *p = fb_ + row * FB_W + x0;
-        std::fill(p, p + rw, c);
-    }
+    for (int row = y0; row < y1; row++)
+        std::fill(fb_ + row * FB_W + x0, fb_ + row * FB_W + x1, c);
 }
 
-// Blit BGRA sprite with alpha blending (handles transparent pixels)
 void FlappyBirdGame::fb_blit_alpha(int x, int y, const uint8_t *px, int sw, int sh) {
     for (int sy = 0; sy < sh; sy++) {
         int dy = y + sy;
@@ -212,10 +222,8 @@ void FlappyBirdGame::fb_blit_alpha(int x, int y, const uint8_t *px, int sw, int 
             if (a == 0) continue;
             uint16_t *dst = fb_ + dy * FB_W + dx;
             if (a == 255) {
-                // Fully opaque: straight convert BGRA→RGB565
                 *dst = (uint16_t)(((src[2] >> 3) << 11) | ((src[1] >> 2) << 5) | (src[0] >> 3));
             } else {
-                // Alpha blend — extract RGB565 background
                 uint16_t bg = *dst;
                 uint8_t bg_r = (uint8_t)((bg >> 11) << 3);
                 uint8_t bg_g = (uint8_t)(((bg >> 5) & 0x3F) << 2);
@@ -230,30 +238,54 @@ void FlappyBirdGame::fb_blit_alpha(int x, int y, const uint8_t *px, int sw, int 
     }
 }
 
-// Darken a rect region (game-over panel) — blend to black at given opacity
 void FlappyBirdGame::fb_blend_rect(int x, int y, int w, int h, uint8_t opa) {
     int x0 = std::max(0, x),  x1 = std::min(FB_W, x + w);
     int y0 = std::max(0, y),  y1 = std::min(FB_H, y + h);
     if (x0 >= x1 || y0 >= y1) return;
-    uint8_t keep = 255 - opa;  // portion of original to keep
+    uint8_t keep = 255 - opa;
     for (int row = y0; row < y1; row++) {
         uint16_t *p = fb_ + row * FB_W + x0;
         for (int col = x0; col < x1; col++, p++) {
-            uint16_t px2 = *p;
-            uint8_t r = (uint8_t)(((px2 >> 11) << 3) * keep >> 8);
-            uint8_t g = (uint8_t)((((px2 >> 5) & 0x3F) << 2) * keep >> 8);
-            uint8_t b = (uint8_t)(((px2 & 0x1F) << 3) * keep >> 8);
+            uint8_t r = (uint8_t)((((*p >> 11) & 0x1F) << 3) * keep >> 8);
+            uint8_t g = (uint8_t)((((*p >>  5) & 0x3F) << 2) * keep >> 8);
+            uint8_t b = (uint8_t)(((*p         & 0x1F) << 3) * keep >> 8);
             *p = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
         }
+    }
+}
+
+// Draw one digit at (x,y) using pixel-art 3×5 font scaled up by `scale`
+void FlappyBirdGame::fb_digit(int x, int y, int d, int scale, uint16_t c) {
+    if (d < 0 || d > 9) return;
+    for (int row = 0; row < 5; row++) {
+        uint8_t bits = DIGIT_FONT[d][row];
+        for (int col = 0; col < 3; col++) {
+            if (bits & (0b100 >> col))
+                fb_fill(x + col * scale, y + row * scale, scale, scale, c);
+        }
+    }
+}
+
+// Draw score centred at top of screen
+void FlappyBirdGame::fb_score(int score) {
+    const int scale = 3;
+    const int dw = 3 * scale + scale;  // digit width + gap
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", score);
+    int len = (int) strlen(buf);
+    int total_w = len * dw - scale;  // no gap after last digit
+    int sx = (FB_W - total_w) / 2;
+    for (int i = 0; i < len; i++) {
+        fb_digit(sx + i * dw, 16, buf[i] - '0', scale, COL_WHITE);
     }
 }
 
 // ---- render ----
 
 void FlappyBirdGame::render_() {
-    // -- Phase 1: direct pixel writes (no LVGL overhead) --
+    // ---- All drawing is direct pixel writes — no LVGL layer involved ----
 
-    // Sky background
+    // Sky
     fb_fill(0, 0, FB_W, FB_H, COL_SKY);
 
     // Clouds
@@ -265,55 +297,32 @@ void FlappyBirdGame::render_() {
         int px = (int)p.x;
         int gt = p.gap_y;
         int gb = gt + gap_size_;
-
-        // Top pipe body
-        if (gt - FB_CAP_H > 0)
-            fb_fill(px, 0, FB_PIPE_W, gt - FB_CAP_H, COL_PIPE);
-        // Top pipe cap (facing down, has alpha edges)
+        if (gt - FB_CAP_H > 0) fb_fill(px, 0, FB_PIPE_W, gt - FB_CAP_H, COL_PIPE);
         fb_blit_alpha(px, gt - FB_CAP_H, spr_pipe_cap_dn_px, PIPE_CAP_W, PIPE_CAP_H);
-
-        // Bottom pipe cap (facing up, has alpha edges)
-        fb_blit_alpha(px, gb, spr_pipe_cap_up_px, PIPE_CAP_W, PIPE_CAP_H);
-        // Bottom pipe body
+        fb_blit_alpha(px, gb,            spr_pipe_cap_up_px, PIPE_CAP_W, PIPE_CAP_H);
         int bt = gb + FB_CAP_H, bh = FB_H - FB_GROUND - bt;
-        if (bh > 0)
-            fb_fill(px, bt, FB_PIPE_W, bh, COL_PIPE);
+        if (bh > 0) fb_fill(px, bt, FB_PIPE_W, bh, COL_PIPE);
     }
 
     // Ground
     fb_fill(0, FB_H - FB_GROUND, FB_W, FB_GROUND, COL_GROUND);
     fb_fill(0, FB_H - FB_GROUND, FB_W, 7,         COL_GRASS);
 
-    // Bird (alpha sprite)
+    // Bird
     static const uint8_t *bird_px[3] = {spr_bird_mid_px, spr_bird_up_px, spr_bird_dn_px};
     fb_blit_alpha(120 - BIRD_SPR_W / 2, (int)bird_y_ - BIRD_SPR_H / 2,
                   bird_px[bird_frame_], BIRD_SPR_W, BIRD_SPR_H);
 
-    // Game-over darkening panel
-    if (state_ == FBState::DEAD)
-        fb_blend_rect(28, 78, 184, 94, 153);  // ~60% darken
+    // Score (pixel-art font — no LVGL needed)
+    fb_score(score_);
 
-    // -- Phase 2: LVGL layer for text only --
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas_, &layer);
-
-    // Score
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%d", score_);
-    {
-        lv_draw_label_dsc_t d;
-        lv_draw_label_dsc_init(&d);
-        d.font       = LV_FONT_DEFAULT;
-        d.color      = lv_color_white();
-        d.align      = LV_TEXT_ALIGN_CENTER;
-        d.text       = buf;
-        d.text_local = 1;
-        lv_area_t a  = {0, 20, (lv_coord_t)(FB_W - 1), 44};
-        lv_draw_label(&layer, &d, &a);
-    }
-
-    // Game-over text lines
+    // Game-over overlay + text (LVGL layer, fires once on death then idles)
     if (state_ == FBState::DEAD) {
+        fb_blend_rect(28, 78, 184, 94, 153);
+
+        lv_layer_t layer;
+        lv_canvas_init_layer(canvas_, &layer);
+
         auto txt = [&](int y, lv_color_t c, const char *s) {
             lv_draw_label_dsc_t d;
             lv_draw_label_dsc_init(&d);
@@ -330,9 +339,10 @@ void FlappyBirdGame::render_() {
         snprintf(sc, sizeof(sc), "Score: %d", score_);
         txt(116, lv_color_white(), sc);
         txt(142, lv_color_make(180, 180, 180), "Hold to exit");
+
+        lv_canvas_finish_layer(canvas_, &layer);
     }
 
-    lv_canvas_finish_layer(canvas_, &layer);
     lv_obj_invalidate(canvas_);
 }
 
