@@ -154,7 +154,7 @@ void FlappyBirdGame::init_() {
     mk(pipe_cap_dn_,  PIPE_CAP_W, PIPE_CAP_H, spr_pipe_cap_dn_px);
 
     g_game = this;
-    timer_ = lv_timer_create(timer_cb_, 33, nullptr);  // ~30 fps
+    timer_ = lv_timer_create(timer_cb_, 50, nullptr);  // 20 fps — safe for PSRAM+SPI budget
 }
 
 void FlappyBirdGame::cleanup_() {
@@ -279,11 +279,8 @@ void FlappyBirdGame::draw_bg_(lv_layer_t *l) {
     // Clouds (3 overlapping rounded rects per cloud)
     lv_color_t white = lv_color_white();
     for (auto &c : clouds_) {
-        int cx = (int) c.x;
-        fb_rect(l, cx,          c.y + 8,  c.w,      13, white, 8);
-        fb_rect(l, cx + 10,     c.y,      c.w - 18, 18, white, 9);
-        fb_rect(l, cx + 2,      c.y + 3,  22,       14, white, 9);
-        fb_rect(l, cx + c.w-22, c.y + 2,  20,       15, white, 9);
+        // Single plain rect per cloud — rounded corners are expensive in software AA
+        fb_rect(l, (int)c.x, c.y, c.w, 16, white);
     }
 }
 
@@ -318,12 +315,11 @@ void FlappyBirdGame::draw_bird_(lv_layer_t *l) {
 void FlappyBirdGame::draw_score_(lv_layer_t *l) {
     char buf[8];
     snprintf(buf, sizeof(buf), "%d", score_);
-    fb_text(l, 22, lv_color_black(), buf);
     fb_text(l, 20, lv_color_white(), buf);
 }
 
 void FlappyBirdGame::draw_game_over_(lv_layer_t *l) {
-    fb_rect_opa(l, 28, 78, 184, 94, lv_color_black(), LV_OPA_60, 14);
+    fb_rect_opa(l, 28, 78, 184, 94, lv_color_black(), LV_OPA_60);
     fb_text(l, 88,  lv_color_make(255, 80, 80), "GAME OVER");
     char buf[24];
     snprintf(buf, sizeof(buf), "Score: %d", score_);
