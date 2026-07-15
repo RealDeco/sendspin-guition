@@ -70,6 +70,9 @@ void FlappyBirdGame::flap() {
     if (state_ == FBState::PLAYING) {
         bird_vel_   = flap_str_;
         bird_frame_ = 1;
+    } else if (state_ == FBState::DEAD && death_ticks_ > 30) {
+        // Tap to restart after a brief pause so death tap doesn't immediately re-flap
+        start_game();
     }
 }
 
@@ -129,9 +132,9 @@ void FlappyBirdGame::reset_() {
         pipes_[i] = {(float)(FB_W + 50 + i * (FB_W / FB_NPIPES + 20)),
                      min_gy + rand() % (max_gy - min_gy + 1), false};
     }
-    clouds_[0] = {10.0f,  28, 58};
-    clouds_[1] = {120.0f, 45, 44};
-    clouds_[2] = {195.0f, 18, 52};
+    clouds_[0] = {10.0f,  28, CLOUD_SPR_W};
+    clouds_[1] = {120.0f, 38, CLOUD_SPR_W};
+    clouds_[2] = {195.0f, 18, CLOUD_SPR_W};
 }
 
 // ---- game logic ----
@@ -153,7 +156,7 @@ void FlappyBirdGame::tick_playing_() {
 
     for (auto &c : clouds_) {
         c.x -= pipe_speed_ * 0.25f;
-        if (c.x + c.w < 0) { c.x = FB_W + 5; c.y = 12 + rand() % 52; c.w = 40 + rand() % 28; }
+        if (c.x + c.w < 0) { c.x = FB_W + 5; c.y = 12 + rand() % 40; c.w = CLOUD_SPR_W; }
     }
 
     int min_gy = 35, max_gy = FB_H - FB_GROUND - gap_size_ - 35;
@@ -288,9 +291,9 @@ void FlappyBirdGame::render_() {
     // Sky
     fb_fill(0, 0, FB_W, FB_H, COL_SKY);
 
-    // Clouds
+    // Clouds (sprite, alpha-blended onto sky)
     for (auto &c : clouds_)
-        fb_fill((int)c.x, c.y, c.w, 16, COL_WHITE);
+        fb_blit_alpha((int)c.x, c.y, spr_cloud_px, CLOUD_SPR_W, CLOUD_SPR_H);
 
     // Pipes
     for (auto &p : pipes_) {
@@ -318,7 +321,7 @@ void FlappyBirdGame::render_() {
 
     // Game-over overlay + text (LVGL layer, fires once on death then idles)
     if (state_ == FBState::DEAD) {
-        fb_blend_rect(28, 78, 184, 94, 153);
+        fb_blend_rect(20, 76, 200, 108, 153);
 
         lv_layer_t layer;
         lv_canvas_init_layer(canvas_, &layer);
@@ -338,7 +341,8 @@ void FlappyBirdGame::render_() {
         char sc[24];
         snprintf(sc, sizeof(sc), "Score: %d", score_);
         txt(116, lv_color_white(), sc);
-        txt(142, lv_color_make(180, 180, 180), "Hold to exit");
+        txt(134, lv_color_make(180, 255, 180), "Tap to play again");
+        txt(152, lv_color_make(180, 180, 180), "Hold to exit");
 
         lv_canvas_finish_layer(canvas_, &layer);
     }
