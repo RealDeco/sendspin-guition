@@ -40,28 +40,28 @@ async def to_code(config):
 _ACTION_SCHEMA = cv.Schema({cv.GenerateID(CONF_ID): cv.use_id(FlappyBirdGame)})
 
 
-@automation.register_action("flappy_bird.start", FlappyBirdStartAction, _ACTION_SCHEMA)
+@automation.register_action("flappy_bird.start", FlappyBirdStartAction, _ACTION_SCHEMA, synchronous=True)
 async def _start_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_ID])
     return var
 
 
-@automation.register_action("flappy_bird.stop", FlappyBirdStopAction, _ACTION_SCHEMA)
+@automation.register_action("flappy_bird.stop", FlappyBirdStopAction, _ACTION_SCHEMA, synchronous=True)
 async def _stop_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_ID])
     return var
 
 
-@automation.register_action("flappy_bird.toggle", FlappyBirdToggleAction, _ACTION_SCHEMA)
+@automation.register_action("flappy_bird.toggle", FlappyBirdToggleAction, _ACTION_SCHEMA, synchronous=True)
 async def _toggle_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_ID])
     return var
 
 
-@automation.register_action("flappy_bird.flap", FlappyBirdFlapAction, _ACTION_SCHEMA)
+@automation.register_action("flappy_bird.flap", FlappyBirdFlapAction, _ACTION_SCHEMA, synchronous=True)
 async def _flap_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_ID])
