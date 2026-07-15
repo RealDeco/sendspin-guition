@@ -2,6 +2,7 @@
 #ifdef USE_LVGL
 
 #include "flappy_bird.h"
+#include "sprites.h"
 #include "esphome/core/log.h"
 #include <cstring>
 #include <cstdio>
@@ -16,20 +17,8 @@ namespace flappy_bird {
 
 static const char *const TAG = "flappy_bird";
 
-// ---- color palette ----
-#define C_SKY      lv_color_make(80,  196, 208)
+// ---- colors (non-sprite elements use original palette) ----
 #define C_CLOUD    lv_color_make(255, 255, 255)
-#define C_PIPE     lv_color_make(82,  170, 50)
-#define C_PIPE_D   lv_color_make(54,  120, 30)
-#define C_PIPE_L   lv_color_make(120, 210, 80)
-#define C_GROUND   lv_color_make(222, 196, 130)
-#define C_GRASS    lv_color_make(108, 180, 68)
-#define C_BIRD     lv_color_make(255, 214, 0)
-#define C_BELLY    lv_color_make(255, 165, 20)
-#define C_EYE      lv_color_make(255, 255, 255)
-#define C_PUPIL    lv_color_make(15,  15,  15)
-#define C_BEAK     lv_color_make(255, 115, 0)
-#define C_WING     lv_color_make(255, 238, 70)
 #define C_WHITE    lv_color_white()
 #define C_BLACK    lv_color_black()
 
@@ -274,8 +263,7 @@ void FlappyBirdGame::render_() {
 }
 
 void FlappyBirdGame::draw_bg_() {
-    lv_canvas_fill_bg(canvas_, C_SKY, LV_OPA_COVER);
-    // Clouds: 3 overlapping rounded rects per cloud
+    lv_canvas_fill_bg(canvas_, FB_COL_SKY, LV_OPA_COVER);
     for (auto &c : clouds_) {
         int cx = (int) c.x;
         fb_rect(canvas_, cx,          c.y + 8,  c.w,      13, C_CLOUD, 8);
@@ -286,58 +274,40 @@ void FlappyBirdGame::draw_bg_() {
 }
 
 void FlappyBirdGame::draw_pipes_() {
+    lv_draw_img_dsc_t img_dsc;
+    lv_draw_img_dsc_init(&img_dsc);
+
     for (auto &p : pipes_) {
-        int px  = (int) p.x;
-        int gt  = p.gap_y;
-        int gb  = gt + gap_size_;
-        int cx  = px - FB_CAP_EXT / 2;
-        int cw  = FB_PIPE_W + FB_CAP_EXT;
+        int px = (int) p.x;
+        int gt = p.gap_y;
+        int gb = gt + gap_size_;
 
-        // Top body
+        // Top pipe: body from screen top down to cap, then sprite cap facing down
         if (gt - FB_CAP_H > 0)
-            fb_rect(canvas_, px, 0, FB_PIPE_W, gt - FB_CAP_H, C_PIPE, 0, 2, C_PIPE_D);
-        // Top cap
-        fb_rect(canvas_, cx, gt - FB_CAP_H, cw, FB_CAP_H, C_PIPE_L, 3, 2, C_PIPE_D);
+            fb_rect(canvas_, px, 0, FB_PIPE_W, gt - FB_CAP_H, FB_COL_PIPE);
+        lv_canvas_draw_img(canvas_, px, gt - FB_CAP_H, &spr_pipe_cap_down, &img_dsc);
 
-        // Bottom cap
-        fb_rect(canvas_, cx, gb, cw, FB_CAP_H, C_PIPE_L, 3, 2, C_PIPE_D);
-        // Bottom body
+        // Bottom pipe: sprite cap facing up, then body to ground
+        lv_canvas_draw_img(canvas_, px, gb, &spr_pipe_cap_up, &img_dsc);
         int body_top = gb + FB_CAP_H;
         int body_h   = FB_H - FB_GROUND - body_top;
         if (body_h > 0)
-            fb_rect(canvas_, px, body_top, FB_PIPE_W, body_h, C_PIPE, 0, 2, C_PIPE_D);
+            fb_rect(canvas_, px, body_top, FB_PIPE_W, body_h, FB_COL_PIPE);
     }
 }
 
 void FlappyBirdGame::draw_ground_() {
-    fb_rect(canvas_, 0, FB_H - FB_GROUND, FB_W, FB_GROUND, C_GROUND);
-    fb_rect(canvas_, 0, FB_H - FB_GROUND, FB_W, 7,         C_GRASS);
+    fb_rect(canvas_, 0, FB_H - FB_GROUND, FB_W, FB_GROUND, FB_COL_GROUND);
+    fb_rect(canvas_, 0, FB_H - FB_GROUND, FB_W, 7,         FB_COL_GRASS);
 }
 
 void FlappyBirdGame::draw_bird_() {
-    int bx = 120, by = (int) bird_y_;
-
-    // Wing offset by animation frame
-    int wy = (bird_frame_ == 1) ? by - 5 : (bird_frame_ == 2) ? by + 10 : by + 5;
-
-    // Wing (behind body)
-    fb_rect(canvas_, bx - 18, wy - 5, 14, 10, C_WING, 5);
-
-    // Body
-    fb_rect(canvas_, bx - FB_BIRD_R, by - FB_BIRD_R,
-            FB_BIRD_R * 2, FB_BIRD_R * 2, C_BIRD, LV_RADIUS_CIRCLE);
-
-    // Belly tint
-    fb_rect(canvas_, bx - FB_BIRD_R + 4, by + 2,
-            FB_BIRD_R * 2 - 7, FB_BIRD_R - 3, C_BELLY, FB_BIRD_R);
-
-    // Eye white + pupil
-    fb_rect(canvas_, bx + 2, by - 7, 9, 9, C_EYE,   LV_RADIUS_CIRCLE);
-    fb_rect(canvas_, bx + 5, by - 5, 5, 5, C_PUPIL, LV_RADIUS_CIRCLE);
-
-    // Beak (upper + lower with small gap = open mouth)
-    fb_rect(canvas_, bx + FB_BIRD_R - 2, by - 3, 8, 5, C_BEAK, 2);
-    fb_rect(canvas_, bx + FB_BIRD_R - 1, by + 3, 7, 4, C_BEAK, 2);
+    lv_draw_img_dsc_t img_dsc;
+    lv_draw_img_dsc_init(&img_dsc);
+    // Center sprite on the bird's physics position
+    int bx = 120 - BIRD_SPR_W / 2;
+    int by = (int) bird_y_ - BIRD_SPR_H / 2;
+    lv_canvas_draw_img(canvas_, bx, by, spr_bird[bird_frame_], &img_dsc);
 }
 
 void FlappyBirdGame::draw_score_() {

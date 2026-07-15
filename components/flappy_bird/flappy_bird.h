@@ -16,8 +16,8 @@ static const int FB_PIPE_W  = 36;
 static const int FB_BIRD_R  = 12;
 static const int FB_NPIPES  = 2;
 static const int FB_GROUND  = 22;   // ground strip height
-static const int FB_CAP_H   = 14;   // pipe cap height
-static const int FB_CAP_EXT = 6;    // pipe cap extra width (total, split ±3)
+static const int FB_CAP_H   = 16;   // pipe cap sprite height
+static const int FB_CAP_EXT = 0;    // sprite fills exact pipe width
 
 enum class FBState { IDLE, PLAYING, DEAD };
 
