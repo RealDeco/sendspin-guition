@@ -60,6 +60,12 @@ flappy_bird:
   flap_strength: -9.5
   pipe_speed: 6.0
   gap_size: 72
+  on_game_over:
+    - lambda: |-
+        if (score > (int)id(flappy_high_score)) {
+          id(flappy_high_score) = score;
+          id(flappy_hs_sensor).publish_state(score);
+        }
 
 esp32:
   variant: esp32s3
@@ -156,6 +162,10 @@ interval:
       - script.execute: refresh_now_playing_progress_bar
 
 globals:
+  - id: flappy_high_score
+    type: int
+    restore_value: true
+    initial_value: '0'
   - id: sendspin_album_art_valid
     type: bool
     restore_value: no
@@ -1189,6 +1199,13 @@ voice_assistant:
     - switch.turn_on: timer_ringing
 
 sensor:
+  - platform: template
+    id: flappy_hs_sensor
+    name: "Flappy Ball High Score"
+    accuracy_decimals: 0
+    icon: mdi:bird
+    entity_category: diagnostic
+
   - platform: homeassistant
     id: ha_weather_temperature
     entity_id: ${ha_weather_entity}
