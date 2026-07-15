@@ -13,13 +13,23 @@ namespace flappy_bird {
 static const int FB_W      = 240;
 static const int FB_H      = 240;
 static const int FB_PIPE_W = 36;
-static const int FB_BIRD_R = 12;   // collision radius
+static const int FB_BIRD_R = 12;
 static const int FB_NPIPES = 2;
 static const int FB_GROUND = 22;
-static const int FB_CAP_H  = 16;   // pipe cap sprite height
+static const int FB_CAP_H  = 16;
+
+// Pre-computed RGB565 palette (little-endian, matches LVGL canvas format)
+static constexpr uint16_t c565(uint8_t r, uint8_t g, uint8_t b) {
+    return (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+}
+static constexpr uint16_t COL_SKY    = c565(78,  192, 202);
+static constexpr uint16_t COL_GROUND = c565(222, 216, 149);
+static constexpr uint16_t COL_GRASS  = c565(112, 185, 68);
+static constexpr uint16_t COL_PIPE   = c565(115, 177, 56);
+static constexpr uint16_t COL_WHITE  = 0xFFFF;
+static constexpr uint16_t COL_BLACK  = 0x0000;
 
 enum class FBState { IDLE, PLAYING, DEAD };
-
 struct FBPipe  { float x; int gap_y; bool scored; };
 struct FBCloud { float x; int y; int w; };
 
@@ -48,14 +58,9 @@ class FlappyBirdGame : public Component {
     float pipe_speed_ { 2.5f  };
     int   gap_size_   { 72    };
 
-    lv_obj_t      *canvas_ { nullptr };
-    lv_timer_t    *timer_  { nullptr };
-    uint8_t       *buf_    { nullptr };
-
-    // sprite descriptors (initialised at runtime)
-    lv_image_dsc_t bird_sprs_[3] {};
-    lv_image_dsc_t pipe_cap_up_  {};
-    lv_image_dsc_t pipe_cap_dn_  {};
+    lv_obj_t   *canvas_ { nullptr };
+    lv_timer_t *timer_  { nullptr };
+    uint16_t   *fb_     { nullptr };  // direct pixel buffer (RGB565)
 
     FBState state_       { FBState::IDLE };
     float   bird_y_      { FB_H / 2.0f  };
@@ -74,36 +79,31 @@ class FlappyBirdGame : public Component {
     void tick_playing_();
     void tick_dead_();
     bool check_collision_();
-    void render_();
-    void draw_bg_(lv_layer_t *l);
-    void draw_pipes_(lv_layer_t *l);
-    void draw_ground_(lv_layer_t *l);
-    void draw_bird_(lv_layer_t *l);
-    void draw_score_(lv_layer_t *l);
-    void draw_game_over_(lv_layer_t *l);
 
-    static void timer_cb_(lv_timer_t *t);
+    // Direct-buffer drawing (fast)
+    void render_();
+    void fb_fill(int x, int y, int w, int h, uint16_t c);
+    void fb_blit_alpha(int x, int y, const uint8_t *px, int sw, int sh);
+    void fb_blend_rect(int x, int y, int w, int h, uint8_t opa);
+
+    static void timer_cb_(lv_timer_t *);
 };
 
 template<typename... Ts>
 class FlappyBirdStartAction : public Action<Ts...>, public Parented<FlappyBirdGame> {
- public:
-    void play(Ts... x) override { this->parent_->start_game(); }
+ public: void play(Ts... x) override { this->parent_->start_game(); }
 };
 template<typename... Ts>
 class FlappyBirdStopAction : public Action<Ts...>, public Parented<FlappyBirdGame> {
- public:
-    void play(Ts... x) override { this->parent_->stop_game(); }
+ public: void play(Ts... x) override { this->parent_->stop_game(); }
 };
 template<typename... Ts>
 class FlappyBirdToggleAction : public Action<Ts...>, public Parented<FlappyBirdGame> {
- public:
-    void play(Ts... x) override { this->parent_->toggle_game(); }
+ public: void play(Ts... x) override { this->parent_->toggle_game(); }
 };
 template<typename... Ts>
 class FlappyBirdFlapAction : public Action<Ts...>, public Parented<FlappyBirdGame> {
- public:
-    void play(Ts... x) override { this->parent_->flap(); }
+ public: void play(Ts... x) override { this->parent_->flap(); }
 };
 
 }  // namespace flappy_bird
