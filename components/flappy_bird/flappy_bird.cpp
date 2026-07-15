@@ -90,16 +90,17 @@ void FlappyBirdGame::flap() {
         bird_vel_   = flap_str_;
         bird_frame_ = 1;
     } else if (state_ == FBState::DEAD && death_ticks_ > 30) {
-        // Tap to restart — go back to READY screen
+        // Tap to restart — skip intro, go straight into play
         score_      = 0;
-        bob_phase_  = 0;
-        bird_y_     = FB_H / 2.0f - 15;
-        bird_vel_   = 0;
         frame_cnt_  = 0;
+        bird_y_     = FB_H / 2.0f - 15;
+        bird_vel_   = flap_str_;
+        bird_frame_ = 1;
         clouds_[0]  = {10.0f,  28, CLOUD_SPR_W};
         clouds_[1]  = {120.0f, 38, CLOUD_SPR_W};
         clouds_[2]  = {195.0f, 18, CLOUD_SPR_W};
-        state_      = FBState::READY;
+        reset_pipes_();
+        state_      = FBState::PLAYING;
     }
 }
 
