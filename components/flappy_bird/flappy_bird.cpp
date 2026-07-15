@@ -138,7 +138,7 @@ void FlappyBirdGame::reset_() {
 
 void FlappyBirdGame::tick_playing_() {
     bird_vel_ += gravity_;
-    if (bird_vel_ > 12.0f) bird_vel_ = 12.0f;
+    if (bird_vel_ > 20.0f) bird_vel_ = 20.0f;
     bird_y_ += bird_vel_;
 
     if (bird_y_ < FB_BIRD_R) { bird_y_ = FB_BIRD_R; bird_vel_ = 1.0f; }
@@ -180,7 +180,7 @@ void FlappyBirdGame::tick_dead_() {
     death_ticks_++;
     if (death_ticks_ < 40) {
         bird_vel_ += gravity_;
-        if (bird_vel_ > 12.0f) bird_vel_ = 12.0f;
+        if (bird_vel_ > 20.0f) bird_vel_ = 20.0f;
         bird_y_ += bird_vel_;
         if (bird_y_ > FB_H - FB_GROUND - FB_BIRD_R) bird_y_ = FB_H - FB_GROUND - FB_BIRD_R;
     }
