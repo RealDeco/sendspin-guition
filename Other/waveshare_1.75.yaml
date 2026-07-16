@@ -58,10 +58,6 @@ external_components:
   - source: github://pr#16882
     components: [audio, i2s_audio, micro_wake_word, resampler]
     refresh: 1h
-  - source: 
-      type: git
-#      url: https://github.com/shelson/esphome-cst9217
-      url: https://github.com/YOUR-WORST-TACO/esphome-cst9217
       
 esp32:
   variant: esp32s3
@@ -697,7 +693,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: "Okay Nabu"
+    initial_value: hey_gwen
     mode: text
 
   - platform: template
@@ -706,7 +702,7 @@ text:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: "Hey Jarvis"
+    initial_value: hey_alfred
     mode: text
 
   - platform: template
