@@ -67,11 +67,11 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.6.0
+  min_version: 2026.7.0
   name_add_mac_suffix: false
   project:
     name: realdeco.sendspin_guition
-    version: "2026.6.0"
+    version: "2026.7.0"
   on_boot:
     priority: -100
     then:
@@ -293,60 +293,89 @@ globals:
 
 image:
 ### model 1
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/playing.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/playing.png
     id: fallback_playing_image
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/idle.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/idle.png
     id: va_waiting_image1
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/listening.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/listening.png
     id: va_listening_image1
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/thinking.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/thinking.png
     id: va_thinking_image1
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/replying.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/replying.png
     id: va_replying_image1
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
 ### model 2
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/idle.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/idle.png
     id: va_waiting_image2
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/listening.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/listening.png
     id: va_listening_image2
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/thinking.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/thinking.png
     id: va_thinking_image2
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/replying.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/replying.png
     id: va_replying_image2
     resize: ${imagewidth}x${imageheight}
     type: RGB565
     dither: NONE
+
+### wallpaper
+
+  - platform: online_image
+    id: standby_background_image
+    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/360x360/clock.png
+    format: PNG
+    type: RGB565
+    resize: ${imagewidth}x${imageheight}
+    update_interval: never
+    on_download_finished:
+      - if:
+          condition:
+            switch.is_on: standby_background_enabled
+          then:
+            - lvgl.image.update:
+                id: standby_background_widget
+                src: standby_background_image
+            - lambda: |-
+                lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
 
 generic_image:
   - platform: sendspin
@@ -393,24 +422,6 @@ audio_file:
     file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${wakeup_sound}.flac
 
 http_request:
-
-online_image:
-  - id: standby_background_image
-    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/360x360/clock.png
-    format: PNG
-    type: RGB565
-    resize: ${imagewidth}x${imageheight}
-    update_interval: never
-    on_download_finished:
-      - if:
-          condition:
-            switch.is_on: standby_background_enabled
-          then:
-            - lvgl.image.update:
-                id: standby_background_widget
-                src: standby_background_image
-            - lambda: |-
-                lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
 
 i2c:
   - id: bus_a
