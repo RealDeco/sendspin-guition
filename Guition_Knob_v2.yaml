@@ -52,11 +52,11 @@ packages:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.6.0
+  min_version: 2026.7.0
   name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_guition
-    version: "2026.6.0"
+    version: "2026.7.0"
   on_boot:
     priority: -100
     then:
@@ -198,11 +198,32 @@ globals:
     initial_value: "0"
 
 image:
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/playing.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/playing.png
     id: fallback_playing_image
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
+
+### wallpaper
+
+  - platform: online_image
+    id: standby_background_image
+    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/360x360/clock.png
+    format: PNG
+    type: RGB565
+    resize: ${imagewidth}x${imageheight}
+    update_interval: never
+    on_download_finished:
+      - if:
+          condition:
+            switch.is_on: standby_background_enabled
+          then:
+            - lvgl.image.update:
+                id: standby_background_widget
+                src: standby_background_image
+            - lambda: |-
+                lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
 
 generic_image:
   - platform: sendspin
@@ -252,24 +273,6 @@ audio_file:
     file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${startup_sound_file}.flac
 
 http_request:
-
-online_image:
-  - id: standby_background_image
-    url: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/360x360/clock.png
-    format: PNG
-    type: RGB565
-    resize: ${imagewidth}x${imageheight}
-    update_interval: never
-    on_download_finished:
-      - if:
-          condition:
-            switch.is_on: standby_background_enabled
-          then:
-            - lvgl.image.update:
-                id: standby_background_widget
-                src: standby_background_image
-            - lambda: |-
-                lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
 
 switch:
   - platform: gpio
