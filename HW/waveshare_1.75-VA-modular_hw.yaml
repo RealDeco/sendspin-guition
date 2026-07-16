@@ -286,7 +286,7 @@ script:
           return;
 
 touchscreen:
-  - platform: cst9217
+  - platform: cst9220
     id: my_touchscreen
     interrupt_pin: GPIO11
     reset_pin: GPIO40
