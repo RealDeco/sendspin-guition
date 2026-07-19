@@ -30,8 +30,8 @@ static constexpr uint16_t PR_COL_EDGE_AC  = pr_rgb(0,  130, 60);
 static constexpr uint16_t PR_COL_NORTH    = pr_rgb(220, 80, 80);
 static constexpr uint16_t PR_COL_CENTER   = pr_rgb(160, 255, 160);
 
-static constexpr int RANGE_PRESETS[]  = {10, 25, 50, 100, 200, 500};
-static constexpr int N_RANGE_PRESETS  = 6;
+static constexpr int RANGE_PRESETS[]  = {10, 25, 50, 100, 200};
+static constexpr int N_RANGE_PRESETS  = 5;
 
 struct Aircraft {
     float lat, lon;
