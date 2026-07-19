@@ -54,7 +54,7 @@ class PlaneRadar : public Component {
 
     void set_latitude(float v)         { center_lat_ = v; }
     void set_longitude(float v)        { center_lon_ = v; }
-    void set_update_interval_ms(int v) { update_interval_ms_ = v; }
+    void set_update_interval(int v)    { update_interval_ms_ = v; }
     void set_initial_range_km(int v)   { range_km_ = v; }
     void set_use_miles(bool v)         { use_miles_ = v; }
 

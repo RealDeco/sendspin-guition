@@ -40,7 +40,6 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_latitude(config[CONF_LATITUDE]))
     cg.add(var.set_longitude(config[CONF_LONGITUDE]))
-    cg.add(var.set_update_interval_ms(config[CONF_UPDATE_INTERVAL]))
     cg.add(var.set_initial_range_km(config[CONF_INITIAL_RANGE_KM]))
     cg.add(var.set_use_miles(config[CONF_USE_MILES]))
     for conf in config.get(CONF_ON_AIRCRAFT_UPDATE, []):
