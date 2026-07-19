@@ -15,7 +15,6 @@
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "cJSON.h"
-#include <string>
 #endif
 
 namespace esphome {
@@ -110,26 +109,48 @@ void PlaneRadar::cleanup_() {
 // ---- HTTP fetch ----
 
 #ifdef USE_ESP32
-struct FetchCtx { std::string body; };
+static void *psram_malloc_(size_t sz) {
+    return heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
+
+struct FetchCtx { char *buf; size_t len; size_t cap; };
 
 static esp_err_t http_event_cb(esp_http_client_event_t *evt) {
     auto *ctx = (FetchCtx *)evt->user_data;
-    if (evt->event_id == HTTP_EVENT_ON_DATA && evt->data_len > 0)
-        ctx->body.append((char *)evt->data, (size_t)evt->data_len);
+    if (evt->event_id == HTTP_EVENT_ON_DATA && evt->data_len > 0) {
+        size_t copy = (size_t)evt->data_len;
+        if (ctx->len + copy > ctx->cap) copy = ctx->cap - ctx->len;
+        if (copy) {
+            memcpy(ctx->buf + ctx->len, evt->data, copy);
+            ctx->len += copy;
+            ctx->buf[ctx->len] = '\0';
+        }
+    }
     return ESP_OK;
 }
 #endif
 
 void PlaneRadar::fetch_() {
 #ifdef USE_ESP32
-    float dist_nm = (float)range_km_ * 1.5f * 0.539957f;
+    // Route cJSON allocations through PSRAM (set once)
+    static bool hooks_set = false;
+    if (!hooks_set) {
+        cJSON_Hooks hooks = { psram_malloc_, heap_caps_free };
+        cJSON_InitHooks(&hooks);
+        hooks_set = true;
+    }
+
+    float dist_nm = (float)range_km_ * 0.539957f;
     char url[256];
     snprintf(url, sizeof(url),
         "https://opendata.adsb.fi/api/v3/lat/%.4f/lon/%.4f/dist/%.0f",
         center_lat_, center_lon_, dist_nm);
 
-    FetchCtx ctx;
-    ctx.body.reserve(24576);
+    constexpr size_t BUF_CAP = 131072;  // 128 KB in PSRAM
+    char *resp = (char *)heap_caps_malloc(BUF_CAP + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!resp) { ESP_LOGW(TAG, "Fetch buffer alloc failed"); return; }
+
+    FetchCtx ctx = { resp, 0, BUF_CAP };
 
     esp_http_client_config_t cfg = {};
     cfg.url               = url;
@@ -139,16 +160,18 @@ void PlaneRadar::fetch_() {
     cfg.crt_bundle_attach = esp_crt_bundle_attach;
 
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    esp_err_t err   = esp_http_client_perform(client);
+    esp_err_t err    = esp_http_client_perform(client);
     int       status = esp_http_client_get_status_code(client);
     esp_http_client_cleanup(client);
 
     if (err != ESP_OK || status != 200) {
         ESP_LOGW(TAG, "Fetch failed: err=%d status=%d", err, status);
+        heap_caps_free(resp);
         return;
     }
 
-    cJSON *root = cJSON_Parse(ctx.body.c_str());
+    cJSON *root = cJSON_Parse(resp);
+    heap_caps_free(resp);
     if (!root) { ESP_LOGW(TAG, "JSON parse failed"); return; }
 
     aircraft_count_ = 0;
