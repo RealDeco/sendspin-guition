@@ -2,6 +2,9 @@ substitutions:
   name: xiaozhi-ball-v2
   friendly_name: "Xiaozhi Ball V2"
 
+  radar_lat: "55.6761"   # Center latitude  (set to your location)
+  radar_lon: "12.5862"   # Center longitude (set to your location)
+
   startup_sound_file: "Home_Connected" # (options are: available, Home_Connected, Home_Connected_Male, Computer_Ready)
   wakeup_sound: "popup" # (options are: popup, wake_word_triggered)
 
@@ -48,12 +51,22 @@ external_components:
     components: [audio, i2s_audio, micro_wake_word, resampler]
     refresh: 1h
   - source: github://RealDeco/sendspin-guition@main
-    components: [flappy_bird]
+    components: [plane_radar, flappy_bird]
     refresh: 0d
-        
+
 #packages: # local
 #  extcomp: !include localtest/HW/sendspin-external_components.yaml
-  
+
+plane_radar:
+  id: radar
+  latitude: ${radar_lat}
+  longitude: ${radar_lon}
+  update_interval: 15s
+  initial_range_km: 50
+  on_aircraft_update:
+    - lambda: |-
+        id(radar_aircraft_sensor).publish_state(count);
+
 flappy_bird:
   id: flappy_game
   gravity: 1.0
@@ -102,6 +115,9 @@ esphome:
       - script.execute: led_ring_apply_state
       - component.update: flappy_hs_sensor
       - lambda: id(flappy_game)->set_high_score(id(flappy_high_score));
+      - lambda: |-
+          id(radar)->set_latitude(id(radar_center_lat).state);
+          id(radar)->set_longitude(id(radar_center_lon).state);
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
 logger:
@@ -643,6 +659,15 @@ binary_sensor:
     name: "Button"
     on_multi_click:
       - timing:
+          - ON for at most 400ms
+          - OFF for at most 350ms
+          - ON for at most 400ms
+          - OFF for at least 50ms
+        then:
+          - lambda: id(flappy_game)->stop_game();
+          - plane_radar.toggle:
+              id: radar
+      - timing:
           - ON for at most 600ms
           - OFF for at least 50ms
         then:
@@ -650,6 +675,8 @@ binary_sensor:
       - timing:
           - ON for at least 1500ms
         then:
+          - plane_radar.stop:
+              id: radar
           - flappy_bird.toggle:
               id: flappy_game
 
@@ -764,6 +791,32 @@ switch:
       - online_image.release: standby_background_image
 
 number:
+  - platform: template
+    id: radar_center_lat
+    name: "Radar Center Latitude"
+    icon: "mdi:latitude"
+    entity_category: config
+    min_value: -90
+    max_value: 90
+    step: 0.0001
+    initial_value: ${radar_lat}
+    restore_value: true
+    set_action:
+      - lambda: id(radar)->set_latitude(x);
+
+  - platform: template
+    id: radar_center_lon
+    name: "Radar Center Longitude"
+    icon: "mdi:longitude"
+    entity_category: config
+    min_value: -180
+    max_value: 180
+    step: 0.0001
+    initial_value: ${radar_lon}
+    restore_value: true
+    set_action:
+      - lambda: id(radar)->set_longitude(x);
+
   - platform: template
     id: player_controls_timeout_seconds
     name: Player controls timeout delay
@@ -1217,6 +1270,15 @@ sensor:
     icon: mdi:bird
     entity_category: diagnostic
     lambda: return (float) id(flappy_high_score);
+    update_interval: never
+
+  - platform: template
+    id: radar_aircraft_sensor
+    name: "Radar Aircraft Count"
+    accuracy_decimals: 0
+    icon: mdi:airplane
+    entity_category: diagnostic
+    lambda: return 0.0f;
     update_interval: never
 
   - platform: homeassistant
@@ -2976,6 +3038,10 @@ touchscreen:
     on_touch:
       then:
         - lambda: |-
+            if (id(radar)->is_active()) {
+              id(radar)->cycle_range();
+              return;
+            }
             if (id(flappy_game)->is_active()) {
               id(flappy_game)->flap();
               return;
