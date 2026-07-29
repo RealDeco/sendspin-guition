@@ -16,6 +16,8 @@ substitutions:
   display_model: "JC3636W518" # JC3636W518 for v1, JC3636W518V2 for v2
   pdm_mic_type: "false" # false for v1, true for v2
 
+  display_rotation: 0
+
   # Home Assistant weather entity.
   ha_weather_entity: weather.forecast_home
 
@@ -2570,6 +2572,7 @@ light:
 lvgl:
   displays:
     - main_display
+  rotation: ${display_rotation}
   buffer_size: 12%
   color_depth: 16
   bg_color: 0x000000
