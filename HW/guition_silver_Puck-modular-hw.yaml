@@ -221,8 +221,9 @@ touchscreen:
     display: main_display
     i2c_id: touchscreen_bus
     transform:
-      mirror_x: true
-      mirror_y: true
+      swap_xy: ${touch_swap_xy}
+      mirror_x: ${touch_mirror_x}
+      mirror_y: ${touch_mirror_y}
     on_touch:
       then:
         - script.execute: standby_screen_activity
@@ -326,9 +327,9 @@ display:
     id: main_display
     model: ${display_model}
     transform:
-      swap_xy: false
-      mirror_x: true
-      mirror_y: true
+      swap_xy: ${screen_swap_xy}
+      mirror_x: ${screen_mirror_x}
+      mirror_y: ${screen_mirror_y}
     auto_clear_enabled: false
     update_interval: never
     dimensions:
