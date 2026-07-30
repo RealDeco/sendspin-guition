@@ -2,8 +2,7 @@ substitutions:
   name: silver-puck-v1
   friendly_name: Silver Puck v1
 
-  # User settings
-
+# User settings
   startup_sound_file: "Home_Connected" # (options are: available, Home_Connected, Home_Connected_Male, Computer_Ready)
   wakeup_sound: "popup" # (options are: popup, wake_word_triggered)
   imagemodel1: "Gwen" # options are: below
@@ -12,15 +11,20 @@ substitutions:
 # AlbertQuackmore, Alita, Alfred, Astrobot, Buzz, Casita, Cybergirl, Dory, EVE, Eyes, Eyes2, GLaDOS, Girl1, Guy1, Guy2, Gwen, Gwen_Black, 
 # HA-character, ha-girl, Hacker, Harley, Jarvis, Luffy, Mario, Max, Prime, Robochibi, Robocop, Robot, Robotgirl, Salem, Sarah, Shaun
 
-
   display_model: "JC3636W518" # JC3636W518 for v1, JC3636W518V2 for v2
   pdm_mic_type: "false" # false for v1, true for v2
 
-  display_rotation: 0
+# display and touch rotation (defaults to 180)
+  screen_swap_xy: false # 90=true, 180=false, 270=true
+  screen_mirror_x: true # 90=true, 180=true, 270=false
+  screen_mirror_y: true # 90=false, 180=true, 270=true
 
-  # Home Assistant weather entity.
+  touch_swap_xy: false # 90=true, 180=false, 270=true
+  touch_mirror_x: true # 90=false 180=true, 270=true
+  touch_mirror_y: true # 90=true, 180=true, 270=false
+  
+# Home Assistant weather entity.
   ha_weather_entity: weather.forecast_home
-
 
   imagewidth:  "360"
   imageheight: "360"
@@ -2572,7 +2576,6 @@ light:
 lvgl:
   displays:
     - main_display
-  rotation: ${display_rotation}
   buffer_size: 12%
   color_depth: 16
   bg_color: 0x000000
