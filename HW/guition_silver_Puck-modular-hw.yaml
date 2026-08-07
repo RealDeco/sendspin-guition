@@ -8,7 +8,6 @@ button:
     id: restart_button
     name: "Restart"
     entity_category: config
-    disabled_by_default: true
     icon: "mdi:restart"
 
 spi:
