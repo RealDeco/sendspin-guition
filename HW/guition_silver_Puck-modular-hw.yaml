@@ -2,7 +2,15 @@
 
 substitutions:
   media_sample_rate: 48000
-  
+
+button:
+  - platform: restart
+    id: restart_button
+    name: "Restart"
+    entity_category: config
+    disabled_by_default: true
+    icon: "mdi:restart"
+
 spi:
   id: display_qspi
   type: quad
@@ -122,8 +130,6 @@ media_player:
                     media_player.is_announcing:
                       id: external_media_player
             then:
-              - lambda: |-
-                  ESP_LOGW("va", "stopping wake word for media playback");
               - script.execute: stop_wake_word
         - script.execute: led_ring_apply_state
         - if:
