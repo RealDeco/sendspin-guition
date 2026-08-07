@@ -39,7 +39,7 @@ packages:
     ref: main
     refresh: 0s
     files:
-      - devices/Under_Development/Modular/HW/sendspin-external_components.yaml
+      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.7.3.yaml
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -58,11 +58,11 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.7.0
+  min_version: 2026.7.4
   name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_waveshare35
-    version: "2026.7.0"
+    version: "2026.7.4"
   on_boot:
     priority: -100
     then:
@@ -118,6 +118,13 @@ wifi:
   ap:
 improv_serial:
 captive_portal:
+
+button:
+  - platform: restart
+    id: restart_button
+    name: "Restart"
+    entity_category: config
+    icon: "mdi:restart"
 
 time:
   - platform: homeassistant
@@ -266,6 +273,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: sendspin_album_art_valid
+    type: bool
+    restore_value: no
+    initial_value: "false"
 
 image:
   - platform: file
@@ -363,22 +374,28 @@ image:
     on_error:
       - lambda: |-
           ESP_LOGW("family_photo", "failed to load photo");
+    
+### sendspin album art
 
-generic_image:
   - platform: sendspin
-    id: sendspin_album_art
-    format: jpeg
+    id: album_slot
+    format: JPEG
     type: RGB565
     resize: ${imagewidth}x${imageheight}
+    display_offset: 1s
     source: ALBUM
+    current_image:
+      id: sendspin_album_art
     on_image_display:
+      - logger.log:
+          format: "Album art displayed (late by %u ms)"
+          args: ["(unsigned) lateness_ms"]
+          level: WARN
+      - script.stop: album_art_timeout_fallback
       - lambda: |-
+          id(sendspin_album_art_valid) = true;
           lv_obj_t *img = id(album_art_widget);
-          if (id(sendspin_album_art)->is_loaded()) {
-            lv_img_set_src(img, id(sendspin_album_art));
-          } else {
-            lv_img_set_src(img, id(fallback_playing_image));
-          }
+          lv_img_set_src(img, id(sendspin_album_art));
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_anim_del(img, nullptr);
           lv_obj_set_style_translate_x(img, 0, 0);
@@ -391,6 +408,9 @@ generic_image:
             lv_obj_set_style_img_opa((lv_obj_t *) obj, v, 0);
           });
           lv_anim_start(&fade_in);
+    on_image_clear:
+      - lambda: |-
+          ESP_LOGW("imagecheck", id(sendspin_album).get_state().c_str(), "Cleared");
     on_image_error:
       - lambda: |-
           ESP_LOGW("album_art", "failed to decode album art");
@@ -1329,16 +1349,16 @@ text_sensor:
 
   - platform: sendspin
     id: sendspin_title
+    name: "Song Title"
     type: title
     on_value:
-      - lambda: |-
-          lv_img_set_src(id(album_art_widget), id(fallback_playing_image));
       - lvgl.label.update:
           id: controls_title_label
           text: !lambda return x;
 
   - platform: sendspin
     id: sendspin_artist
+    name: "Song Artist"
     type: artist
     on_value:
       - lvgl.label.update:
@@ -1347,8 +1367,12 @@ text_sensor:
 
   - platform: sendspin
     id: sendspin_album
+    name: "Album Name"
     type: album
     on_value:
+      - lambda: |-
+          id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_timeout_fallback
       - lvgl.label.update:
           id: controls_artist_label
           text: !lambda return x;
@@ -2130,6 +2154,18 @@ script:
               - lambda: 'return !id(timer_is_active);'
           then:
             - light.turn_off: Sled
+
+  - id: album_art_timeout_fallback
+    mode: restart
+    then:
+      - delay: 1200ms
+      - if:
+          condition:
+            lambda: 'return !id(sendspin_album_art_valid);'
+          then:
+            - lvgl.image.update:
+                id: album_art_widget
+                src: fallback_playing_image
 
   - id: now_playing_swipe_left
     mode: restart
