@@ -108,9 +108,9 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 Guition 1.85" Rotary Knob:
 [https://www.aliexpress.com/item/1005011771382178.html](https://www.aliexpress.com/item/1005011771382178.html)
 
-## BEWARE THIS VERSION IS CURRENTLY SOLD OUT, DONT MISTAKE V1 FOR IT.
+## BACK IN STOCK!.
 
-(V2 has a LED ring in the middle, v1 does not and v1 does NOT work for this project)
+(note: V2 has a LED ring in the middle, v1 does not and v1 does NOT work for this project)
 
 ---
 
