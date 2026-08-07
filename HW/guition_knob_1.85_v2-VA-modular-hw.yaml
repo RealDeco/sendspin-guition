@@ -10,7 +10,14 @@ substitutions:
   display_model: "JC3636W518V2"
   pdm_mic_type: "true"
   media_sample_rate: 48000
-  
+
+button:
+  - platform: restart
+    id: restart_button
+    name: "Restart"
+    entity_category: config
+    icon: "mdi:restart"
+
 spi:
   id: display_qspi
   type: quad
