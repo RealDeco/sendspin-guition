@@ -6,7 +6,7 @@ substitutions:
 
   startup_sound_file: "Home_Connected" # (options are: available, Home_Connected, Home_Connected_Male, Computer_Ready)
   wakeup_sound: "popup" # (options are: popup, wake_word_triggered)
-  imagemodel1: "Gwen" # options are: below
+  imagemodel1: "Gwen_Black" # options are: below
   imagemodel2: "Alfred" # options are below
 
   ## available models:
@@ -22,6 +22,8 @@ substitutions:
 
   screenwidth:  "360"
   screenheight: "360"
+
+  album_fade_time: "1500ms"
 
   ui_phase_standby: "0"
   ui_phase_player_controls: "1"
@@ -147,6 +149,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: last_album_art_valid
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - id: album_art_slide_active
     type: bool
     restore_value: no
@@ -377,11 +383,9 @@ image:
     source: ALBUM
     current_image:
       id: sendspin_album_art
+    transition_image:
+      id: sendspin_album_art_transition
     on_image_display:
-      - logger.log:
-          format: "Album art displayed (late by %u ms)"
-          args: ["(unsigned) lateness_ms"]
-          level: WARN
       - script.stop: album_art_timeout_fallback
       - lambda: |-
           id(sendspin_album_art_valid) = true;
@@ -389,27 +393,25 @@ image:
           condition:
             lambda: 'return !id(album_art_slide_active);'
           then:
-            - script.execute: album_art_apply_decoded
-    on_image_clear:
-      - lambda: |-
-          ESP_LOGW("imagecheck", id(sendspin_album).get_state().c_str(), "Cleared");
-    on_image_error:
-      - lambda: |-
-          ESP_LOGW("imagecheck", id(sendspin_album).get_state().c_str(), "Error");
-      - lambda: |-
-          id(sendspin_album_art_valid) = false;
-          if (!id(album_art_slide_active)) {
-            lv_obj_add_flag(id(album_art_transition_widget), LV_OBJ_FLAG_HIDDEN);
-          }
-      - lvgl.image.update:
-          id: album_art_widget
-          src: fallback_playing_image
+            - script.execute: album_art_crossfade_apply
+          else:
+            - sendspin.image.transition_finished: album_slot
       - lvgl.image.update:
           id: controls_album_art_widget
-          src: fallback_playing_image
+          src: sendspin_album_art
       - lvgl.image.update:
           id: playlist_album_art_widget
-          src: fallback_playing_image
+          src: sendspin_album_art
+    on_image_clear:
+      - logger.log:
+          format: "Album art cleared"
+          level: WARN
+    on_image_error:
+      - logger.log:
+          format: "Album art error"
+          level: WARN
+      - lambda: |-
+          id(sendspin_album_art_valid) = false;
 
 sendspin:
   id: sendspin_hub
@@ -1098,11 +1100,13 @@ text_sensor:
     type: album
     on_value:
       - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
+      - lambda: |-
           id(sendspin_album_art_valid) = false;
       - script.execute: album_art_timeout_fallback
       - component.update: now_playing_text
       - lvgl.label.update:
-          id: controls_artist_label
+          id: controls_album_label
           text: !lambda return x;
 
   - platform: template
@@ -2057,24 +2061,27 @@ script:
     parameters:
       direction: int
     then:
-      - script.stop: album_art_fade_cleanup
+      - lvgl.animation.stop: album_art_crossfade
       - lambda: |-
           id(album_art_slide_active) = true;
           id(sendspin_album_art_valid) = false;
-          lv_obj_t *current_art = id(album_art_widget);
-          lv_obj_t *incoming_art = id(album_art_transition_widget);
-          lv_anim_del(current_art, nullptr);
-          lv_anim_del(incoming_art, nullptr);
-          lv_img_set_src(incoming_art, id(fallback_playing_image));
-          lv_obj_set_x(current_art, 0);
-          lv_obj_set_x(incoming_art, -direction * ${screenwidth});
-          lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
-          lv_obj_set_style_img_opa(incoming_art, LV_OPA_COVER, 0);
-          lv_obj_clear_flag(incoming_art, LV_OBJ_FLAG_HIDDEN);
+          id(last_album_art_valid) = false;
+          lv_obj_t *outgoing = id(slide_outgoing_art);
+          lv_obj_t *incoming = id(slide_incoming_art);
+          lv_anim_del(outgoing, nullptr);
+          lv_anim_del(incoming, nullptr);
+          lv_img_set_src(outgoing, lv_img_get_src(id(incoming_art)));
+          lv_img_set_zoom(outgoing, LV_ZOOM_NONE);
+          lv_img_set_src(incoming, id(fallback_playing_image));
+          lv_img_set_zoom(incoming, LV_ZOOM_NONE);
+          lv_obj_set_x(outgoing, 0);
+          lv_obj_set_x(incoming, -direction * ${screenwidth});
+          lv_obj_clear_flag(outgoing, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(incoming, LV_OBJ_FLAG_HIDDEN);
 
           lv_anim_t current_slide;
           lv_anim_init(&current_slide);
-          lv_anim_set_var(&current_slide, current_art);
+          lv_anim_set_var(&current_slide, outgoing);
           lv_anim_set_values(&current_slide, 0, direction * ${screenwidth});
           lv_anim_set_time(&current_slide, 300);
           lv_anim_set_exec_cb(&current_slide, [](void *obj, int32_t x) {
@@ -2084,7 +2091,7 @@ script:
 
           lv_anim_t incoming_slide;
           lv_anim_init(&incoming_slide);
-          lv_anim_set_var(&incoming_slide, incoming_art);
+          lv_anim_set_var(&incoming_slide, incoming);
           lv_anim_set_values(&incoming_slide, -direction * ${screenwidth}, 0);
           lv_anim_set_time(&incoming_slide, 300);
           lv_anim_set_exec_cb(&incoming_slide, [](void *obj, int32_t x) {
@@ -2093,74 +2100,30 @@ script:
           lv_anim_start(&incoming_slide);
       - delay: 300ms
       - lambda: |-
-          lv_obj_t *current_art = id(album_art_widget);
-          lv_obj_t *incoming_art = id(album_art_transition_widget);
-          lv_img_set_src(current_art, id(fallback_playing_image));
-          lv_obj_set_x(current_art, 0);
-          lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
-          lv_obj_add_flag(incoming_art, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_x(incoming_art, 0);
+          lv_obj_add_flag(id(slide_outgoing_art), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(slide_incoming_art), LV_OBJ_FLAG_HIDDEN);
+          lv_img_set_src(id(incoming_art), id(fallback_playing_image));
+          lv_img_set_zoom(id(incoming_art), LV_ZOOM_NONE);
           id(album_art_slide_active) = false;
-      - if:
-          condition:
-            lambda: 'return id(sendspin_album_art_valid);'
-          then:
-            - script.execute: album_art_apply_decoded
 
-  - id: album_art_apply_decoded
+  - id: album_art_crossfade_apply
     mode: restart
     then:
-      - script.stop: album_art_fade_cleanup
-      - lambda: |-
-          lv_obj_t *now_playing_art = id(album_art_widget);
-          lv_obj_t *transition_art = id(album_art_transition_widget);
-          lv_obj_t *controls_art = id(controls_album_art_widget);
-          lv_obj_t *playlist_art = id(playlist_album_art_widget);
-          lv_img_set_src(controls_art, id(sendspin_album_art));
-          lv_img_set_zoom(controls_art, LV_ZOOM_NONE);
-          lv_img_set_src(playlist_art, id(sendspin_album_art));
-          lv_img_set_zoom(playlist_art, LV_ZOOM_NONE);
-
-          if (id(ui_phase) == ${ui_phase_now_playing}) {
-            lv_anim_del(transition_art, nullptr);
-            lv_img_set_src(transition_art, id(sendspin_album_art));
-            lv_img_set_zoom(transition_art, LV_ZOOM_NONE);
-            lv_obj_set_x(transition_art, 0);
-            lv_obj_set_style_img_opa(transition_art, LV_OPA_TRANSP, 0);
-            lv_obj_clear_flag(transition_art, LV_OBJ_FLAG_HIDDEN);
-
-            lv_anim_t fade_in;
-            lv_anim_init(&fade_in);
-            lv_anim_set_var(&fade_in, transition_art);
-            lv_anim_set_values(&fade_in, LV_OPA_TRANSP, LV_OPA_COVER);
-            lv_anim_set_time(&fade_in, 300);
-            lv_anim_set_exec_cb(&fade_in, [](void *obj, int32_t opacity) {
-              lv_obj_set_style_img_opa((lv_obj_t *) obj, opacity, 0);
-            });
-            lv_anim_start(&fade_in);
-          } else {
-            lv_img_set_src(now_playing_art, id(sendspin_album_art));
-            lv_img_set_zoom(now_playing_art, LV_ZOOM_NONE);
-          }
       - if:
           condition:
-            lambda: 'return id(ui_phase) == ${ui_phase_now_playing};'
+            lambda: 'return id(last_album_art_valid);'
           then:
-            - script.execute: album_art_fade_cleanup
-
-  - id: album_art_fade_cleanup
-    mode: restart
-    then:
-      - delay: 320ms
-      - lambda: |-
-          lv_obj_t *now_playing_art = id(album_art_widget);
-          lv_obj_t *transition_art = id(album_art_transition_widget);
-          lv_img_set_src(now_playing_art, id(sendspin_album_art));
-          lv_img_set_zoom(now_playing_art, LV_ZOOM_NONE);
-          lv_obj_set_x(now_playing_art, 0);
-          lv_obj_set_style_img_opa(now_playing_art, LV_OPA_COVER, 0);
-          lv_obj_add_flag(transition_art, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_x(transition_art, 0);
+            - lvgl.image.update:
+                id: outgoing_art
+                src: sendspin_album_art_transition
+          else:
+            - lvgl.image.update:
+                id: outgoing_art
+                src: fallback_playing_image
+      - lvgl.image.update:
+          id: incoming_art
+          src: sendspin_album_art
+      - lvgl.animation.start: album_art_crossfade
 
 
   - id: refresh_timer_display
@@ -2425,24 +2388,34 @@ script:
   - id: album_art_timeout_fallback
     mode: restart
     then:
-      - delay: 1200ms
+      - delay: 2000ms
       - if:
           condition:
-            lambda: 'return !id(sendspin_album_art_valid);'
+            and:
+              - lambda: 'return !id(sendspin_album_art_valid);'
+              - lambda: 'return !id(album_art_slide_active);'
           then:
+            - if:
+                condition:
+                  lambda: 'return id(last_album_art_valid);'
+                then:
+                  - lvgl.image.update:
+                      id: outgoing_art
+                      src: sendspin_album_art_transition
+                else:
+                  - lvgl.image.update:
+                      id: outgoing_art
+                      src: fallback_playing_image
             - lvgl.image.update:
-                id: album_art_widget
+                id: incoming_art
                 src: fallback_playing_image
+            - lvgl.animation.start: album_art_crossfade
             - lvgl.image.update:
                 id: controls_album_art_widget
                 src: fallback_playing_image
             - lvgl.image.update:
                 id: playlist_album_art_widget
                 src: fallback_playing_image
-            - lambda: |-
-                if (!id(album_art_slide_active)) {
-                  lv_obj_add_flag(id(album_art_transition_widget), LV_OBJ_FLAG_HIDDEN);
-                }
 
   - id: mp_idle_debounce
     mode: restart
@@ -2584,6 +2557,17 @@ lvgl:
   color_depth: 16
   bg_color: 0x000000
   default_font: font_display
+
+  animations:
+    - id: album_art_crossfade
+      duration: ${album_fade_time}
+      widgets:
+        - id: outgoing_art
+          opa:
+            from: 100%
+            to: 0%
+      on_stop:
+        - sendspin.image.transition_finished: album_slot
 
   pages:
     - id: boot_sound_page
@@ -2852,6 +2836,17 @@ lvgl:
             long_mode: SCROLL_CIRCULAR
             text_align: CENTER
 
+        - label:
+            id: controls_album_label
+            align: TOP_MID
+            y: 108
+            width: 250
+            text: ""
+            text_color: 0x8EDBFF
+            text_font: font_display
+            long_mode: SCROLL_CIRCULAR
+            text_align: CENTER
+
         - button:
             id: controls_mute_button
             align: BOTTOM_MID
@@ -3042,7 +3037,7 @@ lvgl:
       bg_color: 0x000000
       widgets:
         - image:
-            id: album_art_widget
+            id: incoming_art
             align: TOP_MID
             x: 0
             y: 0
@@ -3053,7 +3048,30 @@ lvgl:
             clickable: false
 
         - image:
-            id: album_art_transition_widget
+            id: outgoing_art
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+
+        - image:
+            id: slide_outgoing_art
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - image:
+            id: slide_incoming_art
             align: TOP_MID
             x: 0
             y: 0
