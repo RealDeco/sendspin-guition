@@ -23,6 +23,8 @@ substitutions:
   screenwidth:  "1024"
   screenheight: "600"
 
+  album_fade_time: "1500ms"
+
   ui_phase_standby: "0"
   ui_phase_player_controls: "1"
   ui_phase_now_playing: "2"
@@ -328,6 +330,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: last_album_art_valid
+    type: bool
+    restore_value: false
+    initial_value: 'false'
 
 image:
 ### model 1
@@ -447,6 +453,8 @@ image:
     source: ALBUM
     current_image:
       id: sendspin_album_art
+    transition_image:
+      id: sendspin_album_art_transition
     on_image_display:
       - logger.log:
           format: "Album art displayed (late by %u ms)"
@@ -455,39 +463,14 @@ image:
       - script.stop: album_art_timeout_fallback
       - lambda: |-
           id(sendspin_album_art_valid) = true;
-          lv_obj_t *img = id(album_art_widget);
-          lv_img_set_src(img, id(sendspin_album_art));
-          lv_img_set_zoom(img, LV_ZOOM_NONE);
-          lv_anim_del(img, nullptr);
-          lv_obj_set_style_translate_x(img, 0, 0);
-          lv_anim_t fade_in;
-          lv_anim_init(&fade_in);
-          lv_anim_set_var(&fade_in, img);
-          lv_anim_set_values(&fade_in, LV_OPA_TRANSP, LV_OPA_COVER);
-          lv_anim_set_time(&fade_in, 300);
-          lv_anim_set_exec_cb(&fade_in, [](void *obj, int32_t v) {
-            lv_obj_set_style_img_opa((lv_obj_t *) obj, v, 0);
-          });
-          lv_anim_start(&fade_in);
+      - script.execute: album_art_crossfade_apply
     on_image_clear:
       - lambda: |-
           ESP_LOGW("imagecheck", id(sendspin_album).get_state().c_str(), "Cleared");
     on_image_error:
       - lambda: |-
           ESP_LOGW("album_art", "failed to decode album art");
-          lv_obj_t *img = id(album_art_widget);
-          lv_img_set_src(img, id(fallback_playing_image));
-          lv_anim_del(img, nullptr);
-          lv_obj_set_style_translate_x(img, 0, 0);
-          lv_anim_t fade_in;
-          lv_anim_init(&fade_in);
-          lv_anim_set_var(&fade_in, img);
-          lv_anim_set_values(&fade_in, LV_OPA_TRANSP, LV_OPA_COVER);
-          lv_anim_set_time(&fade_in, 300);
-          lv_anim_set_exec_cb(&fade_in, [](void *obj, int32_t v) {
-            lv_obj_set_style_img_opa((lv_obj_t *) obj, v, 0);
-          });
-          lv_anim_start(&fade_in);
+          id(sendspin_album_art_valid) = false;
 
 sendspin:
   id: sendspin_hub
@@ -1491,6 +1474,8 @@ text_sensor:
     type: album
     on_value:
       - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
+      - lambda: |-
           id(sendspin_album_art_valid) = false;
       - script.execute: album_art_timeout_fallback
       - lvgl.label.update:
@@ -2286,24 +2271,58 @@ script:
   - id: album_art_timeout_fallback
     mode: restart
     then:
-      - delay: 1200ms
+      - delay: 2000ms
       - if:
           condition:
             lambda: 'return !id(sendspin_album_art_valid);'
           then:
+            - if:
+                condition:
+                  lambda: 'return id(last_album_art_valid);'
+                then:
+                  - lvgl.image.update:
+                      id: outgoing_art
+                      src: sendspin_album_art_transition
+                else:
+                  - lvgl.image.update:
+                      id: outgoing_art
+                      src: fallback_playing_image
             - lvgl.image.update:
-                id: album_art_widget
+                id: incoming_art
                 src: fallback_playing_image
+            - lvgl.animation.start: album_art_crossfade
+
+  - id: album_art_crossfade_apply
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(last_album_art_valid);'
+          then:
+            - lvgl.image.update:
+                id: outgoing_art
+                src: sendspin_album_art_transition
+          else:
+            - lvgl.image.update:
+                id: outgoing_art
+                src: fallback_playing_image
+      - lvgl.image.update:
+          id: incoming_art
+          src: sendspin_album_art
+      - lvgl.animation.start: album_art_crossfade
 
   - id: now_playing_swipe_left
     mode: restart
     then:
+      - lvgl.animation.stop: album_art_crossfade
       - lambda: |-
+          id(sendspin_album_art_valid) = false;
+          id(last_album_art_valid) = false;
           if (id(slide_incoming_ptr)) {
             lv_obj_del(id(slide_incoming_ptr));
             id(slide_incoming_ptr) = nullptr;
           }
-          lv_obj_t *img = id(album_art_widget);
+          lv_obj_t *img = id(incoming_art);
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
@@ -2339,7 +2358,7 @@ script:
             lv_obj_del(id(slide_incoming_ptr));
             id(slide_incoming_ptr) = nullptr;
           }
-          lv_obj_t *img = id(album_art_widget);
+          lv_obj_t *img = id(incoming_art);
           lv_anim_del(img, nullptr);
           lv_img_set_src(img, id(fallback_playing_image));
           lv_img_set_zoom(img, LV_ZOOM_NONE);
@@ -2349,12 +2368,15 @@ script:
   - id: now_playing_swipe_right
     mode: restart
     then:
+      - lvgl.animation.stop: album_art_crossfade
       - lambda: |-
+          id(sendspin_album_art_valid) = false;
+          id(last_album_art_valid) = false;
           if (id(slide_incoming_ptr)) {
             lv_obj_del(id(slide_incoming_ptr));
             id(slide_incoming_ptr) = nullptr;
           }
-          lv_obj_t *img = id(album_art_widget);
+          lv_obj_t *img = id(incoming_art);
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
@@ -2390,7 +2412,7 @@ script:
             lv_obj_del(id(slide_incoming_ptr));
             id(slide_incoming_ptr) = nullptr;
           }
-          lv_obj_t *img = id(album_art_widget);
+          lv_obj_t *img = id(incoming_art);
           lv_anim_del(img, nullptr);
           lv_img_set_src(img, id(fallback_playing_image));
           lv_img_set_zoom(img, LV_ZOOM_NONE);
@@ -3262,6 +3284,17 @@ lvgl:
   bg_color: 0x000000
   default_font: font_display
 
+  animations:
+    - id: album_art_crossfade
+      duration: ${album_fade_time}
+      widgets:
+        - id: outgoing_art
+          opa:
+            from: 100%
+            to: 0%
+      on_stop:
+        - sendspin.image.transition_finished: album_slot
+
   bottom_layer:
     bg_color: 0x000000
     bg_opa: COVER
@@ -3322,7 +3355,18 @@ lvgl:
                   hidden: true
                   widgets:
                     - image:
-                        id: album_art_widget
+                        id: incoming_art
+                        align: TOP_MID
+                        x: 0
+                        y: 0
+                        src: fallback_playing_image
+                        width: ${imagewidth}
+                        height: ${imageheight}
+                        antialias: false
+                        clickable: false
+
+                    - image:
+                        id: outgoing_art
                         align: TOP_MID
                         x: 0
                         y: 0
