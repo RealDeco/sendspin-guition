@@ -405,4 +405,6 @@ display:
   - platform: mipi_spi
     id: main_display
     model: ${display_model}
+    bus_mode: quad
+    data_rate: 80MHz
     update_interval: never
