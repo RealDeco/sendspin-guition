@@ -64,11 +64,6 @@ packages: # github
 #  hardware: !include sendspin-guition/HW/guition_silver_Puck-modular-hw.yaml
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.7.3.yaml
 
-external_components:
-  - source: github://pr#18289
-    components: [sendspin]
-    refresh: 1h
-
 esp32:
   variant: esp32s3
   flash_size: 16MB
