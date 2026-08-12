@@ -64,6 +64,11 @@ packages: # github
 #  hardware: !include sendspin-guition/HW/guition_silver_Puck-modular-hw.yaml
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.7.3.yaml
 
+external_components:
+  - source: github://pr#18289
+    components: [sendspin]
+    refresh: 1h
+
 esp32:
   variant: esp32s3
   flash_size: 16MB
@@ -158,6 +163,14 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: current_album_name
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: previous_album_name
+    type: std::string
+    restore_value: no
+    initial_value: '""'
   - id: last_album_art_valid
     type: bool
     restore_value: false
@@ -594,6 +607,7 @@ select:
       - clock
       - hacker
       - mission
+      - neonwaves
       - redmarble
       - starrysky
       - tron
@@ -1090,6 +1104,16 @@ text_sensor:
     type: title
     on_value:
       - component.update: now_playing_text
+      - lambda: |-
+          id(previous_album_name) = id(sendspin_album).get_state();
+      - delay: 100ms
+      - lambda: |-
+          id(current_album_name) = id(sendspin_album).get_state();
+      - lambda: |-
+          ESP_LOGW("albumcheck", "title-fired | current_album='%s' | previous_album='%s' | art_valid_before=%d",
+                    id(current_album_name).c_str(),
+                    id(previous_album_name).c_str(),
+                    id(sendspin_album_art_valid));
       - lvgl.label.update:
           id: controls_title_label
           text: !lambda return x;
