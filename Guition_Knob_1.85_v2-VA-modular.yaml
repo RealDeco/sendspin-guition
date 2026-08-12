@@ -42,9 +42,6 @@ external_components:
   - source: github://RAR/esphome-drv2605
     components: [drv2605]
     refresh: 1h
-  - source: github://pr#18289
-    components: [sendspin]
-    refresh: 1h
 
 packages:
   extcomp:
@@ -424,6 +421,8 @@ select:
       - clock
       - hacker
       - mission
+      - neonwaves
+      - redmarble
       - starrysky
       - tron
       - waterdrops
