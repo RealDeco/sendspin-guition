@@ -175,6 +175,10 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+  - id: album_art_awaiting_swipe_art
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - id: album_art_slide_active
     type: bool
     restore_value: no
@@ -411,6 +415,7 @@ image:
       - script.stop: album_art_timeout_fallback
       - lambda: |-
           id(sendspin_album_art_valid) = true;
+          id(album_art_awaiting_swipe_art) = false;
       - if:
           condition:
             lambda: 'return !id(album_art_slide_active);'
@@ -1114,6 +1119,20 @@ text_sensor:
                     id(current_album_name).c_str(),
                     id(previous_album_name).c_str(),
                     id(sendspin_album_art_valid));
+      - if:
+          condition:
+            and:
+              - lambda: 'return id(album_art_awaiting_swipe_art);'
+              - lambda: 'return id(current_album_name) == id(previous_album_name);'
+          then:
+            - script.stop: album_art_timeout_fallback
+            - lambda: |-
+                id(sendspin_album_art_valid) = true;
+                id(album_art_awaiting_swipe_art) = false;
+            - script.execute: album_art_crossfade_apply
+          else:
+            - lambda: |-
+                id(album_art_awaiting_swipe_art) = false;
       - lvgl.label.update:
           id: controls_title_label
           text: !lambda return x;
@@ -2140,6 +2159,7 @@ script:
           lv_img_set_src(id(incoming_art), id(fallback_playing_image));
           lv_img_set_zoom(id(incoming_art), LV_ZOOM_NONE);
           id(album_art_slide_active) = false;
+          id(album_art_awaiting_swipe_art) = true;
 
   - id: album_art_crossfade_apply
     mode: restart
