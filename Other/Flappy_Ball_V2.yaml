@@ -48,6 +48,9 @@ packages:
     files:
       - devices/Under_Development/Modular/HW/sendspin-external_components_2026.7.3.yaml
 
+#packages: # local
+#  extcomp: !include localtest/HW/sendspin-external_components_2026.7.3.yaml
+
 external_components:
   - source: github://pr#16882
     components: [audio, i2s_audio, micro_wake_word, resampler]
@@ -56,13 +59,12 @@ external_components:
     components: [plane_radar, flappy_bird]
     refresh: 0d
 
-#packages: # local
-#  extcomp: !include localtest/HW/sendspin-external_components_2026.7.3.yaml
-
 plane_radar:
   id: radar
   latitude: ${radar_lat}
   longitude: ${radar_lon}
+  width: ${screenwidth}
+  height: ${screenheight}
   update_interval: 15s
   initial_range_km: 50
   on_aircraft_update:
@@ -714,6 +716,7 @@ binary_sensor:
 switch:
   - platform: gpio
     name: Speaker Enable
+    id: speaker_enable
     icon: "mdi:speaker"
     entity_category: config
     pin: GPIO46
@@ -2215,7 +2218,7 @@ script:
           then:
             - lvgl.page.show: player_controls_page
             - lambda: |-
-                lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
+                lv_label_set_text(id(controls_mute_icon), id(speaker_enable).state ? "\xF3\xB0\x95\xBE" : "\xF3\xB0\x9D\x9F");
             - script.execute: player_controls_timeout
       - if:
           condition:
@@ -2585,11 +2588,9 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - lambda: |-
-                bool new_muted = !id(external_media_player).is_muted();
-                auto call = id(external_media_player).make_call();
-                call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
-                call.perform();
-                lv_label_set_text(id(controls_mute_icon), new_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
+                id(speaker_enable).toggle();
+                bool speaker_on = id(speaker_enable).state;
+                lv_label_set_text(id(controls_mute_icon), speaker_on ? "\xF3\xB0\x95\xBE" : "\xF3\xB0\x9D\x9F");
             - script.execute: player_controls_keep_open
 
   - id: player_controls_slide_to_now_playing
