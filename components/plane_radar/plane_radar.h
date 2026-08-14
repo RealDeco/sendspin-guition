@@ -6,15 +6,11 @@
 #include "esphome/core/component.h"
 #include "esphome/core/automation.h"
 #include "lvgl.h"
+#include <algorithm>
 
 namespace esphome {
 namespace plane_radar {
 
-static constexpr int PR_W   = 240;
-static constexpr int PR_H   = 240;
-static constexpr int PR_CX  = 120;
-static constexpr int PR_CY  = 120;
-static constexpr int PR_R   = 118;
 static constexpr int MAX_AC = 64;
 
 static constexpr uint16_t pr_rgb(uint8_t r, uint8_t g, uint8_t b) {
@@ -55,6 +51,8 @@ class PlaneRadar : public Component {
     void set_latitude(float v)         { center_lat_ = v; }
     void set_longitude(float v)        { center_lon_ = v; }
     void set_update_interval(int v)    { update_interval_ms_ = v; }
+    void set_width(int v)              { width_ = v; }
+    void set_height(int v)             { height_ = v; }
     void set_initial_range_km(int v)   { range_km_ = v; }
     void set_use_miles(bool v)         { use_miles_ = v; }
 
@@ -73,8 +71,15 @@ class PlaneRadar : public Component {
     float center_lat_        { 0.0f  };
     float center_lon_        { 0.0f  };
     int   update_interval_ms_{ 15000 };
+    int   width_             { 240   };
+    int   height_            { 240   };
     int   range_km_          { 50    };
     bool  use_miles_         { false };
+
+    // Derived in init_() from width_/height_
+    int cx_ { 120 };
+    int cy_ { 120 };
+    int r_  { 118 };
 
     PRState   state_  { PRState::IDLE };
     lv_obj_t *canvas_ { nullptr };
@@ -95,8 +100,8 @@ class PlaneRadar : public Component {
     void geo_to_pixel_(float lat, float lon, int &px, int &py);
 
     inline void set_pixel_(int x, int y, uint16_t c) {
-        if ((unsigned)x < PR_W && (unsigned)y < PR_H)
-            fb_[y * PR_W + x] = c;
+        if ((unsigned)x < (unsigned)width_ && (unsigned)y < (unsigned)height_)
+            fb_[y * width_ + x] = c;
     }
     void fill_rect_(int x, int y, int w, int h, uint16_t c);
     void draw_circle_(int cx, int cy, int r, uint16_t c);

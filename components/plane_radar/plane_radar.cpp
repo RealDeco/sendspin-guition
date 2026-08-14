@@ -48,7 +48,7 @@ void PlaneRadar::start() {
     last_fetch_ms_  = 0;
     last_render_ms_ = 0;
     state_ = PRState::ACTIVE;
-    ESP_LOGI(TAG, "Radar started, range %d km", range_km_);
+    ESP_LOGI(TAG, "Radar started %dx%d, range %d km", width_, height_, range_km_);
 }
 
 void PlaneRadar::stop() {
@@ -67,7 +67,7 @@ void PlaneRadar::cycle_range() {
     for (int i = 0; i < N_RANGE_PRESETS; i++) {
         if (RANGE_PRESETS[i] >= range_km_) { idx = i; break; }
     }
-    idx      = (idx + 1) % N_RANGE_PRESETS;
+    idx       = (idx + 1) % N_RANGE_PRESETS;
     range_km_ = RANGE_PRESETS[idx];
     ESP_LOGI(TAG, "Range -> %d km", range_km_);
 }
@@ -75,19 +75,24 @@ void PlaneRadar::cycle_range() {
 // ---- lifecycle ----
 
 void PlaneRadar::init_() {
-    size_t sz = (size_t)PR_W * PR_H * sizeof(uint16_t);
+    // Derive center and usable radius from configured dimensions
+    cx_ = width_  / 2;
+    cy_ = height_ / 2;
+    r_  = std::min(width_, height_) / 2 - 2;
+
+    size_t sz = (size_t)width_ * height_ * sizeof(uint16_t);
 #ifdef USE_ESP32
     fb_ = (uint16_t *)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!fb_)
         fb_ = (uint16_t *)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 #else
-    fb_ = new uint16_t[PR_W * PR_H];
+    fb_ = new uint16_t[width_ * height_];
 #endif
     if (!fb_) { ESP_LOGE(TAG, "Cannot allocate radar buffer"); return; }
-    std::fill(fb_, fb_ + PR_W * PR_H, PR_COL_BG);
+    std::fill(fb_, fb_ + width_ * height_, PR_COL_BG);
 
     canvas_ = lv_canvas_create(lv_layer_top());
-    lv_canvas_set_buffer(canvas_, fb_, PR_W, PR_H, LV_COLOR_FORMAT_RGB565);
+    lv_canvas_set_buffer(canvas_, fb_, width_, height_, LV_COLOR_FORMAT_RGB565);
     lv_obj_set_pos(canvas_, 0, 0);
     lv_obj_remove_flag(canvas_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(canvas_, LV_OBJ_FLAG_CLICKABLE);
@@ -132,7 +137,6 @@ static esp_err_t http_event_cb(esp_http_client_event_t *evt) {
 
 void PlaneRadar::fetch_() {
 #ifdef USE_ESP32
-    // Route cJSON allocations through PSRAM (set once)
     static bool hooks_set = false;
     if (!hooks_set) {
         cJSON_Hooks hooks = { psram_malloc_, heap_caps_free };
@@ -146,7 +150,7 @@ void PlaneRadar::fetch_() {
         "https://opendata.adsb.fi/api/v3/lat/%.4f/lon/%.4f/dist/%.0f",
         center_lat_, center_lon_, dist_nm);
 
-    constexpr size_t BUF_CAP = 131072;  // 128 KB in PSRAM
+    constexpr size_t BUF_CAP = 131072;
     char *resp = (char *)heap_caps_malloc(BUF_CAP + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!resp) { ESP_LOGW(TAG, "Fetch buffer alloc failed"); return; }
 
@@ -184,17 +188,17 @@ void PlaneRadar::fetch_() {
             cJSON *jlon = cJSON_GetObjectItem(item, "lon");
             if (!cJSON_IsNumber(jlat) || !cJSON_IsNumber(jlon)) continue;
 
-            Aircraft &a    = aircraft_[aircraft_count_];
-            a.lat          = (float)jlat->valuedouble;
-            a.lon          = (float)jlon->valuedouble;
-            a.valid        = true;
+            Aircraft &a = aircraft_[aircraft_count_];
+            a.lat       = (float)jlat->valuedouble;
+            a.lon       = (float)jlon->valuedouble;
+            a.valid     = true;
 
-            cJSON *jtrk    = cJSON_GetObjectItem(item, "track");
-            a.track_deg    = cJSON_IsNumber(jtrk)  ? (float)jtrk->valuedouble  : 0.0f;
-            cJSON *jgs     = cJSON_GetObjectItem(item, "gs");
-            a.gs_knots     = cJSON_IsNumber(jgs)   ? (float)jgs->valuedouble   : 0.0f;
-            cJSON *jalt    = cJSON_GetObjectItem(item, "alt_baro");
-            a.alt_baro     = cJSON_IsNumber(jalt)  ? (int)jalt->valuedouble    : 0;
+            cJSON *jtrk = cJSON_GetObjectItem(item, "track");
+            a.track_deg = cJSON_IsNumber(jtrk) ? (float)jtrk->valuedouble : 0.0f;
+            cJSON *jgs  = cJSON_GetObjectItem(item, "gs");
+            a.gs_knots  = cJSON_IsNumber(jgs)  ? (float)jgs->valuedouble  : 0.0f;
+            cJSON *jalt = cJSON_GetObjectItem(item, "alt_baro");
+            a.alt_baro  = cJSON_IsNumber(jalt) ? (int)jalt->valuedouble   : 0;
 
             cJSON *jflight = cJSON_GetObjectItem(item, "flight");
             if (cJSON_IsString(jflight) && jflight->valuestring) {
@@ -225,55 +229,49 @@ void PlaneRadar::geo_to_pixel_(float lat, float lon, int &px, int &py) {
     float clat = center_lat_ * (float)M_PI / 180.0f;
     float dx_km = R * dlon * cosf(clat);
     float dy_km = R * dlat;
-    px = PR_CX + (int)(dx_km / (float)range_km_ * PR_R);
-    py = PR_CY - (int)(dy_km / (float)range_km_ * PR_R);
+    px = cx_ + (int)(dx_km / (float)range_km_ * r_);
+    py = cy_ - (int)(dy_km / (float)range_km_ * r_);
 }
 
 void PlaneRadar::render_() {
     if (!fb_ || !canvas_) return;
 
-    // Background
-    std::fill(fb_, fb_ + PR_W * PR_H, PR_COL_BG);
+    std::fill(fb_, fb_ + width_ * height_, PR_COL_BG);
 
-    // Range rings: 25%, 50%, 75%, 100% of PR_R
-    draw_circle_(PR_CX, PR_CY, PR_R * 1 / 4, PR_COL_RING_DIM);
-    draw_circle_(PR_CX, PR_CY, PR_R * 2 / 4, PR_COL_RING);
-    draw_circle_(PR_CX, PR_CY, PR_R * 3 / 4, PR_COL_RING_DIM);
-    draw_circle_(PR_CX, PR_CY, PR_R,          PR_COL_BORDER);
+    draw_circle_(cx_, cy_, r_ / 4,     PR_COL_RING_DIM);
+    draw_circle_(cx_, cy_, r_ / 2,     PR_COL_RING);
+    draw_circle_(cx_, cy_, r_ * 3 / 4, PR_COL_RING_DIM);
+    draw_circle_(cx_, cy_, r_,         PR_COL_BORDER);
 
-    // North indicator — small red triangle pointing up at top of outer ring
-    fill_triangle_(PR_CX,     PR_CY - PR_R + 1,
-                   PR_CX - 5, PR_CY - PR_R + 10,
-                   PR_CX + 5, PR_CY - PR_R + 10, PR_COL_NORTH);
+    // North indicator
+    fill_triangle_(cx_,     cy_ - r_ + 1,
+                   cx_ - 5, cy_ - r_ + 10,
+                   cx_ + 5, cy_ - r_ + 10, PR_COL_NORTH);
 
-    // Center dot
-    fill_circle_(PR_CX, PR_CY, 2, PR_COL_CENTER);
+    fill_circle_(cx_, cy_, 2, PR_COL_CENTER);
 
-    // Aircraft
     for (int i = 0; i < aircraft_count_; i++) {
         const Aircraft &ac = aircraft_[i];
         if (!ac.valid) continue;
         int px, py;
         geo_to_pixel_(ac.lat, ac.lon, px, py);
 
-        float dx   = (float)(px - PR_CX);
-        float dy   = (float)(py - PR_CY);
+        float dx   = (float)(px - cx_);
+        float dy   = (float)(py - cy_);
         float dist = sqrtf(dx * dx + dy * dy);
 
-        if (dist > PR_R - 6) {
-            float s = (PR_R - 6) / dist;
-            fill_circle_((int)(PR_CX + dx * s), (int)(PR_CY + dy * s), 2, PR_COL_EDGE_AC);
+        if (dist > r_ - 6) {
+            float s = (r_ - 6) / dist;
+            fill_circle_((int)(cx_ + dx * s), (int)(cy_ + dy * s), 2, PR_COL_EDGE_AC);
         } else {
             draw_aircraft_(px, py, ac.track_deg);
-            // Callsign: flip left/right to keep it inside the circle
             if (ac.callsign[0]) {
-                int len  = (int)strlen(ac.callsign);
-                int tw   = len * 6 - 1;
-                int tx   = (px >= PR_CX) ? px + 10 : px - 10 - tw;
-                int ty   = py - 3;
-                // clamp so text stays inside outer ring
-                tx = std::max(4, std::min(PR_W - tw - 4, tx));
-                ty = std::max(4, std::min(PR_H - 11, ty));
+                int len = (int)strlen(ac.callsign);
+                int tw  = len * 6 - 1;
+                int tx  = (px >= cx_) ? px + 10 : px - 10 - tw;
+                int ty  = py - 3;
+                tx = std::max(4, std::min(width_  - tw - 4, tx));
+                ty = std::max(4, std::min(height_ - 11,     ty));
                 draw_text_(tx, ty, ac.callsign, PR_COL_CENTER, 1);
             }
         }
@@ -286,13 +284,12 @@ void PlaneRadar::render_() {
     else
         snprintf(range_buf, sizeof(range_buf), "%dKM", range_km_);
     int rlen = (int)strlen(range_buf);
-    int rx   = PR_CX - (rlen * 12) / 2;
-    draw_text_(rx, PR_CY + PR_R - 20, range_buf, PR_COL_RING, 2);
+    draw_text_(cx_ - (rlen * 12) / 2, cy_ + r_ - 20, range_buf, PR_COL_RING, 2);
 
-    // Aircraft count — top-right, small
+    // Aircraft count
     char cnt_buf[8];
     snprintf(cnt_buf, sizeof(cnt_buf), "%d", aircraft_count_);
-    draw_text_(PR_CX + 30, 10, cnt_buf, PR_COL_RING_DIM, 1);
+    draw_text_(cx_ + 30, 10, cnt_buf, PR_COL_RING_DIM, 1);
 
     lv_obj_invalidate(canvas_);
 }
@@ -300,7 +297,6 @@ void PlaneRadar::render_() {
 void PlaneRadar::draw_aircraft_(int cx, int cy, float heading_deg) {
     float rad = heading_deg * (float)M_PI / 180.0f;
     float s = sinf(rad), c = cosf(rad);
-    // Apex 10px forward, base 5px back, 6px wide
     int ax  = cx + (int)(10 * s);
     int ay  = cy - (int)(10 * c);
     int blx = cx + (int)(-5 * s - 6 * c);
@@ -313,10 +309,10 @@ void PlaneRadar::draw_aircraft_(int cx, int cy, float heading_deg) {
 // ---- draw primitives ----
 
 void PlaneRadar::fill_rect_(int x, int y, int w, int h, uint16_t c) {
-    int x0 = std::max(0, x), x1 = std::min(PR_W, x + w);
-    int y0 = std::max(0, y), y1 = std::min(PR_H, y + h);
+    int x0 = std::max(0, x), x1 = std::min(width_,  x + w);
+    int y0 = std::max(0, y), y1 = std::min(height_, y + h);
     for (int row = y0; row < y1; row++)
-        std::fill(fb_ + row * PR_W + x0, fb_ + row * PR_W + x1, c);
+        std::fill(fb_ + row * width_ + x0, fb_ + row * width_ + x1, c);
 }
 
 void PlaneRadar::draw_circle_(int cx, int cy, int r, uint16_t c) {

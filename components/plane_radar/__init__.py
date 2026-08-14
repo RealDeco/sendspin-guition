@@ -1,7 +1,8 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import automation
-from esphome.const import CONF_ID, CONF_LATITUDE, CONF_LONGITUDE, CONF_TRIGGER_ID
+from esphome.const import CONF_ID, CONF_LATITUDE, CONF_LONGITUDE, CONF_TRIGGER_ID, \
+                          CONF_WIDTH, CONF_HEIGHT
 
 DEPENDENCIES = ["lvgl", "network"]
 CODEOWNERS   = ["@sendspin"]
@@ -26,8 +27,10 @@ CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID():                                               cv.declare_id(PlaneRadar),
     cv.Required(CONF_LATITUDE):                                    cv.float_,
     cv.Required(CONF_LONGITUDE):                                   cv.float_,
+    cv.Optional(CONF_WIDTH,            default=240):               cv.int_range(min=64, max=1920),
+    cv.Optional(CONF_HEIGHT,           default=240):               cv.int_range(min=64, max=1920),
     cv.Optional(CONF_UPDATE_INTERVAL,  default="15s"):             cv.positive_time_period_milliseconds,
-    cv.Optional(CONF_INITIAL_RANGE_KM, default=50):                cv.int_range(min=5, max=500),
+    cv.Optional(CONF_INITIAL_RANGE_KM, default=50):                cv.int_range(min=5, max=200),
     cv.Optional(CONF_USE_MILES,        default=False):             cv.boolean,
     cv.Optional(CONF_ON_AIRCRAFT_UPDATE): automation.validate_automation(
         {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(PlaneRadarAircraftUpdateTrigger)}
@@ -40,6 +43,8 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_latitude(config[CONF_LATITUDE]))
     cg.add(var.set_longitude(config[CONF_LONGITUDE]))
+    cg.add(var.set_width(config[CONF_WIDTH]))
+    cg.add(var.set_height(config[CONF_HEIGHT]))
     cg.add(var.set_initial_range_km(config[CONF_INITIAL_RANGE_KM]))
     cg.add(var.set_use_miles(config[CONF_USE_MILES]))
     for conf in config.get(CONF_ON_AIRCRAFT_UPDATE, []):
