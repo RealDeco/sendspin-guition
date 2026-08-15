@@ -136,6 +136,9 @@ globals:
   - id: previous_album_name
     type: std::string
     restore_value: no
+  - id: confirmed_art_album_name
+    type: std::string
+    restore_value: no
   - id: album_art_awaiting_swipe_art
     type: bool
     restore_value: no
@@ -239,6 +242,7 @@ image:
       - lambda: |-
           id(sendspin_album_art_valid) = true;
           id(album_art_awaiting_swipe_art) = false;
+          id(confirmed_art_album_name) = id(sendspin_album).get_state();
       - if:
           condition:
             lambda: 'return !id(album_art_slide_active);'
@@ -701,6 +705,7 @@ text_sensor:
             and:
               - lambda: 'return id(album_art_awaiting_swipe_art);'
               - lambda: 'return id(current_album_name) == id(previous_album_name);'
+              - lambda: 'return id(current_album_name) == id(confirmed_art_album_name);'
           then:
             - script.stop: album_art_timeout_fallback
             - lambda: |-
