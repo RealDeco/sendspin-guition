@@ -23,6 +23,10 @@ substitutions:
   screenwidth:  "360"
   screenheight: "360"
 
+  display_model: "JC3636W518V2"
+  pdm_mic_type: "true"
+  media_sample_rate: 48000
+
   album_fade_time: "1500ms"
 
   ui_phase_standby: "0"
@@ -38,12 +42,6 @@ substitutions:
   va_phase_timer_ringing: "6"
 
 packages: # github
-  core:
-    url: https://github.com/RealDeco/sendspin-guition.git
-    ref: main
-    refresh: 0s
-    files:
-      - HW/guition_knob_1.85_v2-VA-modular-hw.yaml
   extcomp:
     url: https://github.com/RealDeco/xiaozhi-esphome.git
     ref: main
@@ -54,6 +52,11 @@ packages: # github
 #packages: # local
 #  hardware: !include sendspin-guition/HW/guition_knob_1.85_v2-VA-modular-hw.yaml
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.7.3.yaml
+
+external_components:
+  - source: github://RAR/esphome-drv2605
+    components: [drv2605]
+    refresh: 1h
 
 esp32:
   variant: esp32s3
@@ -88,6 +91,9 @@ esphome:
       - script.execute: refresh_playlist_labels
       - script.execute: apply_accent_color_debounced
       - script.execute: led_ring_apply_state
+      - script.execute:
+          id: apply_clock_style
+          analog: !lambda 'return id(clock_style_choice).current_option() == "Analog Clock";'
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
 logger:
@@ -143,8 +149,13 @@ interval:
   - interval: 1s
     then:
       - script.execute: refresh_now_playing_progress_bar
+      - script.execute: analog_clock_redraw
 
 globals:
+  - id: haptic_last_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: sendspin_album_art_valid
     type: bool
     restore_value: no
@@ -290,6 +301,38 @@ globals:
     type: int
     restore_value: yes
     initial_value: "0"
+  - id: accent2_red
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent2_green
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent2_blue
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent3_red
+    type: int
+    restore_value: yes
+    initial_value: "102"
+  - id: accent3_green
+    type: int
+    restore_value: yes
+    initial_value: "204"
+  - id: accent3_blue
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: analog_clock_canvas_widget
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: clock_style_is_analog
+    type: bool
+    restore_value: no
+    initial_value: "false"
   - id: shuffle_state
     type: bool
     restore_value: yes
@@ -442,6 +485,361 @@ audio_file:
 
 http_request:
 
+button:
+  - platform: restart
+    id: restart_button
+    name: "Restart"
+    entity_category: config
+    icon: "mdi:restart"
+
+spi:
+  id: display_qspi
+  type: quad
+  clk_pin: GPIO11
+  data_pins: [GPIO13, GPIO14, GPIO15, GPIO16]
+
+i2c:
+  id: touchscreen_bus
+  sda: GPIO9
+  scl: GPIO10
+
+drv2605:
+  id: haptic_driver
+  i2c_id: touchscreen_bus
+  address: 0x5A
+  motor_type: LRA
+  library: 6
+
+i2s_audio:
+  - id: i2s_mic
+    i2s_lrclk_pin: GPIO5
+
+  - id: i2s_audio_bus
+    i2s_lrclk_pin:
+      number: GPIO45
+      ignore_strapping_warning: true
+    i2s_bclk_pin: GPIO3
+
+microphone:
+  - platform: i2s_audio
+    id: box_mic
+    i2s_audio_id: i2s_mic
+    i2s_din_pin: GPIO4
+    adc_type: external
+    channel: left
+    pdm: ${pdm_mic_type}
+    sample_rate: 16000
+    bits_per_sample: 16bit
+
+speaker:
+  - platform: i2s_audio
+    id: box_speaker
+    i2s_audio_id: i2s_audio_bus
+    i2s_dout_pin: GPIO42
+    dac_type: external
+    channel: stereo
+    buffer_duration: 100ms
+
+  - platform: mixer
+    id: mixing_speaker
+    output_speaker: box_speaker
+    num_channels: 2
+    task_stack_in_psram: true
+    source_speakers:
+      - id: announcement_mixing_input
+      - id: media_mixing_input
+
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+    sample_rate: ${media_sample_rate}
+    bits_per_sample: 16
+
+media_source:
+  - platform: audio_file
+    id: audio_file_announcement_source
+  - platform: audio_http
+    id: http_announcement_source
+    buffer_size: 250000
+  - platform: audio_http
+    id: http_media_source
+    buffer_size: 500000
+  - platform: sendspin
+    id: sendspin_media_source
+
+media_player:
+  - platform: sendspin
+    id: sendspin_group_media_player
+    name: Sendspin Group Media Player
+
+  - platform: speaker_source
+    id: external_media_player
+    name: Media Player
+
+    announcement_pipeline:
+      format: FLAC
+      num_channels: 1
+      sample_rate: ${media_sample_rate}
+      speaker: announcement_resampling_speaker
+      sources:
+        - audio_file_announcement_source
+        - http_announcement_source
+
+    media_pipeline:
+      format: FLAC
+      num_channels: 2
+      sample_rate: ${media_sample_rate}
+      speaker: media_resampling_speaker
+      sources:
+        - http_media_source
+        - sendspin_media_source
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 0.85
+
+    on_play:
+      then:
+        - script.stop: mp_idle_debounce
+        - if:
+            condition:
+              and:
+                - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                - lambda: 'return !id(va_reply_active);'
+                - not:
+                    media_player.is_announcing:
+                      id: external_media_player
+            then:
+              - lambda: |-
+                  ESP_LOGW("va", "stopping wake word for media playback");
+              - script.execute: stop_wake_word
+        - script.execute: led_ring_apply_state
+        - if:
+            condition:
+              lambda: 'return id(va_phase) == ${va_phase_idle};'
+            then:
+              - if:
+                  condition:
+                    lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+                  then:
+                    - script.execute:
+                        id: set_ui_phase
+                        phase: ${ui_phase_player_controls}
+                  else:
+                    - script.execute:
+                        id: set_ui_phase
+                        phase: ${ui_phase_now_playing}
+
+    on_idle:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(va_reply_active);'
+            then:
+              - lambda: |-
+                  id(va_reply_active) = false;
+              - script.execute: finish_va_reply
+            else:
+              - if:
+                  condition:
+                    and:
+                      - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                      - not:
+                          media_player.is_announcing:
+                            id: external_media_player
+                  then:
+                    - script.execute: start_wake_word
+              - if:
+                  condition:
+                    lambda: 'return id(va_phase) == ${va_phase_idle};'
+                  then:
+                    - script.execute: mp_idle_debounce
+              - script.execute: led_ring_apply_state
+
+    on_pause:
+      then:
+        - script.execute: led_ring_apply_state
+        - if:
+            condition:
+              lambda: 'return id(va_phase) == ${va_phase_idle};'
+            then:
+              - script.execute: start_wake_word
+              - script.execute:
+                  id: set_ui_phase
+                  phase: ${ui_phase_player_controls}
+
+binary_sensor:
+  - platform: gpio
+    id: rotary_cw_pulse
+    internal: true
+    pin:
+      number: GPIO1
+      mode:
+        input: true
+        pullup: true
+    use_interrupt: false
+    filters:
+      - delayed_on_off: 2ms
+    on_press:
+      then:
+        - logger.log:
+            level: WARN
+            tag: rotary
+            format: "GPIO1 CW pulse"
+        - script.execute: standby_screen_activity
+        - media_player.volume_up: external_media_player
+        - script.execute: haptic_click
+        - script.execute: show_volume_ring
+
+  - platform: gpio
+    id: rotary_ccw_pulse
+    internal: true
+    pin:
+      number: GPIO2
+      mode:
+        input: true
+        pullup: true
+    use_interrupt: false
+    filters:
+      - delayed_on_off: 2ms
+    on_press:
+      then:
+        - logger.log:
+            level: WARN
+            tag: rotary
+            format: "GPIO2 CCW pulse"
+        - script.execute: standby_screen_activity
+        - media_player.volume_down: external_media_player
+        - script.execute: haptic_click
+        - script.execute: show_volume_ring
+
+touchscreen:
+  - platform: cst816
+    id: my_touchscreen
+    interrupt_pin: GPIO7
+    reset_pin: GPIO8
+    display: main_display
+    i2c_id: touchscreen_bus
+    on_touch:
+      then:
+        - script.execute: standby_screen_activity
+        - lambda: |-
+            id(touch_active) = true;
+            id(touch_start_x) = touch.x;
+            id(touch_start_y) = touch.y;
+            id(touch_last_x) = touch.x;
+            id(touch_last_y) = touch.y;
+            id(touch_start_ms) = millis();
+            id(touch_swipe_detected) = false;
+    on_update:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            for (auto &touch : touches) {
+              if (touch.state >= 1 && touch.state <= 2) {
+                id(touch_last_x) = touch.x;
+                id(touch_last_y) = touch.y;
+                const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+                const int swipe_min_dist = std::max(16, min_dim / 8);
+                if (std::abs(id(touch_last_x) - id(touch_start_x)) >= swipe_min_dist ||
+                    std::abs(id(touch_last_y) - id(touch_start_y)) >= swipe_min_dist) {
+                  id(touch_swipe_detected) = true;
+                  lv_obj_remove_state(id(controls_mute_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_repeat_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_shuffle_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
+                }
+                break;
+              }
+            }
+    on_release:
+      then:
+        - lambda: |-
+            if (!id(touch_active)) return;
+            id(touch_active) = false;
+
+            const int dx = id(touch_last_x) - id(touch_start_x);
+            const int dy = id(touch_last_y) - id(touch_start_y);
+            const int abs_x = std::abs(dx);
+            const int abs_y = std::abs(dy);
+            const uint32_t elapsed = millis() - id(touch_start_ms);
+            const int min_dim = std::min(id(main_display).get_width(), id(main_display).get_height());
+            const int swipe_min_dist = std::max(16, min_dim / 8);
+            const int tap_max_dist = std::max(14, min_dim / 12);
+
+            if (id(va_phase) != ${va_phase_idle}) {
+              id(stop_active_va)->execute();
+              return;
+            }
+
+            if (elapsed <= 1500 && (abs_x >= swipe_min_dist || abs_y >= swipe_min_dist)) {
+              if (id(ui_phase) == ${ui_phase_now_playing}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(now_playing_swipe_left)->execute();
+                  } else {
+                    id(now_playing_swipe_right)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(start_manual_va)->execute();
+                } else {
+                  id(open_playlist_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_player_controls}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(player_controls_swipe_next)->execute();
+                  } else {
+                    id(player_controls_swipe_previous)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(start_manual_va)->execute();
+                } else {
+                  id(open_playlist_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_playlist_menu}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(player_controls_swipe_next)->execute();
+                  } else {
+                    id(player_controls_swipe_previous)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(close_playlist_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_standby} && abs_x >= abs_y) {
+                if (dx < 0) {
+                  id(clock_style_choice).make_call().select_next(true).perform();
+                } else {
+                  id(clock_style_choice).make_call().select_previous(true).perform();
+                }
+              }
+              return;
+            }
+
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
+              id(set_ui_phase)->execute(${ui_phase_player_controls});
+            }
+
+display:
+  - platform: mipi_spi
+    id: main_display
+    model: ${display_model}
+    cs_pin: GPIO12
+    reset_pin: GPIO17
+    auto_clear_enabled: false
+    update_interval: never
+    dimensions:
+        height: ${screenheight}
+        width: ${screenwidth}
+
 switch:
   - platform: template
     id: startup_sound_switch
@@ -529,6 +927,93 @@ switch:
           lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
       - online_image.release: standby_background_image
 
+  - platform: gpio
+    name: Speaker Enable
+    icon: "mdi:speaker"
+    entity_category: config
+    pin:
+      number: GPIO46
+      ignore_strapping_warning: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  - platform: template
+    id: rotary_haptic_feedback_enabled
+    name: Rotary haptic feedback
+    icon: "mdi:vibrate"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  - platform: template
+    id: led_ring_enabled
+    name: LED ring
+    icon: "mdi:led-strip-variant"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - script.execute: led_ring_apply_state
+    on_turn_off:
+      - light.turn_off: rgb_ring
+
+  - platform: template
+    id: clock_12h_format
+    name: 12-Hour Clock
+    icon: "mdi:clock-time-four-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - component.update: clock_hms
+    on_turn_off:
+      - component.update: clock_hms
+
+  - platform: template
+    id: clock_show_date
+    name: Show Date
+    icon: "mdi:calendar-blank-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
+          then:
+            - lvgl.widget.show: date_label
+      - script.execute: analog_clock_redraw
+    on_turn_off:
+      - lvgl.widget.hide: date_label
+      - script.execute: analog_clock_redraw
+
+  - platform: template
+    id: clock_show_seconds
+    name: Show Seconds
+    icon: "mdi:timer-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - component.update: clock_hms
+      - script.execute: analog_clock_redraw
+    on_turn_off:
+      - component.update: clock_hms
+      - script.execute: analog_clock_redraw
+
+  - platform: template
+    id: clock_show_gfx
+    name: Show GFX
+    icon: "mdi:radar"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - script.execute: analog_clock_redraw
+    on_turn_off:
+      - script.execute: analog_clock_redraw
+
 number:
   - platform: template
     id: player_controls_timeout_seconds
@@ -567,6 +1052,22 @@ number:
       - script.execute: standby_screen_activity
 
 select:
+  - platform: template
+    id: clock_style_choice
+    name: Clock Style
+    icon: "mdi:clock-outline"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: Digital Clock
+    options:
+      - Digital Clock
+      - Analog Clock
+    set_action:
+      - script.execute:
+          id: apply_clock_style
+          analog: !lambda 'return x == "Analog Clock";'
+
   - platform: template
     id: wake_word_engine_location
     name: Wake word engine location
@@ -640,6 +1141,18 @@ select:
                 red: 100%
                 green: 100%
                 blue: 0%
+            - light.turn_on:
+                id: accent_color_picker_2
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 100%
+            - light.turn_on:
+                id: accent_color_picker_3
+                brightness: 100%
+                red: 40%
+                green: 80%
+                blue: 100%
       - if:
           condition:
             lambda: return x == "Burning Red";
@@ -650,6 +1163,18 @@ select:
                 red: 100%
                 green: 0%
                 blue: 0%
+            - light.turn_on:
+                id: accent_color_picker_2
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 0%
+            - light.turn_on:
+                id: accent_color_picker_3
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 100%
       - if:
           condition:
             lambda: return x == "Cyber Blue";
@@ -660,6 +1185,18 @@ select:
                 red: 40%
                 green: 80%
                 blue: 100%
+            - light.turn_on:
+                id: accent_color_picker_2
+                brightness: 100%
+                red: 0%
+                green: 100%
+                blue: 40%
+            - light.turn_on:
+                id: accent_color_picker_3
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 0%
 
 text:
   - platform: template
@@ -1172,19 +1709,47 @@ text_sensor:
     lambda: |-
       auto t = id(homeassistant_time).now();
       if (!t.is_valid()) return std::string("--:--:--");
+      bool show_seconds = id(clock_show_seconds).state;
+      int hour_disp = t.hour;
+      if (id(clock_12h_format).state) {
+        hour_disp = t.hour % 12;
+        if (hour_disp == 0) hour_disp = 12;
+      }
       bool hide_colons = ((t.second % 2) == 0);
-      char buf[9];
-      if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d %02d", t.hour, t.minute, t.second);
-      else snprintf(buf, sizeof(buf), "%02d:%02d:%02d", t.hour, t.minute, t.second);
+      char buf[16];
+      if (show_seconds) {
+        if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d %02d", hour_disp, t.minute, t.second);
+        else snprintf(buf, sizeof(buf), "%02d:%02d:%02d", hour_disp, t.minute, t.second);
+      } else {
+        if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d", hour_disp, t.minute);
+        else snprintf(buf, sizeof(buf), "%02d:%02d", hour_disp, t.minute);
+      }
       return std::string(buf);
     on_value:
       - if:
           condition:
-            lvgl.page.is_showing: idle_page
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
           then:
             - lvgl.label.update:
                 id: clock_label
                 text: !lambda return x;
+            - lambda: |-
+                if (!id(clock_12h_format).state) {
+                  lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                  return;
+                }
+                auto t = id(homeassistant_time).now();
+                lv_label_set_text(id(clock_ampm_label), (t.is_valid() && t.hour >= 12) ? "P" : "A");
+                lv_point_t txt_size;
+                lv_text_get_size(&txt_size, x.c_str(), id(font_7seg)->get_lv_font(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+                lv_area_t clock_area;
+                lv_obj_get_coords(id(clock_label), &clock_area);
+                int32_t label_cx = (clock_area.x1 + clock_area.x2) / 2;
+                int32_t label_bottom = clock_area.y2;
+                lv_obj_set_pos(id(clock_ampm_label), label_cx + txt_size.x / 2 + 4, label_bottom - 26);
+                lv_obj_clear_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
 
   - platform: template
     id: clock_date
@@ -1203,7 +1768,9 @@ text_sensor:
     on_value:
       - if:
           condition:
-            lvgl.page.is_showing: idle_page
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
           then:
             - lvgl.label.update:
                 id: date_label
@@ -1224,7 +1791,9 @@ text_sensor:
     on_value:
       - if:
           condition:
-            lvgl.page.is_showing: idle_page
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
           then:
             - lvgl.label.update:
                 id: weather_big_temp
@@ -1263,6 +1832,7 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
               - lambda: return id(weather_available);
           then:
             - lvgl.widget.show: weather_header
@@ -1273,7 +1843,9 @@ text_sensor:
           else:
             - if:
                 condition:
-                  lvgl.page.is_showing: idle_page
+                  and:
+                    - lvgl.page.is_showing: idle_page
+                    - lambda: 'return !id(clock_style_is_analog);'
                 then:
                   - lvgl.widget.hide: weather_header
                   - lvgl.widget.hide: weather_label
@@ -1338,6 +1910,11 @@ font:
     size: 50
     glyphs: "0123456789:- "
 
+  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+    id: font_ampm
+    size: 22
+    glyphs: "AP"
+
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_weather
     size: 76
@@ -1377,6 +1954,128 @@ font:
       - "\U000F0020"
 
 script:
+  - id: haptic_click
+    mode: restart
+    then:
+      - if:
+          condition:
+            switch.is_on: rotary_haptic_feedback_enabled
+          then:
+            - lambda: |-
+                const uint32_t now = millis();
+                if (now - id(haptic_last_ms) < 45) return;
+                id(haptic_last_ms) = now;
+            - drv2605.play_effect:
+                id: haptic_driver
+                effect: 7
+
+  - id: led_ring_apply_state
+    mode: restart
+    then:
+      - if:
+          condition:
+            switch.is_off: led_ring_enabled
+          then:
+            - light.turn_off: rgb_ring
+          else:
+            - if:
+                condition:
+                  lambda: |-
+                    return id(va_phase) == ${va_phase_timer_ringing};
+                then:
+                  - light.turn_on:
+                      id: rgb_ring
+                      brightness: 75%
+                      red: 100%
+                      green: 35%
+                      blue: 0%
+                      effect: "none"
+                else:
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(va_phase) == ${va_phase_waiting_for_command};
+                      then:
+                        - light.turn_on:
+                            id: rgb_ring
+                            brightness: 75%
+                            red: 0%
+                            green: 40%
+                            blue: 100%
+                            effect: "Waiting for Command"
+                      else:
+                        - if:
+                            condition:
+                              lambda: |-
+                                return id(va_phase) == ${va_phase_listening};
+                            then:
+                              - light.turn_on:
+                                  id: rgb_ring
+                                  brightness: 90%
+                                  red: 0%
+                                  green: 75%
+                                  blue: 100%
+                                  effect: "Listening For Command"
+                            else:
+                              - if:
+                                  condition:
+                                    lambda: |-
+                                      return id(va_phase) == ${va_phase_thinking};
+                                  then:
+                                    - light.turn_on:
+                                        id: rgb_ring
+                                        brightness: 80%
+                                        red: 100%
+                                        green: 100%
+                                        blue: 0%
+                                        effect: "Thinking"
+                                  else:
+                                    - if:
+                                        condition:
+                                          lambda: |-
+                                            return id(va_phase) == ${va_phase_replying};
+                                        then:
+                                          - light.turn_on:
+                                              id: rgb_ring
+                                              brightness: 80%
+                                              red: 0%
+                                              green: 100%
+                                              blue: 100%
+                                              effect: "Replying"
+                                        else:
+                                          - if:
+                                              condition:
+                                                lambda: |-
+                                                  return id(va_phase) == ${va_phase_error};
+                                              then:
+                                                - light.turn_on:
+                                                    id: rgb_ring
+                                                    brightness: 80%
+                                                    red: 100%
+                                                    green: 0%
+                                                    blue: 100%
+                                                    effect: "none"
+                                              else:
+                                                - if:
+                                                    condition:
+                                                      media_player.is_playing: external_media_player
+                                                    then:
+                                                      - light.turn_on:
+                                                          id: rgb_ring
+                                                          brightness: 45%
+                                                          red: 0%
+                                                          green: 100%
+                                                          blue: 0%
+                                                          effect: "none"
+                                                    else:
+                                                      - light.turn_on:
+                                                          id: rgb_ring
+                                                          brightness: 28%
+                                                          red: 100%
+                                                          green: 0%
+                                                          blue: 0%
+                                                          effect: "none"
+
   - id: finish_va_reply
     mode: restart
     then:
@@ -1660,13 +2359,32 @@ script:
           const lv_color_t accent = lv_color_hex(accent_u32);
           const lv_color_t accent_dark = lv_color_hex(dark_u32);
 
+          const int r2 = std::max(0, std::min(255, id(accent2_red)));
+          const int g2 = std::max(0, std::min(255, id(accent2_green)));
+          const int b2 = std::max(0, std::min(255, id(accent2_blue)));
+          const uint32_t accent2_u32 = ((uint32_t) r2 << 16) | ((uint32_t) g2 << 8) | (uint32_t) b2;
+          const lv_color_t accent2 = lv_color_hex(accent2_u32);
+
+          const int r3 = std::max(0, std::min(255, id(accent3_red)));
+          const int g3 = std::max(0, std::min(255, id(accent3_green)));
+          const int b3 = std::max(0, std::min(255, id(accent3_blue)));
+          const uint32_t accent3_u32 = ((uint32_t) r3 << 16) | ((uint32_t) g3 << 8) | (uint32_t) b3;
+          const lv_color_t accent3 = lv_color_hex(accent3_u32);
+
           lv_obj_set_style_text_color(id(clock_label), accent, 0);
+          lv_obj_set_style_text_color(id(clock_ampm_label), accent, 0);
           lv_obj_set_style_text_color(id(idle_timer_countdown), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_bg_color(id(now_playing_progress_bar), accent, LV_PART_INDICATOR);
+          lv_obj_set_style_text_color(id(date_label), accent2, 0);
+          lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
+          lv_obj_set_style_text_color(id(weather_label), accent3, 0);
+          lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
+          lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
+          lv_obj_set_style_text_color(id(controls_album_label), accent3, 0);
 
           lv_obj_t *playlist_buttons[] = {
             id(playlist_1_button), id(playlist_2_button), id(playlist_3_button),
@@ -1678,7 +2396,165 @@ script:
             lv_obj_set_style_shadow_color(button, accent, 0);
             lv_obj_set_style_bg_color(button, accent, LV_STATE_PRESSED);
           }
+
+          lv_obj_t *playlist_labels[] = {
+            id(playlist_1_label), id(playlist_2_label), id(playlist_3_label),
+            id(playlist_4_label), id(playlist_5_label), id(playlist_6_label)
+          };
+          for (auto *label : playlist_labels) {
+            lv_obj_set_style_text_color(label, accent2, 0);
+          }
       - script.execute: refresh_shuffle_repeat_buttons
+      - script.execute: analog_clock_redraw
+
+  - id: analog_clock_ensure_created
+    then:
+      - lambda: |-
+          if (id(analog_clock_canvas_widget) != nullptr) return;
+          const int32_t SIZE = std::min(${screenwidth}, ${screenheight});
+          lv_obj_t *canvas = lv_canvas_create(id(idle_page)->obj);
+          lv_draw_buf_t *buf = lv_draw_buf_create(SIZE, SIZE, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
+          lv_canvas_set_draw_buf(canvas, buf);
+          lv_obj_set_style_bg_opa(canvas, LV_OPA_TRANSP, 0);
+          lv_obj_center(canvas);
+          lv_obj_clear_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
+          lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
+          lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+          id(analog_clock_canvas_widget) = canvas;
+
+  - id: apply_clock_style
+    mode: restart
+    parameters:
+      analog: bool
+    then:
+      - lambda: |-
+          id(clock_style_is_analog) = analog;
+      - if:
+          condition:
+            lambda: 'return analog;'
+          then:
+            - script.execute: analog_clock_ensure_created
+            - lambda: |-
+                lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+            - script.execute: analog_clock_redraw
+          else:
+            - lambda: |-
+                lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                if (id(clock_show_date).state) {
+                  lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                } else {
+                  lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                }
+                if (id(analog_clock_canvas_widget) != nullptr) {
+                  lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                }
+            - component.update: weather_line
+
+  - id: analog_clock_redraw
+    mode: restart
+    then:
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_is_analog);'
+              - lambda: 'return id(analog_clock_canvas_widget) != nullptr;'
+          then:
+            - lambda: |-
+                lv_obj_t *canvas = id(analog_clock_canvas_widget);
+                const int32_t SIZE = std::min(${screenwidth}, ${screenheight});
+                const int32_t CX = SIZE / 2;
+                const int32_t CY = SIZE / 2;
+                const int32_t R = SIZE / 2 - 10;
+
+                lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_TRANSP);
+
+                lv_layer_t layer;
+                lv_canvas_init_layer(canvas, &layer);
+
+                const uint32_t accent = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+                const uint32_t accent2 = ((uint32_t) id(accent2_red) << 16) | ((uint32_t) id(accent2_green) << 8) | (uint32_t) id(accent2_blue);
+                const uint32_t accent3 = ((uint32_t) id(accent3_red) << 16) | ((uint32_t) id(accent3_green) << 8) | (uint32_t) id(accent3_blue);
+                lv_color_t fg = lv_color_hex(accent);
+                lv_color_t fg2 = lv_color_hex(accent2);
+                lv_color_t fg3 = lv_color_hex(accent3);
+                const bool show_seconds = id(clock_show_seconds).state;
+
+                lv_draw_line_dsc_t line_dsc;
+                lv_draw_line_dsc_init(&line_dsc);
+                line_dsc.round_start = true;
+                line_dsc.round_end = true;
+
+                if (id(clock_show_gfx).state) {
+                  for (int i = 0; i < 60; i++) {
+                    float a = (i / 60.0f) * 6.2831853f - 1.5707963f;
+                    bool major = (i % 5 == 0);
+                    int32_t r_out = R;
+                    int32_t r_in = major ? R - 16 : R - 8;
+                    line_dsc.p1.x = CX + (int32_t) (cosf(a) * r_out);
+                    line_dsc.p1.y = CY + (int32_t) (sinf(a) * r_out);
+                    line_dsc.p2.x = CX + (int32_t) (cosf(a) * r_in);
+                    line_dsc.p2.y = CY + (int32_t) (sinf(a) * r_in);
+                    line_dsc.color = major ? fg : fg2;
+                    line_dsc.width = major ? 3 : 1;
+                    lv_draw_line(&layer, &line_dsc);
+                  }
+                }
+
+                auto t = id(homeassistant_time).now();
+                int hh = t.is_valid() ? (t.hour % 12) : 0;
+                int mm = t.is_valid() ? t.minute : 0;
+                int ss = t.is_valid() ? t.second : 0;
+
+                float s_pos = ss / 60.0f;
+                float m_pos = (mm + s_pos) / 60.0f;
+                float h_pos = (hh + m_pos) / 12.0f;
+
+                auto draw_hand = [&](float pos, int32_t len, int32_t width, lv_color_t color) {
+                  float a = pos * 6.2831853f - 1.5707963f;
+                  line_dsc.p1.x = CX;
+                  line_dsc.p1.y = CY;
+                  line_dsc.p2.x = CX + (int32_t) (cosf(a) * len);
+                  line_dsc.p2.y = CY + (int32_t) (sinf(a) * len);
+                  line_dsc.color = color;
+                  line_dsc.width = width;
+                  lv_draw_line(&layer, &line_dsc);
+                };
+
+                draw_hand(h_pos, (int32_t) (R * 0.5f), 6, fg3);
+                draw_hand(m_pos, (int32_t) (R * 0.72f), 4, fg3);
+                if (show_seconds) {
+                  draw_hand(s_pos, (int32_t) (R * 0.85f), 1, fg);
+                }
+
+                lv_draw_rect_dsc_t dot_dsc;
+                lv_draw_rect_dsc_init(&dot_dsc);
+                dot_dsc.bg_color = fg;
+                dot_dsc.bg_opa = LV_OPA_COVER;
+                dot_dsc.radius = LV_RADIUS_CIRCLE;
+                lv_area_t dot_area = {CX - 6, CY - 6, CX + 6, CY + 6};
+                lv_draw_rect(&layer, &dot_dsc, &dot_area);
+
+                if (id(clock_show_date).state) {
+                  std::string date_str = id(clock_date).state;
+                  lv_draw_label_dsc_t label_dsc;
+                  lv_draw_label_dsc_init(&label_dsc);
+                  label_dsc.color = fg2;
+                  label_dsc.font = id(font_date)->get_lv_font();
+                  label_dsc.align = LV_TEXT_ALIGN_CENTER;
+                  label_dsc.text = date_str.c_str();
+                  const int32_t date_y = CY + (int32_t) (R * 0.55f);
+                  lv_area_t label_area = {CX - R, date_y, CX + R, date_y + 40};
+                  lv_draw_label(&layer, &label_dsc, &label_area);
+                }
+
+                lv_canvas_finish_layer(canvas, &layer);
+                lv_obj_invalidate(canvas);
 
   - id: set_ui_phase
     mode: restart
@@ -2556,6 +3432,11 @@ script:
           }
 
 output:
+  - platform: ledc
+    id: backlight_output
+    pin: GPIO21
+    inverted: false
+
   - platform: template
     id: accent_color_r
     type: float
@@ -2580,15 +3461,212 @@ output:
           id(accent_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
       - script.execute: apply_accent_color_debounced
 
+  - platform: template
+    id: accent_color2_r
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent2_red) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color2_g
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent2_green) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color2_b
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent2_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color3_r
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent3_red) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color3_g
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent3_green) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color3_b
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent3_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
 light:
+  - platform: monochromatic
+    id: Sled
+    name: Screen
+    icon: mdi:television
+    entity_category: config
+    output: backlight_output
+    restore_mode: ALWAYS_ON
+    default_transition_length: 250ms
+
+  - platform: esp32_rmt_led_strip
+    id: rgb_ring
+    name: RGB ring
+    icon: mdi:led-strip-variant
+    pin:
+      number: GPIO0
+      ignore_strapping_warning: true
+    num_leds: 13
+    chipset: WS2812
+    rgb_order: GRB
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 250ms
+    effects:
+      - addressable_lambda:
+          name: "Waiting for Command"
+          update_interval: 100ms
+          lambda: |-
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            static uint8_t index = 0;
+            if (initial_run) { index = 0; }
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13) {
+                it[i] = color;
+              } else if (i == (index + 12) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 11) % 13) {
+                it[i] = color * 128;
+              } else if (i == (index + 6) % 13) {
+                it[i] = color;
+              } else if (i == (index + 5) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 4) % 13) {
+                it[i] = color * 128;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+            index = (index + 1) % 13;
+      - addressable_lambda:
+          name: "Listening For Command"
+          update_interval: 50ms
+          lambda: |-
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            static uint8_t index = 0;
+            if (initial_run) { index = 0; }
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13) {
+                it[i] = color;
+              } else if (i == (index + 12) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 11) % 13) {
+                it[i] = color * 128;
+              } else if (i == (index + 6) % 13) {
+                it[i] = color;
+              } else if (i == (index + 5) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 4) % 13) {
+                it[i] = color * 128;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+            index = (index + 1) % 13;
+      - addressable_lambda:
+          name: "Thinking"
+          update_interval: 20ms
+          lambda: |-
+            static uint8_t index = 0;
+            static uint8_t brightness_step = 0;
+            static bool brightness_decreasing = true;
+            const uint8_t brightness_step_number = 10;
+            if (initial_run) {
+              index = 0;
+              brightness_step = 0;
+              brightness_decreasing = true;
+            }
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            const uint8_t level = 255 / brightness_step_number * (brightness_step_number - brightness_step);
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13 || i == (index + 6) % 13) {
+                it[i] = color * level;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+            if (brightness_decreasing) { brightness_step++; } else { brightness_step--; }
+            if (brightness_step == 0 || brightness_step == brightness_step_number) { brightness_decreasing = !brightness_decreasing; }
+            index = (index + 1) % 13;
+      - addressable_lambda:
+          name: "Replying"
+          update_interval: 50ms
+          lambda: |-
+            auto light_color = id(rgb_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255, light_color.get_blue() * 255);
+            static uint8_t index = 0;
+            if (initial_run) { index = 0; }
+            index = (13 + index - 1) % 13;
+            for (uint8_t i = 0; i < 13; i++) {
+              if (i == index % 13) {
+                it[i] = color;
+              } else if (i == (index + 1) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 2) % 13) {
+                it[i] = color * 128;
+              } else if (i == (index + 6) % 13) {
+                it[i] = color;
+              } else if (i == (index + 7) % 13) {
+                it[i] = color * 192;
+              } else if (i == (index + 8) % 13) {
+                it[i] = color * 128;
+              } else {
+                it[i] = Color::BLACK;
+              }
+            }
+
   - platform: rgb
     id: accent_color_picker
-    name: Accent color
+    name: Accent color 1
     icon: mdi:palette
     entity_category: config
     red: accent_color_r
     green: accent_color_g
     blue: accent_color_b
+    restore_mode: RESTORE_DEFAULT_ON
+    default_transition_length: 0s
+
+  - platform: rgb
+    id: accent_color_picker_2
+    name: Accent color 2
+    icon: mdi:palette
+    entity_category: config
+    red: accent_color2_r
+    green: accent_color2_g
+    blue: accent_color2_b
+    restore_mode: RESTORE_DEFAULT_ON
+    default_transition_length: 0s
+
+  - platform: rgb
+    id: accent_color_picker_3
+    name: Accent color 3
+    icon: mdi:palette
+    entity_category: config
+    red: accent_color3_r
+    green: accent_color3_g
+    blue: accent_color3_b
     restore_mode: RESTORE_DEFAULT_ON
     default_transition_length: 0s
 
@@ -2797,6 +3875,15 @@ lvgl:
                   long_mode: SCROLL_CIRCULAR
                   text_align: CENTER
 
+        - label:
+            id: clock_ampm_label
+            x: 0
+            y: 0
+            text: ""
+            text_color: 0xFFFF00
+            text_font: font_ampm
+            hidden: true
+
         - canvas:
             id: hourglass_canvas
             align: TOP_MID
@@ -2859,7 +3946,7 @@ lvgl:
         - label:
             id: controls_title_label
             align: TOP_MID
-            y: 46
+            y: 30
             width: 285
             text: ""
             text_color: 0xFFFFFF
@@ -2870,7 +3957,7 @@ lvgl:
         - label:
             id: controls_artist_label
             align: TOP_MID
-            y: 82
+            y: 66
             width: 265
             text: ""
             text_color: 0x66CCFF
@@ -2881,7 +3968,7 @@ lvgl:
         - label:
             id: controls_album_label
             align: TOP_MID
-            y: 108
+            y: 92
             width: 250
             text: ""
             text_color: 0x8EDBFF
