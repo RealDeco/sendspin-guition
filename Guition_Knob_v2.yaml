@@ -2350,6 +2350,11 @@ lvgl:
             hidden: true
             width: 1
             height: 1
+        - canvas:
+            id: canvas_enable_stub
+            hidden: true
+            width: 1
+            height: 1
 
     - id: idle_page
       bg_color: 0x000000
