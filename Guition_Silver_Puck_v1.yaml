@@ -2119,6 +2119,11 @@ lvgl:
             width: 230
             long_mode: WRAP
             text_align: CENTER
+        - canvas:
+            id: canvas_enable_stub
+            hidden: true
+            width: 1
+            height: 1
 
     - id: idle_page
       bg_color: 0x000000
