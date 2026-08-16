@@ -68,6 +68,9 @@ esphome:
       - script.execute: refresh_playlist_labels
       - script.execute: apply_accent_color_debounced
       - script.execute: led_ring_apply_state
+      - script.execute:
+          id: apply_clock_style
+          analog: !lambda 'return id(clock_style_choice).current_option() == "Analog Clock";'
 
 esp32:
   variant: esp32s3
@@ -119,6 +122,11 @@ button:
 time:
   - platform: homeassistant
     id: homeassistant_time
+
+interval:
+  - interval: 1s
+    then:
+      - script.execute: analog_clock_redraw
 
 globals:
   - id: sendspin_album_art_valid
@@ -222,6 +230,38 @@ globals:
     type: int
     restore_value: yes
     initial_value: "0"
+  - id: accent2_red
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent2_green
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent2_blue
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent3_red
+    type: int
+    restore_value: yes
+    initial_value: "102"
+  - id: accent3_green
+    type: int
+    restore_value: yes
+    initial_value: "204"
+  - id: accent3_blue
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: analog_clock_canvas_widget
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: clock_style_is_analog
+    type: bool
+    restore_value: no
+    initial_value: "false"
 
 image:
   - platform: file
@@ -374,6 +414,64 @@ switch:
           lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
       - online_image.release: standby_background_image
 
+  - platform: template
+    id: clock_12h_format
+    name: 12-Hour Clock
+    icon: "mdi:clock-time-four-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - component.update: clock_hms
+    on_turn_off:
+      - component.update: clock_hms
+
+  - platform: template
+    id: clock_show_date
+    name: Show Date
+    icon: "mdi:calendar-blank-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
+          then:
+            - lvgl.widget.show: date_label
+      - script.execute: analog_clock_redraw
+    on_turn_off:
+      - lvgl.widget.hide: date_label
+      - script.execute: analog_clock_redraw
+
+  - platform: template
+    id: clock_show_seconds
+    name: Show Seconds
+    icon: "mdi:timer-outline"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - component.update: clock_hms
+      - script.execute: analog_clock_redraw
+    on_turn_off:
+      - component.update: clock_hms
+      - script.execute: analog_clock_redraw
+
+  - platform: template
+    id: clock_show_gfx
+    name: Show GFX
+    icon: "mdi:radar"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - script.execute: analog_clock_redraw
+    on_turn_off:
+      - script.execute: analog_clock_redraw
+
 number:
   - platform: template
     id: player_controls_timeout_seconds
@@ -412,6 +510,22 @@ number:
       - script.execute: standby_screen_activity
 
 select:
+  - platform: template
+    id: clock_style_choice
+    name: Clock Style
+    icon: "mdi:clock-outline"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: Digital Clock
+    options:
+      - Digital Clock
+      - Analog Clock
+    set_action:
+      - script.execute:
+          id: apply_clock_style
+          analog: !lambda 'return x == "Analog Clock";'
+
   - platform: template
     id: standby_background_choice
     name: Standby clock background image
@@ -465,6 +579,18 @@ select:
                 red: 100%
                 green: 100%
                 blue: 0%
+            - light.turn_on:
+                id: accent_color_picker_2
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 100%
+            - light.turn_on:
+                id: accent_color_picker_3
+                brightness: 100%
+                red: 40%
+                green: 80%
+                blue: 100%
       - if:
           condition:
             lambda: return x == "Burning Red";
@@ -475,6 +601,18 @@ select:
                 red: 100%
                 green: 0%
                 blue: 0%
+            - light.turn_on:
+                id: accent_color_picker_2
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 0%
+            - light.turn_on:
+                id: accent_color_picker_3
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 100%
       - if:
           condition:
             lambda: return x == "Cyber Blue";
@@ -485,6 +623,18 @@ select:
                 red: 40%
                 green: 80%
                 blue: 100%
+            - light.turn_on:
+                id: accent_color_picker_2
+                brightness: 100%
+                red: 0%
+                green: 100%
+                blue: 40%
+            - light.turn_on:
+                id: accent_color_picker_3
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 0%
 
 text:
   - platform: template
@@ -915,19 +1065,47 @@ text_sensor:
     lambda: |-
       auto t = id(homeassistant_time).now();
       if (!t.is_valid()) return std::string("--:--:--");
+      bool show_seconds = id(clock_show_seconds).state;
+      int hour_disp = t.hour;
+      if (id(clock_12h_format).state) {
+        hour_disp = t.hour % 12;
+        if (hour_disp == 0) hour_disp = 12;
+      }
       bool hide_colons = ((t.second % 2) == 0);
-      char buf[9];
-      if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d %02d", t.hour, t.minute, t.second);
-      else snprintf(buf, sizeof(buf), "%02d:%02d:%02d", t.hour, t.minute, t.second);
+      char buf[16];
+      if (show_seconds) {
+        if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d %02d", hour_disp, t.minute, t.second);
+        else snprintf(buf, sizeof(buf), "%02d:%02d:%02d", hour_disp, t.minute, t.second);
+      } else {
+        if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d", hour_disp, t.minute);
+        else snprintf(buf, sizeof(buf), "%02d:%02d", hour_disp, t.minute);
+      }
       return std::string(buf);
     on_value:
       - if:
           condition:
-            lvgl.page.is_showing: idle_page
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
           then:
             - lvgl.label.update:
                 id: clock_label
                 text: !lambda return x;
+            - lambda: |-
+                if (!id(clock_12h_format).state) {
+                  lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                  return;
+                }
+                auto t = id(homeassistant_time).now();
+                lv_label_set_text(id(clock_ampm_label), (t.is_valid() && t.hour >= 12) ? "P" : "A");
+                lv_point_t txt_size;
+                lv_text_get_size(&txt_size, x.c_str(), id(font_7seg)->get_lv_font(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+                lv_area_t clock_area;
+                lv_obj_get_coords(id(clock_label), &clock_area);
+                int32_t label_cx = (clock_area.x1 + clock_area.x2) / 2;
+                int32_t label_bottom = clock_area.y2;
+                lv_obj_set_pos(id(clock_ampm_label), label_cx + txt_size.x / 2 + 4, label_bottom - 26);
+                lv_obj_clear_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
 
   - platform: template
     id: clock_date
@@ -946,7 +1124,9 @@ text_sensor:
     on_value:
       - if:
           condition:
-            lvgl.page.is_showing: idle_page
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
           then:
             - lvgl.label.update:
                 id: date_label
@@ -967,7 +1147,9 @@ text_sensor:
     on_value:
       - if:
           condition:
-            lvgl.page.is_showing: idle_page
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
           then:
             - lvgl.label.update:
                 id: weather_big_temp
@@ -1006,6 +1188,7 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
+              - lambda: 'return !id(clock_style_is_analog);'
               - lambda: return id(weather_available);
           then:
             - lvgl.widget.show: weather_header
@@ -1016,7 +1199,9 @@ text_sensor:
           else:
             - if:
                 condition:
-                  lvgl.page.is_showing: idle_page
+                  and:
+                    - lvgl.page.is_showing: idle_page
+                    - lambda: 'return !id(clock_style_is_analog);'
                 then:
                   - lvgl.widget.hide: weather_header
                   - lvgl.widget.hide: weather_label
@@ -1089,6 +1274,11 @@ font:
     size: 50
     glyphs: "0123456789:- "
 
+  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+    id: font_ampm
+    size: 22
+    glyphs: "AP"
+
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_weather
     size: 76
@@ -1160,12 +1350,31 @@ script:
           const lv_color_t accent = lv_color_hex(accent_u32);
           const lv_color_t accent_dark = lv_color_hex(dark_u32);
 
+          const int r2 = std::max(0, std::min(255, id(accent2_red)));
+          const int g2 = std::max(0, std::min(255, id(accent2_green)));
+          const int b2 = std::max(0, std::min(255, id(accent2_blue)));
+          const uint32_t accent2_u32 = ((uint32_t) r2 << 16) | ((uint32_t) g2 << 8) | (uint32_t) b2;
+          const lv_color_t accent2 = lv_color_hex(accent2_u32);
+
+          const int r3 = std::max(0, std::min(255, id(accent3_red)));
+          const int g3 = std::max(0, std::min(255, id(accent3_green)));
+          const int b3 = std::max(0, std::min(255, id(accent3_blue)));
+          const uint32_t accent3_u32 = ((uint32_t) r3 << 16) | ((uint32_t) g3 << 8) | (uint32_t) b3;
+          const lv_color_t accent3 = lv_color_hex(accent3_u32);
+
           lv_obj_set_style_text_color(id(clock_label), accent, 0);
+          lv_obj_set_style_text_color(id(clock_ampm_label), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_border_color(id(volume_feedback_box), accent, 0);
+          lv_obj_set_style_text_color(id(date_label), accent2, 0);
+          lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
+          lv_obj_set_style_text_color(id(weather_label), accent3, 0);
+          lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
+          lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
+          lv_obj_set_style_text_color(id(controls_album_label), accent3, 0);
 
           lv_obj_t *playlist_buttons[] = {
             id(playlist_1_button), id(playlist_2_button), id(playlist_3_button),
@@ -1177,6 +1386,164 @@ script:
             lv_obj_set_style_shadow_color(button, accent, 0);
             lv_obj_set_style_bg_color(button, accent, LV_STATE_PRESSED);
           }
+
+          lv_obj_t *playlist_labels[] = {
+            id(playlist_1_label), id(playlist_2_label), id(playlist_3_label),
+            id(playlist_4_label), id(playlist_5_label), id(playlist_6_label)
+          };
+          for (auto *label : playlist_labels) {
+            lv_obj_set_style_text_color(label, accent2, 0);
+          }
+      - script.execute: analog_clock_redraw
+
+  - id: analog_clock_ensure_created
+    then:
+      - lambda: |-
+          if (id(analog_clock_canvas_widget) != nullptr) return;
+          const int32_t SIZE = std::min(${screenwidth}, ${screenheight});
+          lv_obj_t *canvas = lv_canvas_create(id(idle_page)->obj);
+          lv_draw_buf_t *buf = lv_draw_buf_create(SIZE, SIZE, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
+          lv_canvas_set_draw_buf(canvas, buf);
+          lv_obj_set_style_bg_opa(canvas, LV_OPA_TRANSP, 0);
+          lv_obj_center(canvas);
+          lv_obj_clear_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
+          lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
+          lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+          id(analog_clock_canvas_widget) = canvas;
+
+  - id: apply_clock_style
+    mode: restart
+    parameters:
+      analog: bool
+    then:
+      - lambda: |-
+          id(clock_style_is_analog) = analog;
+      - if:
+          condition:
+            lambda: 'return analog;'
+          then:
+            - script.execute: analog_clock_ensure_created
+            - lambda: |-
+                lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+            - script.execute: analog_clock_redraw
+          else:
+            - lambda: |-
+                lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                if (id(clock_show_date).state) {
+                  lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                } else {
+                  lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                }
+                if (id(analog_clock_canvas_widget) != nullptr) {
+                  lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                }
+            - component.update: weather_line
+
+  - id: analog_clock_redraw
+    mode: restart
+    then:
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_is_analog);'
+              - lambda: 'return id(analog_clock_canvas_widget) != nullptr;'
+          then:
+            - lambda: |-
+                lv_obj_t *canvas = id(analog_clock_canvas_widget);
+                const int32_t SIZE = std::min(${screenwidth}, ${screenheight});
+                const int32_t CX = SIZE / 2;
+                const int32_t CY = SIZE / 2;
+                const int32_t R = SIZE / 2 - 10;
+
+                lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_TRANSP);
+
+                lv_layer_t layer;
+                lv_canvas_init_layer(canvas, &layer);
+
+                const uint32_t accent = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+                const uint32_t accent2 = ((uint32_t) id(accent2_red) << 16) | ((uint32_t) id(accent2_green) << 8) | (uint32_t) id(accent2_blue);
+                const uint32_t accent3 = ((uint32_t) id(accent3_red) << 16) | ((uint32_t) id(accent3_green) << 8) | (uint32_t) id(accent3_blue);
+                lv_color_t fg = lv_color_hex(accent);
+                lv_color_t fg2 = lv_color_hex(accent2);
+                lv_color_t fg3 = lv_color_hex(accent3);
+                const bool show_seconds = id(clock_show_seconds).state;
+
+                lv_draw_line_dsc_t line_dsc;
+                lv_draw_line_dsc_init(&line_dsc);
+                line_dsc.round_start = true;
+                line_dsc.round_end = true;
+
+                if (id(clock_show_gfx).state) {
+                  for (int i = 0; i < 60; i++) {
+                    float a = (i / 60.0f) * 6.2831853f - 1.5707963f;
+                    bool major = (i % 5 == 0);
+                    int32_t r_out = R;
+                    int32_t r_in = major ? R - 16 : R - 8;
+                    line_dsc.p1.x = CX + (int32_t) (cosf(a) * r_out);
+                    line_dsc.p1.y = CY + (int32_t) (sinf(a) * r_out);
+                    line_dsc.p2.x = CX + (int32_t) (cosf(a) * r_in);
+                    line_dsc.p2.y = CY + (int32_t) (sinf(a) * r_in);
+                    line_dsc.color = major ? fg : fg2;
+                    line_dsc.width = major ? 3 : 1;
+                    lv_draw_line(&layer, &line_dsc);
+                  }
+                }
+
+                auto t = id(homeassistant_time).now();
+                int hh = t.is_valid() ? (t.hour % 12) : 0;
+                int mm = t.is_valid() ? t.minute : 0;
+                int ss = t.is_valid() ? t.second : 0;
+
+                float s_pos = ss / 60.0f;
+                float m_pos = (mm + s_pos) / 60.0f;
+                float h_pos = (hh + m_pos) / 12.0f;
+
+                auto draw_hand = [&](float pos, int32_t len, int32_t width, lv_color_t color) {
+                  float a = pos * 6.2831853f - 1.5707963f;
+                  line_dsc.p1.x = CX;
+                  line_dsc.p1.y = CY;
+                  line_dsc.p2.x = CX + (int32_t) (cosf(a) * len);
+                  line_dsc.p2.y = CY + (int32_t) (sinf(a) * len);
+                  line_dsc.color = color;
+                  line_dsc.width = width;
+                  lv_draw_line(&layer, &line_dsc);
+                };
+
+                draw_hand(h_pos, (int32_t) (R * 0.5f), 6, fg3);
+                draw_hand(m_pos, (int32_t) (R * 0.72f), 4, fg3);
+                if (show_seconds) {
+                  draw_hand(s_pos, (int32_t) (R * 0.85f), 1, fg);
+                }
+
+                lv_draw_rect_dsc_t dot_dsc;
+                lv_draw_rect_dsc_init(&dot_dsc);
+                dot_dsc.bg_color = fg;
+                dot_dsc.bg_opa = LV_OPA_COVER;
+                dot_dsc.radius = LV_RADIUS_CIRCLE;
+                lv_area_t dot_area = {CX - 6, CY - 6, CX + 6, CY + 6};
+                lv_draw_rect(&layer, &dot_dsc, &dot_area);
+
+                if (id(clock_show_date).state) {
+                  std::string date_str = id(clock_date).state;
+                  lv_draw_label_dsc_t label_dsc;
+                  lv_draw_label_dsc_init(&label_dsc);
+                  label_dsc.color = fg2;
+                  label_dsc.font = id(font_date)->get_lv_font();
+                  label_dsc.align = LV_TEXT_ALIGN_CENTER;
+                  label_dsc.text = date_str.c_str();
+                  const int32_t date_y = CY + (int32_t) (R * 0.55f);
+                  lv_area_t label_area = {CX - R, date_y, CX + R, date_y + 40};
+                  lv_draw_label(&layer, &label_dsc, &label_area);
+                }
+
+                lv_canvas_finish_layer(canvas, &layer);
+                lv_obj_invalidate(canvas);
 
   - id: set_ui_phase
     mode: restart
@@ -1739,6 +2106,54 @@ output:
           id(accent_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
       - script.execute: apply_accent_color_debounced
 
+  - platform: template
+    id: accent_color2_r
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent2_red) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color2_g
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent2_green) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color2_b
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent2_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color3_r
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent3_red) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color3_g
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent3_green) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color3_b
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent3_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
   - platform: ledc
     id: backlight_output
     pin: GPIO21
@@ -1747,12 +2162,34 @@ output:
 light:
   - platform: rgb
     id: accent_color_picker
-    name: Accent color
+    name: Accent color 1
     icon: mdi:palette
     entity_category: config
     red: accent_color_r
     green: accent_color_g
     blue: accent_color_b
+    restore_mode: RESTORE_DEFAULT_ON
+    default_transition_length: 0s
+
+  - platform: rgb
+    id: accent_color_picker_2
+    name: Accent color 2
+    icon: mdi:palette
+    entity_category: config
+    red: accent_color2_r
+    green: accent_color2_g
+    blue: accent_color2_b
+    restore_mode: RESTORE_DEFAULT_ON
+    default_transition_length: 0s
+
+  - platform: rgb
+    id: accent_color_picker_3
+    name: Accent color 3
+    icon: mdi:palette
+    entity_category: config
+    red: accent_color3_r
+    green: accent_color3_g
+    blue: accent_color3_b
     restore_mode: RESTORE_DEFAULT_ON
     default_transition_length: 0s
 
@@ -1851,6 +2288,12 @@ touchscreen:
                 id(open_playlist_menu)->execute();
               } else if (id(ui_phase) == ${ui_phase_playlist_menu} && abs_y > abs_x && dy < 0) {
                 id(close_playlist_menu)->execute();
+              } else if (id(ui_phase) == ${ui_phase_standby} && abs_x >= abs_y) {
+                if (dx < 0) {
+                  id(clock_style_choice).make_call().select_next(true).perform();
+                } else {
+                  id(clock_style_choice).make_call().select_previous(true).perform();
+                }
               }
               return;
             }
@@ -2014,6 +2457,15 @@ lvgl:
                   long_mode: SCROLL_CIRCULAR
                   text_align: CENTER
 
+        - label:
+            id: clock_ampm_label
+            x: 0
+            y: 0
+            text: ""
+            text_color: 0xFFFF00
+            text_font: font_ampm
+            hidden: true
+
     - id: player_controls_page
       bg_color: 0x000000
       widgets:
@@ -2041,7 +2493,7 @@ lvgl:
         - label:
             id: controls_title_label
             align: TOP_MID
-            y: 46
+            y: 30
             width: 285
             text: ""
             text_color: 0xFFFFFF
@@ -2052,7 +2504,7 @@ lvgl:
         - label:
             id: controls_artist_label
             align: TOP_MID
-            y: 82
+            y: 66
             width: 265
             text: ""
             text_color: 0x66CCFF
@@ -2063,7 +2515,7 @@ lvgl:
         - label:
             id: controls_album_label
             align: TOP_MID
-            y: 108
+            y: 92
             width: 250
             text: ""
             text_color: 0x8EDBFF
