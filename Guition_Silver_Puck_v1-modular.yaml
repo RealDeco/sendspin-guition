@@ -1,6 +1,6 @@
 substitutions:
-  name: esphome-web-e9f624
-  friendly_name: Xiaozhi Taichi Pi v1
+  name: silver-puck-v1
+  friendly_name: Silver Puck v1
 
 # User settings
   startup_sound_file: "Home_Connected" # (options are: available, Home_Connected, Home_Connected_Male, Computer_Ready)
