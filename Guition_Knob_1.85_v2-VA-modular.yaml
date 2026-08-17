@@ -27,6 +27,15 @@ substitutions:
   pdm_mic_type: "true"
   media_sample_rate: 48000
 
+  # display and touch rotation (defaults to 180)
+  screen_swap_xy: false # 0=false, 90=true, 180=false, 270=true
+  screen_mirror_x: false # 0=false, 90=true, 180=true, 270=false
+  screen_mirror_y: false # 0=false, 90=false, 180=true, 270=true
+
+  touch_swap_xy: false # 0=false, 90=true, 180=false, 270=true
+  touch_mirror_x: false # 0=false, 90=false 180=true, 270=true
+  touch_mirror_y: false # 0=false, 90=true, 180=true, 270=false
+  
   album_fade_time: "1500ms"
 
   ui_phase_standby: "0"
@@ -724,6 +733,10 @@ touchscreen:
     reset_pin: GPIO8
     display: main_display
     i2c_id: touchscreen_bus
+    transform:
+      swap_xy: ${touch_swap_xy}
+      mirror_x: ${touch_mirror_x}
+      mirror_y: ${touch_mirror_y}
     on_touch:
       then:
         - script.execute: standby_screen_activity
@@ -831,6 +844,10 @@ display:
   - platform: mipi_spi
     id: main_display
     model: ${display_model}
+    transform:
+      swap_xy: ${screen_swap_xy}
+      mirror_x: ${screen_mirror_x}
+      mirror_y: ${screen_mirror_y}
     cs_pin: GPIO12
     reset_pin: GPIO17
     auto_clear_enabled: false
