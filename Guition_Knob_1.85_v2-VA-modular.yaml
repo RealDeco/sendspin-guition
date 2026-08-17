@@ -3287,7 +3287,7 @@ script:
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
           lv_obj_set_style_border_color(id(volume_ring_overlay), accent, 0);
-          lv_obj_set_style_text_color(id(volume_ring_label), accent, 0);
+          lv_obj_set_style_text_color(id(volume_ring_label), lv_color_hex(0xFFFFFF), 0);
           char text[8];
           snprintf(text, sizeof(text), "%d", pct);
           lv_label_set_text(id(volume_ring_label), text);
