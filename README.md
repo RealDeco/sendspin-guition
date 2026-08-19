@@ -190,7 +190,7 @@ While music is playing, swipe left or right to move to the previous or next song
 
 Tap the screen to open the player controls, where you can mute the volume, toggle shuffle or repeat, pause, or stop playback. When the player controls are visible or music is playing and showing album art, swipe down to open the playlist selector or up to start the VA.
 
-When no music is playing, the display switches to a weather clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again.
+When no music is playing, the display switches to standby clock. Optionally, the screen can fade to black when left idle. A single tap will wake the display again. In standby mode, swiping left or right changes clock style.
 
 ### **Playlists, Shuffle & Repeat**
 
