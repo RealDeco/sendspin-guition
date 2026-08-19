@@ -333,6 +333,18 @@ globals:
     type: int
     restore_value: yes
     initial_value: "255"
+  - id: accent4_red
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent4_green
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent4_blue
+    type: int
+    restore_value: yes
+    initial_value: "255"
   - id: shuffle_state
     type: bool
     restore_value: yes
@@ -1085,6 +1097,12 @@ select:
                 red: 40%
                 green: 80%
                 blue: 100%
+            - light.turn_on:
+                id: accent_color_picker_4
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 100%
       - if:
           condition:
             lambda: return x == "Burning Red";
@@ -1103,6 +1121,12 @@ select:
                 blue: 0%
             - light.turn_on:
                 id: accent_color_picker_3
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 100%
+            - light.turn_on:
+                id: accent_color_picker_4
                 brightness: 100%
                 red: 100%
                 green: 100%
@@ -1129,6 +1153,12 @@ select:
                 red: 100%
                 green: 100%
                 blue: 0%
+            - light.turn_on:
+                id: accent_color_picker_4
+                brightness: 100%
+                red: 100%
+                green: 100%
+                blue: 100%
 
 text:
   - platform: template
@@ -2338,6 +2368,12 @@ script:
           const uint32_t accent3_u32 = ((uint32_t) r3 << 16) | ((uint32_t) g3 << 8) | (uint32_t) b3;
           const lv_color_t accent3 = lv_color_hex(accent3_u32);
 
+          const int r4 = std::max(0, std::min(255, id(accent4_red)));
+          const int g4 = std::max(0, std::min(255, id(accent4_green)));
+          const int b4 = std::max(0, std::min(255, id(accent4_blue)));
+          const uint32_t accent4_u32 = ((uint32_t) r4 << 16) | ((uint32_t) g4 << 8) | (uint32_t) b4;
+          const lv_color_t accent4 = lv_color_hex(accent4_u32);
+
           lv_obj_set_style_text_color(id(clock_label), accent, 0);
           lv_obj_set_style_text_color(id(clock_ampm_label), accent, 0);
           lv_obj_set_style_text_color(id(idle_timer_countdown), accent, 0);
@@ -2352,6 +2388,10 @@ script:
           lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_album_label), accent3, 0);
+          lv_obj_set_style_text_color(id(controls_mute_icon), accent4, 0);
+          lv_obj_set_style_text_color(id(controls_volume_down_icon), accent4, 0);
+          lv_obj_set_style_text_color(id(controls_volume_up_icon), accent4, 0);
+          lv_obj_set_style_text_color(id(controls_group_label), accent4, 0);
 
           lv_obj_t *playlist_buttons[] = {
             id(playlist_1_button), id(playlist_2_button), id(playlist_3_button),
@@ -2716,7 +2756,8 @@ script:
       - lambda: |-
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
-          const lv_color_t inactive_color = lv_color_hex(0xFFFFFF);
+          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
+          const lv_color_t inactive_color = lv_color_hex(accent4_u32);
 
           if (id(shuffle_state)) {
             lv_label_set_text(id(controls_shuffle_label), "\U000F049D");
@@ -3088,8 +3129,10 @@ script:
           const int pct = (int) lroundf(volume * 100.0f);
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
+          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
+          const lv_color_t accent4 = lv_color_hex(accent4_u32);
           lv_obj_set_style_border_color(id(volume_ring_overlay), accent, 0);
-          lv_obj_set_style_text_color(id(volume_ring_label), accent, 0);
+          lv_obj_set_style_text_color(id(volume_ring_label), accent4, 0);
           char text[8];
           snprintf(text, sizeof(text), "%d", pct);
           lv_label_set_text(id(volume_ring_label), text);
@@ -3327,6 +3370,30 @@ output:
           id(accent3_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
       - script.execute: apply_accent_color_debounced
 
+  - platform: template
+    id: accent_color4_r
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent4_red) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color4_g
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent4_green) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
+  - platform: template
+    id: accent_color4_b
+    type: float
+    write_action:
+      - lambda: |-
+          id(accent4_blue) = (int) lroundf(std::max(0.0f, std::min(1.0f, state)) * 255.0f);
+      - script.execute: apply_accent_color_debounced
+
 light:
   - platform: rgb
     id: accent_color_picker
@@ -3358,6 +3425,17 @@ light:
     red: accent_color3_r
     green: accent_color3_g
     blue: accent_color3_b
+    restore_mode: RESTORE_DEFAULT_ON
+    default_transition_length: 0s
+
+  - platform: rgb
+    id: accent_color_picker_4
+    name: Accent color 4
+    icon: mdi:palette
+    entity_category: config
+    red: accent_color4_r
+    green: accent_color4_g
+    blue: accent_color4_b
     restore_mode: RESTORE_DEFAULT_ON
     default_transition_length: 0s
 
@@ -3803,6 +3881,7 @@ lvgl:
               - script.execute: player_controls_volume_down
             widgets:
               - label:
+                  id: controls_volume_down_icon
                   align: CENTER
                   text: "\U000F075E"
                   text_color: 0xFFFFFF
@@ -3831,6 +3910,7 @@ lvgl:
               - script.execute: player_controls_volume_up
             widgets:
               - label:
+                  id: controls_volume_up_icon
                   align: CENTER
                   text: "\U000F075D"
                   text_color: 0xFFFFFF
@@ -3857,6 +3937,7 @@ lvgl:
               - sendspin.switch:
             widgets:
               - label:
+                  id: controls_group_label
                   align: CENTER
                   text: "GROUP"
                   text_color: 0xFFFFFF
