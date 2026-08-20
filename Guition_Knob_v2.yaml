@@ -1838,6 +1838,7 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - media_player.volume_down: external_media_player
+            - script.execute: show_rotary_volume_feedback
             - script.execute: player_controls_keep_open
 
   - id: player_controls_volume_up
@@ -1848,6 +1849,7 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - media_player.volume_up: external_media_player
+            - script.execute: show_rotary_volume_feedback
             - script.execute: player_controls_keep_open
 
   - id: player_controls_mute
