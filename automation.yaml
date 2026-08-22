@@ -1,0 +1,26 @@
+
+    alias: "Extrahuj barvu obálky"
+    trigger:
+      - platform: state
+        entity_id: media_player.voice_mass_3  # ← uprav na svou MA entitu
+        attribute: entity_picture
+    action:
+      - service: shell_command.get_album_color
+        data:
+          url: "{{ state_attr('media_player.voice_mass_3', 'entity_picture') }}"
+        response_variable: result
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.album_color_r
+        data:
+          value: "{{ (result.stdout | from_json).r }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.album_color_g
+        data:
+          value: "{{ (result.stdout | from_json).g }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.album_color_b
+        data:
+          value: "{{ (result.stdout | from_json).b }}"
