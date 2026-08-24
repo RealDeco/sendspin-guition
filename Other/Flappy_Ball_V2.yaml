@@ -18,6 +18,9 @@ substitutions:
   
   ha_weather_entity: weather.forecast_home
 
+  # Show the scrolling weather details line beneath the weather header.
+  show_weather_line: "true"
+
   media_sample_rate: "48000"
 
   imagewidth:  "240"
@@ -1850,10 +1853,16 @@ text_sensor:
               - lambda: return id(weather_available);
           then:
             - lvgl.widget.show: weather_header
-            - lvgl.widget.show: weather_label
-            - lvgl.label.update:
-                id: weather_label
-                text: !lambda return x;
+            - if:
+                condition:
+                  lambda: 'return ${show_weather_line};'
+                then:
+                  - lvgl.widget.show: weather_label
+                  - lvgl.label.update:
+                      id: weather_label
+                      text: !lambda return x;
+                else:
+                  - lvgl.widget.hide: weather_label
           else:
             - if:
                 condition:
@@ -3909,6 +3918,7 @@ lvgl:
                   text_color: 0x66CCFF
                   text_font: font_display
                   long_mode: SCROLL_CIRCULAR
+                  hidden: true
                   text_align: CENTER
 
         - label:

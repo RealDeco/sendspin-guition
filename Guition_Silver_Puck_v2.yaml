@@ -10,6 +10,9 @@ substitutions:
   # your home assistant weather entity, in most cases the same.
   ha_weather_entity: weather.forecast_home
 
+  # Show the scrolling weather details line beneath the weather header.
+  show_weather_line: "true"
+
   display_model: "JC3636W518V2"
   pdm_mic_type: "true"
 
@@ -1138,14 +1141,21 @@ text_sensor:
               - lambda: return id(weather_available);
           then:
             - lvgl.widget.show: weather_header
-            - lvgl.widget.show: weather_label
-            - lvgl.widget.show: weather_label_glow
-            - lvgl.label.update:
-                id: weather_label_glow
-                text: !lambda return x;
-            - lvgl.label.update:
-                id: weather_label
-                text: !lambda return x;
+            - if:
+                condition:
+                  lambda: 'return ${show_weather_line};'
+                then:
+                  - lvgl.widget.show: weather_label
+                  - lvgl.widget.show: weather_label_glow
+                  - lvgl.label.update:
+                      id: weather_label_glow
+                      text: !lambda return x;
+                  - lvgl.label.update:
+                      id: weather_label
+                      text: !lambda return x;
+                else:
+                  - lvgl.widget.hide: weather_label
+                  - lvgl.widget.hide: weather_label_glow
           else:
             - if:
                 condition:
@@ -2375,6 +2385,7 @@ lvgl:
                   text_color: 0x1AA6C8
                   text_font: font_display
                   long_mode: SCROLL_CIRCULAR
+                  hidden: true
                   text_align: CENTER
 
               - label:
@@ -2387,6 +2398,7 @@ lvgl:
                   text_color: 0x66CCFF
                   text_font: font_display
                   long_mode: SCROLL_CIRCULAR
+                  hidden: true
                   text_align: CENTER
 
         - label:
