@@ -344,6 +344,14 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: artist_art_valid
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: now_playing_art_mode
+    type: bool
+    restore_value: no
+    initial_value: "false"
 
 image:
   - platform: file
@@ -473,6 +481,35 @@ image:
       - lambda: |-
           ESP_LOGW("album_art", "failed to decode album art");
           id(sendspin_album_art_valid) = false;
+
+  - platform: sendspin
+    id: artist_slot
+    format: PNG
+    type: RGB565
+    resize: ${imagewidth}x${imageheight}
+    source: artist
+    current_image:
+      id: artist_art
+    on_image_display:
+      - logger.log:
+          format: "Artist art available (late by %u ms)"
+          args: ["(unsigned) lateness_ms"]
+          level: INFO
+      - lambda: |-
+          id(artist_art_valid) = true;
+          id(refresh_artist_art_dot)->execute();
+    on_image_clear:
+      - logger.log:
+          format: "No artist art for this song"
+          level: INFO
+      - lambda: |-
+          id(artist_art_valid) = false;
+          id(refresh_artist_art_dot)->execute();
+    on_image_error:
+      - lambda: |-
+          ESP_LOGW("artist_art", "failed to decode artist art");
+          id(artist_art_valid) = false;
+          id(refresh_artist_art_dot)->execute();
 
 sendspin:
   id: sendspin_hub
@@ -1091,7 +1128,7 @@ select:
             - lvgl.page.show: home_page
       - lambda: |-
           std::string content = x.str();
-          if (id(ui_phase) == ${ui_phase_standby}) {
+          if (lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN)) {
             if (content == "News Ticker") {
               lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
@@ -1114,7 +1151,7 @@ select:
           }
       - if:
           condition:
-            lambda: 'return id(ui_phase) == ${ui_phase_standby} && x.str() == "Family Photo" && !id(family_photo_image)->is_loaded();'
+            lambda: 'return lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN) && x.str() == "Family Photo" && !id(family_photo_image)->is_loaded();'
           then:
             - script.execute:
                 id: show_family_photo
@@ -1572,6 +1609,10 @@ text_sensor:
     type: title
     on_value:
       - lambda: |-
+          id(artist_art_valid) = false;
+          id(now_playing_art_mode) = false;
+          id(refresh_artist_art_dot)->execute();
+      - lambda: |-
           id(previous_album_name) = id(sendspin_album).get_state();
       - delay: 100ms
       - lambda: |-
@@ -1889,9 +1930,6 @@ script:
                   - script.execute:
                       id: set_va_phase
                       phase: ${va_phase_idle}
-                  - script.execute:
-                      id: set_ui_phase
-                      phase: ${ui_phase_player_controls}
                   - if:
                       condition:
                         lambda: return id(manual_va_resume_media);
@@ -2093,6 +2131,17 @@ script:
             - script.execute:
                 id: set_va_phase
                 phase: ${va_phase_idle}
+            - if:
+                condition:
+                  lambda: return id(manual_va_active);
+                then:
+                  - lambda: id(manual_va_active) = false;
+                  - if:
+                      condition:
+                        lambda: return id(manual_va_resume_media);
+                      then:
+                        - lambda: id(manual_va_resume_media) = false;
+                        - media_player.toggle: sendspin_group_media_player
             - delay: 300ms
             - script.execute: start_wake_word
 
@@ -2447,13 +2496,18 @@ script:
             - lvgl.widget.show: standby_panel
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
-            - lambda: |-
-                lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                if (id(va_phase) == ${va_phase_idle}) {
-                  lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
-                }
+            - if:
+                condition:
+                  not:
+                    media_player.is_idle: external_media_player
+                then:
+                  - lambda: |-
+                      lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+                      if (id(va_phase) == ${va_phase_idle}) {
+                        lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
+                      }
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_player_controls};'
@@ -2461,13 +2515,19 @@ script:
             - lvgl.widget.hide: standby_panel
             - lvgl.widget.show: controls_panel
             - lvgl.widget.hide: playlist_panel
+            - if:
+                condition:
+                  not:
+                    media_player.is_idle: external_media_player
+                then:
+                  - lambda: |-
+                      lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+                      if (id(va_phase) == ${va_phase_idle}) {
+                        lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
+                      }
             - lambda: |-
-                lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                if (id(va_phase) == ${va_phase_idle}) {
-                  lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
-                }
                 lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
       - if:
@@ -2477,13 +2537,18 @@ script:
             - lvgl.widget.hide: standby_panel
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.show: playlist_panel
-            - lambda: |-
-                lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                if (id(va_phase) == ${va_phase_idle}) {
-                  lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
-                }
+            - if:
+                condition:
+                  not:
+                    media_player.is_idle: external_media_player
+                then:
+                  - lambda: |-
+                      lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+                      if (id(va_phase) == ${va_phase_idle}) {
+                        lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
+                      }
             - script.execute: player_controls_timeout
 
   - id: player_controls_timeout
@@ -2656,6 +2721,9 @@ script:
   - id: album_art_crossfade_apply
     mode: restart
     then:
+      - lambda: |-
+          id(now_playing_art_mode) = false;
+          id(refresh_artist_art_dot)->execute();
       - if:
           condition:
             lambda: 'return id(last_album_art_valid);'
@@ -2675,8 +2743,9 @@ script:
   - id: now_playing_swipe_left
     mode: restart
     then:
-      - lvgl.animation.stop: album_art_crossfade
       - lambda: |-
+          lv_anim_del(id(outgoing_art), nullptr);
+          lv_obj_set_style_opa(id(outgoing_art), LV_OPA_TRANSP, 0);
           id(sendspin_album_art_valid) = false;
           id(last_album_art_valid) = false;
           if (id(slide_incoming_ptr)) {
@@ -2687,8 +2756,10 @@ script:
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
-          lv_img_set_src(incoming, id(fallback_playing_image));
+          lv_img_set_src(incoming, id(fallback_playing_image)->get_lv_image_dsc());
           lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
+          lv_obj_set_style_radius(incoming, 12, 0);
+          lv_obj_set_style_clip_corner(incoming, true, 0);
           lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
           lv_obj_set_style_translate_x(incoming, ${imagewidth}, 0);
           lv_obj_set_style_img_opa(incoming, LV_OPA_COVER, 0);
@@ -2721,7 +2792,7 @@ script:
           }
           lv_obj_t *img = id(incoming_art);
           lv_anim_del(img, nullptr);
-          lv_img_set_src(img, id(fallback_playing_image));
+          lv_img_set_src(img, id(fallback_playing_image)->get_lv_image_dsc());
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_set_style_translate_x(img, 0, 0);
@@ -2730,8 +2801,9 @@ script:
   - id: now_playing_swipe_right
     mode: restart
     then:
-      - lvgl.animation.stop: album_art_crossfade
       - lambda: |-
+          lv_anim_del(id(outgoing_art), nullptr);
+          lv_obj_set_style_opa(id(outgoing_art), LV_OPA_TRANSP, 0);
           id(sendspin_album_art_valid) = false;
           id(last_album_art_valid) = false;
           if (id(slide_incoming_ptr)) {
@@ -2742,8 +2814,10 @@ script:
           lv_anim_del(img, nullptr);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
-          lv_img_set_src(incoming, id(fallback_playing_image));
+          lv_img_set_src(incoming, id(fallback_playing_image)->get_lv_image_dsc());
           lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
+          lv_obj_set_style_radius(incoming, 12, 0);
+          lv_obj_set_style_clip_corner(incoming, true, 0);
           lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
           lv_obj_set_style_translate_x(incoming, -${imagewidth}, 0);
           lv_obj_set_style_img_opa(incoming, LV_OPA_COVER, 0);
@@ -2776,11 +2850,132 @@ script:
           }
           lv_obj_t *img = id(incoming_art);
           lv_anim_del(img, nullptr);
-          lv_img_set_src(img, id(fallback_playing_image));
+          lv_img_set_src(img, id(fallback_playing_image)->get_lv_image_dsc());
           lv_img_set_zoom(img, LV_ZOOM_NONE);
           lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
           lv_obj_set_style_translate_x(img, 0, 0);
           id(album_art_awaiting_swipe_art) = true;
+
+  - id: refresh_artist_art_dot
+    then:
+      - lambda: |-
+          if (id(artist_art_valid) && !id(now_playing_art_mode)) {
+            lv_obj_clear_flag(id(artist_art_dot), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(artist_art_dot), LV_OBJ_FLAG_HIDDEN);
+          }
+
+  - id: now_playing_show_artist_art
+    mode: restart
+    then:
+      - lambda: |-
+          lv_anim_del(id(outgoing_art), nullptr);
+          lv_obj_set_style_opa(id(outgoing_art), LV_OPA_TRANSP, 0);
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
+          lv_obj_t *img = id(incoming_art);
+          lv_anim_del(img, nullptr);
+          lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
+          lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
+          lv_img_set_src(incoming, id(artist_art)->get_lv_image_dsc());
+          lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
+          lv_obj_set_style_radius(incoming, 12, 0);
+          lv_obj_set_style_clip_corner(incoming, true, 0);
+          lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
+          lv_obj_set_style_translate_y(incoming, -${imageheight}, 0);
+          lv_obj_set_style_img_opa(incoming, LV_OPA_COVER, 0);
+          lv_obj_clear_flag(incoming, LV_OBJ_FLAG_CLICKABLE);
+          id(slide_incoming_ptr) = (int)incoming;
+          lv_anim_t aout;
+          lv_anim_init(&aout);
+          lv_anim_set_var(&aout, img);
+          lv_anim_set_values(&aout, 0, ${imageheight});
+          lv_anim_set_time(&aout, 220);
+          lv_anim_set_exec_cb(&aout, [](void *obj, int32_t v) {
+            lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
+          });
+          lv_anim_start(&aout);
+          lv_anim_t ain;
+          lv_anim_init(&ain);
+          lv_anim_set_var(&ain, incoming);
+          lv_anim_set_values(&ain, -${imageheight}, 0);
+          lv_anim_set_time(&ain, 220);
+          lv_anim_set_exec_cb(&ain, [](void *obj, int32_t v) {
+            lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
+          });
+          lv_anim_start(&ain);
+          id(now_playing_art_mode) = true;
+          id(refresh_artist_art_dot)->execute();
+      - delay: 220ms
+      - lambda: |-
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
+          lv_obj_t *img = id(incoming_art);
+          lv_anim_del(img, nullptr);
+          lv_img_set_src(img, id(artist_art)->get_lv_image_dsc());
+          lv_img_set_zoom(img, LV_ZOOM_NONE);
+          lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
+          lv_obj_set_style_translate_y(img, 0, 0);
+
+  - id: now_playing_show_album_art
+    mode: restart
+    then:
+      - lambda: |-
+          lv_anim_del(id(outgoing_art), nullptr);
+          lv_obj_set_style_opa(id(outgoing_art), LV_OPA_TRANSP, 0);
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
+          lv_obj_t *img = id(incoming_art);
+          lv_anim_del(img, nullptr);
+          lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
+          lv_obj_t *incoming = lv_img_create(lv_obj_get_parent(img));
+          lv_img_set_src(incoming, id(sendspin_album_art_valid) ? id(sendspin_album_art)->get_lv_image_dsc() : id(fallback_playing_image)->get_lv_image_dsc());
+          lv_obj_set_size(incoming, ${imagewidth}, ${imageheight});
+          lv_obj_set_style_radius(incoming, 12, 0);
+          lv_obj_set_style_clip_corner(incoming, true, 0);
+          lv_obj_align(incoming, LV_ALIGN_TOP_MID, 0, 0);
+          lv_obj_set_style_translate_y(incoming, ${imageheight}, 0);
+          lv_obj_set_style_img_opa(incoming, LV_OPA_COVER, 0);
+          lv_obj_clear_flag(incoming, LV_OBJ_FLAG_CLICKABLE);
+          id(slide_incoming_ptr) = (int)incoming;
+          lv_anim_t aout;
+          lv_anim_init(&aout);
+          lv_anim_set_var(&aout, img);
+          lv_anim_set_values(&aout, 0, -${imageheight});
+          lv_anim_set_time(&aout, 220);
+          lv_anim_set_exec_cb(&aout, [](void *obj, int32_t v) {
+            lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
+          });
+          lv_anim_start(&aout);
+          lv_anim_t ain;
+          lv_anim_init(&ain);
+          lv_anim_set_var(&ain, incoming);
+          lv_anim_set_values(&ain, ${imageheight}, 0);
+          lv_anim_set_time(&ain, 220);
+          lv_anim_set_exec_cb(&ain, [](void *obj, int32_t v) {
+            lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
+          });
+          lv_anim_start(&ain);
+          id(now_playing_art_mode) = false;
+          id(refresh_artist_art_dot)->execute();
+      - delay: 220ms
+      - lambda: |-
+          if (id(slide_incoming_ptr)) {
+            lv_obj_del((lv_obj_t *)id(slide_incoming_ptr));
+            id(slide_incoming_ptr) = 0;
+          }
+          lv_obj_t *img = id(incoming_art);
+          lv_anim_del(img, nullptr);
+          lv_img_set_src(img, id(sendspin_album_art_valid) ? id(sendspin_album_art)->get_lv_image_dsc() : id(fallback_playing_image)->get_lv_image_dsc());
+          lv_img_set_zoom(img, LV_ZOOM_NONE);
+          lv_obj_set_style_img_opa(img, LV_OPA_COVER, 0);
+          lv_obj_set_style_translate_y(img, 0, 0);
 
   - id: player_controls_keep_open
     then:
@@ -2993,7 +3188,7 @@ script:
       selected_option: string
     then:
       - lambda: |-
-          if (id(ui_phase) != ${ui_phase_standby}) return;
+          if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN)) return;
           if (selected_option != "News Ticker") return;
           const uint32_t now = millis();
           const bool never_fetched = id(news_ticker_last_fetch_ms) == 0;
@@ -3663,36 +3858,86 @@ touchscreen:
             if (elapsed <= 1500 && (abs_x >= swipe_min_dist || abs_y >= swipe_min_dist)) {
               if (id(ui_phase) == ${ui_phase_now_playing}) {
                 if (abs_x >= abs_y) {
-                  if (dx < 0) { id(now_playing_swipe_left)->execute(); }
-                  else { id(now_playing_swipe_right)->execute(); }
-                } else if (dy < 0) {
-                  id(start_manual_va)->execute();
-                } else {
-                  id(set_ui_phase)->execute(${ui_phase_playlist_menu});
+                  if (id(touch_start_x) >= id(main_display).get_width() / 2) {
+                    if (dx < 0) { id(clock_style_choice).make_call().select_next(true).perform(); }
+                    else { id(clock_style_choice).make_call().select_previous(true).perform(); }
+                  } else if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN)) {
+                    if (dx < 0) { id(now_playing_swipe_left)->execute(); }
+                    else { id(now_playing_swipe_right)->execute(); }
+                  } else {
+                    if (dx < 0) { id(standby_frame_content).make_call().select_next(true).perform(); }
+                    else { id(standby_frame_content).make_call().select_previous(true).perform(); }
+                  }
+                } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
+                  if (dy < 0) {
+                    id(start_manual_va)->execute();
+                  } else {
+                    id(set_ui_phase)->execute(${ui_phase_playlist_menu});
+                  }
+                } else if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN) && id(artist_art_valid)) {
+                  if (dy > 0) {
+                    if (!id(now_playing_art_mode)) {
+                      id(now_playing_show_artist_art)->execute();
+                    }
+                  } else {
+                    if (id(now_playing_art_mode)) {
+                      id(now_playing_show_album_art)->execute();
+                    }
+                  }
                 }
               } else if (id(ui_phase) == ${ui_phase_player_controls}) {
                 if (abs_x >= abs_y) {
-                  if (dx < 0) { id(player_controls_swipe_next)->execute(); }
-                  else { id(player_controls_swipe_previous)->execute(); }
-                } else if (dy < 0) {
-                  id(start_manual_va)->execute();
-                } else {
-                  id(set_ui_phase)->execute(${ui_phase_playlist_menu});
+                  if (id(touch_start_x) < id(main_display).get_width() / 2) {
+                    if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN)) {
+                      if (dx < 0) { id(now_playing_swipe_left)->execute(); }
+                      else { id(now_playing_swipe_right)->execute(); }
+                    } else {
+                      if (dx < 0) { id(standby_frame_content).make_call().select_next(true).perform(); }
+                      else { id(standby_frame_content).make_call().select_previous(true).perform(); }
+                    }
+                  }
+                } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
+                  if (dy < 0) {
+                    id(start_manual_va)->execute();
+                  } else {
+                    id(set_ui_phase)->execute(${ui_phase_playlist_menu});
+                  }
+                } else if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN) && id(artist_art_valid)) {
+                  if (dy > 0) {
+                    if (!id(now_playing_art_mode)) {
+                      id(now_playing_show_artist_art)->execute();
+                    }
+                  } else {
+                    if (id(now_playing_art_mode)) {
+                      id(now_playing_show_album_art)->execute();
+                    }
+                  }
                 }
               } else if (id(ui_phase) == ${ui_phase_playlist_menu}) {
                 if (abs_x >= abs_y) {
-                  if (dx < 0) { id(player_controls_swipe_next)->execute(); }
-                  else { id(player_controls_swipe_previous)->execute(); }
+                  if (id(touch_start_x) < id(main_display).get_width() / 2) {
+                    if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN)) {
+                      if (dx < 0) { id(now_playing_swipe_left)->execute(); }
+                      else { id(now_playing_swipe_right)->execute(); }
+                    } else {
+                      if (dx < 0) { id(standby_frame_content).make_call().select_next(true).perform(); }
+                      else { id(standby_frame_content).make_call().select_previous(true).perform(); }
+                    }
+                  }
                 } else if (dy < 0) {
                   id(set_ui_phase)->execute(${ui_phase_player_controls});
                 }
               } else if (id(ui_phase) == ${ui_phase_standby}) {
                 if (abs_x >= abs_y) {
-                  if (dx < 0) { id(standby_frame_content).make_call().select_next(true).perform(); }
-                  else { id(standby_frame_content).make_call().select_previous(true).perform(); }
+                  if (id(touch_start_x) >= id(main_display).get_width() / 2) {
+                    if (dx < 0) { id(clock_style_choice).make_call().select_next(true).perform(); }
+                    else { id(clock_style_choice).make_call().select_previous(true).perform(); }
+                  } else {
+                    if (dx < 0) { id(standby_frame_content).make_call().select_next(true).perform(); }
+                    else { id(standby_frame_content).make_call().select_previous(true).perform(); }
+                  }
                 } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
                   if (dy < 0) { id(start_manual_va)->execute(); }
-                  else { id(set_ui_phase)->execute(${ui_phase_playlist_menu}); }
                 }
               }
               return;
@@ -3809,27 +4054,59 @@ lvgl:
                   scrollable: false
                   hidden: true
                   widgets:
-                    - image:
-                        id: incoming_art
+                    - obj:
+                        id: incoming_art_clip
                         align: TOP_MID
                         x: 0
                         y: 0
-                        src: fallback_playing_image
                         width: ${imagewidth}
                         height: ${imageheight}
-                        antialias: false
-                        clickable: false
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        widgets:
+                          - image:
+                              id: incoming_art
+                              align: TOP_MID
+                              x: 0
+                              y: 0
+                              src: fallback_playing_image
+                              width: ${imagewidth}
+                              height: ${imageheight}
+                              radius: 12
+                              clip_corner: true
+                              antialias: false
+                              clickable: false
 
-                    - image:
-                        id: outgoing_art
-                        align: TOP_MID
-                        x: 0
-                        y: 0
-                        src: fallback_playing_image
-                        width: ${imagewidth}
-                        height: ${imageheight}
-                        antialias: false
-                        clickable: false
+                          - image:
+                              id: outgoing_art
+                              align: TOP_MID
+                              x: 0
+                              y: 0
+                              src: fallback_playing_image
+                              width: ${imagewidth}
+                              height: ${imageheight}
+                              radius: 12
+                              clip_corner: true
+                              antialias: false
+                              clickable: false
+
+                          - obj:
+                              id: artist_art_dot
+                              align: TOP_MID
+                              x: 0
+                              y: 8
+                              width: 14
+                              height: 14
+                              radius: 7
+                              bg_color: 0xFF3B30
+                              bg_opa: COVER
+                              border_opa: TRANSP
+                              pad_all: 0
+                              scrollable: false
+                              clickable: false
+                              hidden: true
 
                     - label:
                         id: controls_title_label
@@ -3959,7 +4236,8 @@ lvgl:
                   bg_color: 0x000000
                   bg_opa: COVER
                   border_opa: TRANSP
-                  radius: 0
+                  radius: 12
+                  clip_corner: true
                   pad_all: 0
                   scrollable: true
                   scroll_dir: VER
@@ -3987,7 +4265,8 @@ lvgl:
                   bg_color: 0x000000
                   bg_opa: COVER
                   border_opa: TRANSP
-                  radius: 0
+                  radius: 12
+                  clip_corner: true
                   pad_all: 0
                   scrollable: false
                   clickable: false
@@ -3999,6 +4278,8 @@ lvgl:
                         src: family_photo_image
                         width: ${imagewidth}
                         height: ${imageheight}
+                        radius: 12
+                        clip_corner: true
                         antialias: false
                         clickable: false
 
@@ -4021,7 +4302,7 @@ lvgl:
                   y: 0
                   width: ${imagewidth}
                   height: ${imageheight}
-                  radius: 0
+                  radius: 12
                   bg_opa: TRANSP
                   border_width: 4
                   border_color: 0xFFFF00
