@@ -64,8 +64,10 @@ esp32:
   flash_size: 16MB
   framework:
     type: esp-idf
-    advanced:
-      execute_from_psram: True
+    sdkconfig_options:
+#      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "2048"
 
 psram:
   mode: octal
@@ -178,6 +180,14 @@ globals:
     restore_value: false
     initial_value: 'false'
   - id: album_art_slide_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: artist_art_valid
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: now_playing_art_mode
     type: bool
     restore_value: no
     initial_value: "false"
@@ -483,6 +493,35 @@ image:
       - lambda: |-
           id(sendspin_album_art_valid) = false;
 
+  - platform: sendspin
+    id: artist_slot
+    format: PNG
+    type: RGB565
+    resize: ${imagewidth}x${imageheight}
+    source: artist
+    current_image:
+      id: artist_art
+    on_image_display:
+      - logger.log:
+          format: "Artist art available (late by %u ms)"
+          args: ["(unsigned) lateness_ms"]
+          level: INFO
+      - lambda: |-
+          id(artist_art_valid) = true;
+          id(refresh_artist_art_dot)->execute();
+    on_image_clear:
+      - logger.log:
+          format: "No artist art for this song"
+          level: INFO
+      - lambda: |-
+          id(artist_art_valid) = false;
+          id(refresh_artist_art_dot)->execute();
+    on_image_error:
+      - lambda: |-
+          ESP_LOGW("artist_art", "failed to decode artist art");
+          id(artist_art_valid) = false;
+          id(refresh_artist_art_dot)->execute();
+
 sendspin:
   id: sendspin_hub
   task_stack_in_psram: false
@@ -752,9 +791,13 @@ touchscreen:
                     id(now_playing_swipe_right)->execute();
                   }
                 } else if (dy < 0) {
-                  id(start_manual_va)->execute();
+                  if (id(now_playing_art_mode)) {
+                    id(now_playing_show_album_art)->execute();
+                  }
                 } else {
-                  id(open_playlist_menu)->execute();
+                  if (id(artist_art_valid) && !id(now_playing_art_mode)) {
+                    id(now_playing_show_artist_art)->execute();
+                  }
                 }
               } else if (id(ui_phase) == ${ui_phase_player_controls}) {
                 if (abs_x >= abs_y) {
@@ -778,11 +821,15 @@ touchscreen:
                 } else if (dy < 0) {
                   id(close_playlist_menu)->execute();
                 }
-              } else if (id(ui_phase) == ${ui_phase_standby} && abs_x >= abs_y) {
-                if (dx < 0) {
-                  id(clock_style_choice).make_call().select_next(true).perform();
-                } else {
-                  id(clock_style_choice).make_call().select_previous(true).perform();
+              } else if (id(ui_phase) == ${ui_phase_standby}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(clock_style_choice).make_call().select_next(true).perform();
+                  } else {
+                    id(clock_style_choice).make_call().select_previous(true).perform();
+                  }
+                } else if (dy < 0) {
+                  id(start_manual_va)->execute();
                 }
               }
               return;
@@ -957,6 +1004,30 @@ switch:
       - script.execute: analog_clock_redraw
     on_turn_off:
       - script.execute: analog_clock_redraw
+
+  - platform: template
+    id: clock_show_weather
+    name: Show Weather
+    icon: "mdi:weather-partly-cloudy"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - component.update: weather_line
+    on_turn_off:
+      - component.update: weather_line
+
+  - platform: template
+    id: clock_show_feels_like
+    name: Show Feels Like
+    icon: "mdi:thermometer-lines"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - component.update: weather_line
+    on_turn_off:
+      - component.update: weather_line
 
 number:
   - platform: template
@@ -1495,7 +1566,17 @@ voice_assistant:
     - script.execute: refresh_timer_display
     - switch.turn_on: timer_ringing
 
+debug:
+
 sensor:
+  - platform: debug
+    free:
+      name: "SRAM Free Memory"
+    block:
+      name: "SRAM Largest Contiguous Block"
+    psram:
+      name: "PSRAM Free Memory"
+
   - platform: homeassistant
     id: ha_weather_temperature
     entity_id: ${ha_weather_entity}
@@ -1580,6 +1661,7 @@ text_sensor:
           }
           lv_label_set_text(id(weather_icon_glow), icon);
           lv_label_set_text(id(weather_icon), icon);
+          lv_label_set_text(id(analog_weather_icon), icon);
   - platform: homeassistant
     id: ha_weather_temperature_unit
     entity_id: ${ha_weather_entity}
@@ -1596,6 +1678,10 @@ text_sensor:
     type: title
     on_value:
       - component.update: now_playing_text
+      - lambda: |-
+          id(artist_art_valid) = false;
+          id(now_playing_art_mode) = false;
+          id(refresh_artist_art_dot)->execute();
       - lambda: |-
           id(previous_album_name) = id(sendspin_album).get_state();
       - delay: 100ms
@@ -1750,6 +1836,9 @@ text_sensor:
       int ti = (int) lroundf(id(ha_weather_temperature).state);
       char buf[8];
       snprintf(buf, sizeof(buf), "%d", ti);
+      char abuf[16];
+      snprintf(abuf, sizeof(abuf), "%d%s", ti, tunit.c_str());
+      lv_label_set_text(id(analog_weather_temp), abuf);
       return std::string(buf);
     on_value:
       - if:
@@ -1783,10 +1872,9 @@ text_sensor:
       }
       char buf[160];
       snprintf(buf, sizeof(buf),
-               "Temp: %.1f%s  -  Feels like: %.1f%s  -  Wind speed: %.1f %s",
-               temp_c, tunit.c_str(),
-               feels_c, tunit.c_str(),
-               wind_ms, wunit.c_str());
+               "Wind speed: %.1f %s\nFeels like: %.1f%s",
+               wind_ms, wunit.c_str(),
+               feels_c, tunit.c_str());
       return std::string(buf);
     on_value:
       - lambda: |-
@@ -1796,22 +1884,44 @@ text_sensor:
             and:
               - lvgl.page.is_showing: idle_page
               - lambda: 'return !id(clock_style_is_analog);'
-              - lambda: return id(weather_available);
           then:
-            - lvgl.widget.show: weather_header
-            - lvgl.widget.show: weather_label
-            - lvgl.label.update:
-                id: weather_label
-                text: !lambda return x;
-          else:
             - if:
                 condition:
                   and:
-                    - lvgl.page.is_showing: idle_page
-                    - lambda: 'return !id(clock_style_is_analog);'
+                    - lambda: return id(weather_available);
+                    - lambda: return id(clock_show_weather).state;
                 then:
+                  - lvgl.widget.show: weather_header
+                else:
                   - lvgl.widget.hide: weather_header
+            - if:
+                condition:
+                  and:
+                    - lambda: return id(weather_available);
+                    - lambda: return id(clock_show_feels_like).state;
+                then:
+                  - lvgl.widget.show: weather_label
+                  - lvgl.label.update:
+                      id: weather_label
+                      text: !lambda return x;
+                else:
                   - lvgl.widget.hide: weather_label
+          else:
+            - lvgl.widget.hide: weather_header
+            - lvgl.widget.hide: weather_label
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_is_analog);'
+              - lambda: return id(weather_available);
+              - lambda: return id(clock_show_weather).state;
+          then:
+            - lvgl.widget.show: analog_weather_icon
+            - lvgl.widget.show: analog_weather_temp
+          else:
+            - lvgl.widget.hide: analog_weather_icon
+            - lvgl.widget.hide: analog_weather_temp
 
 font:
   - file:
@@ -1824,6 +1934,16 @@ font:
       - GF_Latin_Core
       - GF_Cyrillic_Core
     glyphs: "\u00B7"
+
+  - file:
+      type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_display_medium
+    size: 26
+    glyphsets:
+      - GF_Latin_Core
+      - GF_Cyrillic_Core
 
   - file:
       type: gfonts
@@ -1882,6 +2002,19 @@ font:
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_weather
     size: 76
+    glyphs:
+      - "\U000F0590"
+      - "\U000F0592"
+      - "\U000F0593"
+      - "\U000F0595"
+      - "\U000F0596"
+      - "\U000F0597"
+      - "\U000F0598"
+      - "\U000F0599"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_weather_small
+    size: 38
     glyphs:
       - "\U000F0590"
       - "\U000F0592"
@@ -1959,6 +2092,7 @@ script:
                 lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
             - script.execute: analog_clock_redraw
+            - component.update: weather_line
           else:
             - lambda: |-
                 lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
@@ -1970,6 +2104,8 @@ script:
                 if (id(analog_clock_canvas_widget) != nullptr) {
                   lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
                 }
+                lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
             - component.update: weather_line
 
   - id: analog_clock_redraw
@@ -2023,6 +2159,20 @@ script:
                   }
                 }
 
+                if (id(clock_show_date).state) {
+                  std::string date_str = id(clock_date).state;
+                  lv_draw_label_dsc_t label_dsc;
+                  lv_draw_label_dsc_init(&label_dsc);
+                  label_dsc.color = fg2;
+                  label_dsc.font = id(font_date)->get_lv_font();
+                  label_dsc.align = LV_TEXT_ALIGN_CENTER;
+                  label_dsc.text = date_str.c_str();
+                  label_dsc.text_local = true;
+                  const int32_t date_y = CY + (int32_t) (R * 0.55f);
+                  lv_area_t label_area = {CX - R, date_y, CX + R, date_y + 40};
+                  lv_draw_label(&layer, &label_dsc, &label_area);
+                }
+
                 auto t = id(homeassistant_time).now();
                 int hh = t.is_valid() ? (t.hour % 12) : 0;
                 int mm = t.is_valid() ? t.minute : 0;
@@ -2057,19 +2207,6 @@ script:
                 lv_area_t dot_area = {CX - 6, CY - 6, CX + 6, CY + 6};
                 lv_draw_rect(&layer, &dot_dsc, &dot_area);
 
-                if (id(clock_show_date).state) {
-                  std::string date_str = id(clock_date).state;
-                  lv_draw_label_dsc_t label_dsc;
-                  lv_draw_label_dsc_init(&label_dsc);
-                  label_dsc.color = fg2;
-                  label_dsc.font = id(font_date)->get_lv_font();
-                  label_dsc.align = LV_TEXT_ALIGN_CENTER;
-                  label_dsc.text = date_str.c_str();
-                  const int32_t date_y = CY + (int32_t) (R * 0.55f);
-                  lv_area_t label_area = {CX - R, date_y, CX + R, date_y + 40};
-                  lv_draw_label(&layer, &label_dsc, &label_area);
-                }
-
                 lv_canvas_finish_layer(canvas, &layer);
                 lv_obj_invalidate(canvas);
 
@@ -2085,9 +2222,6 @@ script:
             - script.execute:
                 id: set_va_phase
                 phase: ${va_phase_idle}
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_player_controls}
             - if:
                 condition:
                   lambda: return id(manual_va_resume_media);
@@ -2267,6 +2401,17 @@ script:
             - script.execute:
                 id: set_va_phase
                 phase: ${va_phase_idle}
+            - if:
+                condition:
+                  lambda: return id(manual_va_active);
+                then:
+                  - lambda: id(manual_va_active) = false;
+                  - if:
+                      condition:
+                        lambda: return id(manual_va_resume_media);
+                      then:
+                        - lambda: id(manual_va_resume_media) = false;
+                        - media_player.toggle: sendspin_group_media_player
             - delay: 300ms
             - script.execute: start_wake_word
 
@@ -2379,11 +2524,13 @@ script:
           lv_obj_set_style_text_color(id(idle_timer_countdown), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
+          lv_obj_set_style_text_color(id(analog_weather_temp), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_bg_color(id(now_playing_progress_bar), accent, LV_PART_INDICATOR);
           lv_obj_set_style_text_color(id(date_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
+          lv_obj_set_style_text_color(id(analog_weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(weather_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
@@ -2883,9 +3030,119 @@ script:
           id(album_art_slide_active) = false;
           id(album_art_awaiting_swipe_art) = true;
 
+  - id: refresh_artist_art_dot
+    then:
+      - lambda: |-
+          if (id(artist_art_valid) && !id(now_playing_art_mode)) {
+            lv_obj_clear_flag(id(artist_art_dot), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(artist_art_dot), LV_OBJ_FLAG_HIDDEN);
+          }
+
+  - id: now_playing_show_artist_art
+    mode: restart
+    then:
+      - lvgl.animation.stop: album_art_crossfade
+      - lambda: |-
+          lv_obj_set_style_opa(id(outgoing_art), LV_OPA_TRANSP, 0);
+          lv_obj_t *outgoing = id(slide_outgoing_art);
+          lv_obj_t *incoming = id(slide_incoming_art);
+          lv_anim_del(outgoing, nullptr);
+          lv_anim_del(incoming, nullptr);
+          lv_img_set_src(outgoing, lv_img_get_src(id(incoming_art)));
+          lv_img_set_zoom(outgoing, LV_ZOOM_NONE);
+          lv_img_set_src(incoming, id(artist_art)->get_lv_image_dsc());
+          lv_img_set_zoom(incoming, LV_ZOOM_NONE);
+          lv_obj_set_x(outgoing, 0);
+          lv_obj_set_x(incoming, 0);
+          lv_obj_set_y(outgoing, 0);
+          lv_obj_set_y(incoming, -${screenheight});
+          lv_obj_clear_flag(outgoing, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(incoming, LV_OBJ_FLAG_HIDDEN);
+
+          lv_anim_t current_slide;
+          lv_anim_init(&current_slide);
+          lv_anim_set_var(&current_slide, outgoing);
+          lv_anim_set_values(&current_slide, 0, ${screenheight});
+          lv_anim_set_time(&current_slide, 300);
+          lv_anim_set_exec_cb(&current_slide, [](void *obj, int32_t y) {
+            lv_obj_set_y((lv_obj_t *) obj, y);
+          });
+          lv_anim_start(&current_slide);
+
+          lv_anim_t incoming_slide;
+          lv_anim_init(&incoming_slide);
+          lv_anim_set_var(&incoming_slide, incoming);
+          lv_anim_set_values(&incoming_slide, -${screenheight}, 0);
+          lv_anim_set_time(&incoming_slide, 300);
+          lv_anim_set_exec_cb(&incoming_slide, [](void *obj, int32_t y) {
+            lv_obj_set_y((lv_obj_t *) obj, y);
+          });
+          lv_anim_start(&incoming_slide);
+          id(now_playing_art_mode) = true;
+          id(refresh_artist_art_dot)->execute();
+      - delay: 300ms
+      - lambda: |-
+          lv_obj_add_flag(id(slide_outgoing_art), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(slide_incoming_art), LV_OBJ_FLAG_HIDDEN);
+          lv_img_set_src(id(incoming_art), id(artist_art)->get_lv_image_dsc());
+          lv_img_set_zoom(id(incoming_art), LV_ZOOM_NONE);
+
+  - id: now_playing_show_album_art
+    mode: restart
+    then:
+      - lvgl.animation.stop: album_art_crossfade
+      - lambda: |-
+          lv_obj_set_style_opa(id(outgoing_art), LV_OPA_TRANSP, 0);
+          lv_obj_t *outgoing = id(slide_outgoing_art);
+          lv_obj_t *incoming = id(slide_incoming_art);
+          lv_anim_del(outgoing, nullptr);
+          lv_anim_del(incoming, nullptr);
+          lv_img_set_src(outgoing, lv_img_get_src(id(incoming_art)));
+          lv_img_set_zoom(outgoing, LV_ZOOM_NONE);
+          lv_img_set_src(incoming, id(sendspin_album_art_valid) ? id(sendspin_album_art)->get_lv_image_dsc() : id(fallback_playing_image)->get_lv_image_dsc());
+          lv_img_set_zoom(incoming, LV_ZOOM_NONE);
+          lv_obj_set_x(outgoing, 0);
+          lv_obj_set_x(incoming, 0);
+          lv_obj_set_y(outgoing, 0);
+          lv_obj_set_y(incoming, ${screenheight});
+          lv_obj_clear_flag(outgoing, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(incoming, LV_OBJ_FLAG_HIDDEN);
+
+          lv_anim_t current_slide;
+          lv_anim_init(&current_slide);
+          lv_anim_set_var(&current_slide, outgoing);
+          lv_anim_set_values(&current_slide, 0, -${screenheight});
+          lv_anim_set_time(&current_slide, 300);
+          lv_anim_set_exec_cb(&current_slide, [](void *obj, int32_t y) {
+            lv_obj_set_y((lv_obj_t *) obj, y);
+          });
+          lv_anim_start(&current_slide);
+
+          lv_anim_t incoming_slide;
+          lv_anim_init(&incoming_slide);
+          lv_anim_set_var(&incoming_slide, incoming);
+          lv_anim_set_values(&incoming_slide, ${screenheight}, 0);
+          lv_anim_set_time(&incoming_slide, 300);
+          lv_anim_set_exec_cb(&incoming_slide, [](void *obj, int32_t y) {
+            lv_obj_set_y((lv_obj_t *) obj, y);
+          });
+          lv_anim_start(&incoming_slide);
+          id(now_playing_art_mode) = false;
+          id(refresh_artist_art_dot)->execute();
+      - delay: 300ms
+      - lambda: |-
+          lv_obj_add_flag(id(slide_outgoing_art), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(slide_incoming_art), LV_OBJ_FLAG_HIDDEN);
+          lv_img_set_src(id(incoming_art), id(sendspin_album_art_valid) ? id(sendspin_album_art)->get_lv_image_dsc() : id(fallback_playing_image)->get_lv_image_dsc());
+          lv_img_set_zoom(id(incoming_art), LV_ZOOM_NONE);
+
   - id: album_art_crossfade_apply
     mode: restart
     then:
+      - lambda: |-
+          id(now_playing_art_mode) = false;
+          id(refresh_artist_art_dot)->execute();
       - if:
           condition:
             lambda: 'return id(last_album_art_valid);'
@@ -3645,12 +3902,13 @@ lvgl:
                   id: weather_label
                   align: TOP_MID
                   x: 0
-                  y: 241
+                  y: 224
                   width: 285
+                  height: 56
                   text: "Weather..."
                   text_color: 0x66CCFF
                   text_font: font_display
-                  long_mode: SCROLL_CIRCULAR
+                  long_mode: WRAP
                   text_align: CENTER
 
         - label:
@@ -3660,6 +3918,27 @@ lvgl:
             text: ""
             text_color: 0xFFFF00
             text_font: font_ampm
+            hidden: true
+
+        - label:
+            id: analog_weather_icon
+            align: CENTER
+            x: -105
+            y: 0
+            text: ""
+            text_color: 0xFFFFFF
+            text_font: font_mdi_weather_small
+            hidden: true
+
+        - label:
+            id: analog_weather_temp
+            align: CENTER
+            x: 105
+            y: 0
+            text: ""
+            text_color: 0xFFFF00
+            text_font: font_display_medium
+            text_align: CENTER
             hidden: true
 
         - canvas:
@@ -3967,6 +4246,22 @@ lvgl:
             height: ${imageheight}
             antialias: false
             clickable: false
+
+        - obj:
+            id: artist_art_dot
+            align: TOP_MID
+            x: 0
+            y: 20
+            width: 14
+            height: 14
+            radius: 7
+            bg_color: 0xFF3B30
+            bg_opa: COVER
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
 
         - image:
             id: slide_outgoing_art
