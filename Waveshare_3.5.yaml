@@ -41,16 +41,19 @@ packages:
     ref: main
     refresh: 0s
     files:
-      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.7.3.yaml
+      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
 
 esp32:
   board: esp32-s3-devkitc-1
   flash_size: 16MB
   framework:
     type: esp-idf
-    sdkconfig_options:
-      CONFIG_SPIRAM_XIP_FROM_PSRAM: y
-      CONFIG_SPIRAM_USE_MALLOC: y
+    advanced:
+      execute_from_psram: True
+#    sdkconfig_options:
+#      CONFIG_SPIRAM_RODATA: "y"
+#      CONFIG_SPIRAM_USE_MALLOC: "y"
+#      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "2048"
 
 psram:
   mode: octal
@@ -870,6 +873,30 @@ switch:
     on_turn_off:
       - script.execute: analog_clock_redraw
 
+  - platform: template
+    id: clock_show_weather
+    name: Show Weather
+    icon: "mdi:weather-partly-cloudy"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - component.update: weather_line
+    on_turn_off:
+      - component.update: weather_line
+
+  - platform: template
+    id: clock_show_feels_like
+    name: Show Feels Like
+    icon: "mdi:thermometer-lines"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - component.update: weather_line
+    on_turn_off:
+      - component.update: weather_line
+
 number:
   - platform: template
     id: player_controls_timeout_seconds
@@ -1509,7 +1536,17 @@ voice_assistant:
     - script.execute: refresh_timer_display
     - switch.turn_on: timer_ringing
 
+debug:
+
 sensor:
+  - platform: debug
+    free:
+      name: "SRAM Free Memory"
+    block:
+      name: "SRAM Largest Contiguous Block"
+    psram:
+      name: "PSRAM Free Memory"
+
   - platform: homeassistant
     id: ha_weather_temperature
     entity_id: ${ha_weather_entity}
@@ -1594,6 +1631,7 @@ text_sensor:
           }
           lv_label_set_text(id(weather_icon_glow), icon);
           lv_label_set_text(id(weather_icon), icon);
+          lv_label_set_text(id(analog_weather_icon), icon);
   - platform: homeassistant
     id: ha_weather_temperature_unit
     entity_id: ${ha_weather_entity}
@@ -1748,6 +1786,9 @@ text_sensor:
       int ti = (int) lroundf(id(ha_weather_temperature).state);
       char buf[8];
       snprintf(buf, sizeof(buf), "%d", ti);
+      char abuf[16];
+      snprintf(abuf, sizeof(abuf), "%d%s", ti, tunit.c_str());
+      lv_label_set_text(id(analog_weather_temp), abuf);
       return std::string(buf);
     on_value:
       - if:
@@ -1793,22 +1834,44 @@ text_sensor:
             and:
               - lambda: 'return !lv_obj_has_flag(id(standby_panel), LV_OBJ_FLAG_HIDDEN);'
               - lambda: 'return !id(clock_style_is_analog);'
-              - lambda: return id(weather_available);
           then:
-            - lvgl.widget.show: weather_header
-            - lvgl.widget.show: weather_label
-            - lvgl.label.update:
-                id: weather_label
-                text: !lambda return x;
-          else:
             - if:
                 condition:
                   and:
-                    - lambda: 'return !lv_obj_has_flag(id(standby_panel), LV_OBJ_FLAG_HIDDEN);'
-                    - lambda: 'return !id(clock_style_is_analog);'
+                    - lambda: return id(weather_available);
+                    - lambda: return id(clock_show_weather).state;
                 then:
+                  - lvgl.widget.show: weather_header
+                else:
                   - lvgl.widget.hide: weather_header
+            - if:
+                condition:
+                  and:
+                    - lambda: return id(weather_available);
+                    - lambda: return id(clock_show_feels_like).state;
+                then:
+                  - lvgl.widget.show: weather_label
+                  - lvgl.label.update:
+                      id: weather_label
+                      text: !lambda return x;
+                else:
                   - lvgl.widget.hide: weather_label
+          else:
+            - lvgl.widget.hide: weather_header
+            - lvgl.widget.hide: weather_label
+      - if:
+          condition:
+            and:
+              - lambda: 'return !lv_obj_has_flag(id(standby_panel), LV_OBJ_FLAG_HIDDEN);'
+              - lambda: 'return id(clock_style_is_analog);'
+              - lambda: return id(weather_available);
+              - lambda: return id(clock_show_weather).state;
+          then:
+            - lvgl.widget.show: analog_weather_icon
+            - lvgl.widget.show: analog_weather_temp
+          else:
+            - lvgl.widget.hide: analog_weather_icon
+            - lvgl.widget.hide: analog_weather_temp
 
 font:
   - file:
@@ -1816,6 +1879,16 @@ font:
       family: Noto Sans
       weight: 300
     id: font_display
+    size: 18
+    glyphsets:
+      - GF_Latin_Core
+      - GF_Cyrillic_Core
+
+  - file:
+      type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_display_medium
     size: 18
     glyphsets:
       - GF_Latin_Core
@@ -1878,6 +1951,19 @@ font:
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_weather
     size: 52
+    glyphs:
+      - "\U000F0590"
+      - "\U000F0592"
+      - "\U000F0593"
+      - "\U000F0595"
+      - "\U000F0596"
+      - "\U000F0597"
+      - "\U000F0598"
+      - "\U000F0599"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_weather_small
+    size: 26
     glyphs:
       - "\U000F0590"
       - "\U000F0592"
@@ -2250,12 +2336,14 @@ script:
           lv_obj_set_style_text_color(id(idle_timer_countdown), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
+          lv_obj_set_style_text_color(id(analog_weather_temp), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_bg_color(id(now_playing_progress_bar), accent, LV_PART_INDICATOR);
           lv_obj_set_style_border_color(id(now_playing_frame), accent, 0);
           lv_obj_set_style_text_color(id(date_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
+          lv_obj_set_style_text_color(id(analog_weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(weather_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
@@ -2322,6 +2410,7 @@ script:
                 lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
             - script.execute: analog_clock_redraw
+            - component.update: weather_line
           else:
             - lambda: |-
                 lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
@@ -2333,6 +2422,8 @@ script:
                 if (id(analog_clock_canvas_widget) != nullptr) {
                   lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
                 }
+                lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
             - component.update: weather_line
 
   - id: analog_clock_redraw
@@ -2428,7 +2519,7 @@ script:
                   label_dsc.font = id(font_date)->get_lv_font();
                   label_dsc.align = LV_TEXT_ALIGN_CENTER;
                   label_dsc.text = date_str.c_str();
-                  const int32_t date_y = CY + R + 4;
+                  const int32_t date_y = CY + R + 7;
                   lv_area_t label_area = {0, date_y, CANVAS_W, date_y + 24};
                   lv_draw_label(&layer, &label_dsc, &label_area);
                 }
@@ -2455,6 +2546,7 @@ script:
             lambda: 'return phase == ${ui_phase_standby};'
           then:
             - lvgl.widget.show: standby_panel
+            - component.update: weather_line
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
             - lambda: |-
@@ -2494,6 +2586,7 @@ script:
             lambda: 'return phase == ${ui_phase_now_playing};'
           then:
             - lvgl.widget.show: standby_panel
+            - component.update: weather_line
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
             - if:
@@ -4432,6 +4525,27 @@ lvgl:
                               text: ""
                               text_color: 0xFFFF00
                               text_font: font_ampm
+                              hidden: true
+
+                          - label:
+                              id: analog_weather_icon
+                              align: CENTER
+                              x: -59
+                              y: -14
+                              text: ""
+                              text_color: 0xFFFFFF
+                              text_font: font_mdi_weather_small
+                              hidden: true
+
+                          - label:
+                              id: analog_weather_temp
+                              align: CENTER
+                              x: 59
+                              y: -14
+                              text: ""
+                              text_color: 0xFFFF00
+                              text_font: font_display_medium
+                              text_align: CENTER
                               hidden: true
 
                     - obj:
