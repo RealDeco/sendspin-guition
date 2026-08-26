@@ -49,7 +49,7 @@ packages:
     ref: main
     refresh: 0s
     files:
-      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.7.3.yaml
+      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
 
 esphome:
   name: ${name}
@@ -77,6 +77,12 @@ esp32:
   flash_size: 16MB
   framework:
     type: esp-idf
+    advanced:
+      execute_from_psram: True
+#    sdkconfig_options:
+#      CONFIG_SPIRAM_RODATA: "y"
+#      CONFIG_SPIRAM_USE_MALLOC: "y"
+#      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "2048"
 
 logger:
   level: WARN
@@ -385,7 +391,7 @@ image:
 
 sendspin:
   id: sendspin_hub
-  task_stack_in_psram: false
+  task_stack_in_psram: true
 
 drv2605:
   id: haptic_driver
@@ -1027,7 +1033,17 @@ binary_sensor:
         - script.execute: haptic_click
         - script.execute: show_rotary_volume_feedback
 
+debug:
+
 sensor:
+  - platform: debug
+    free:
+      name: "SRAM Free Memory"
+    block:
+      name: "SRAM Largest Contiguous Block"
+    psram:
+      name: "PSRAM Free Memory"
+
   - platform: homeassistant
     id: ha_weather_temperature
     entity_id: ${ha_weather_entity}
@@ -1708,6 +1724,7 @@ script:
             lambda: 'return phase == ${ui_phase_standby};'
           then:
             - lvgl.page.show: idle_page
+            - component.update: weather_line
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_player_controls};'
