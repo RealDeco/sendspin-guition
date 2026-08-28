@@ -74,7 +74,7 @@ esp32:
 #    advanced:
 #      execute_from_psram: True
     sdkconfig_options:
-      CONFIG_SPIRAM_RODATA: "y"
+#      CONFIG_SPIRAM_RODATA: "y"
       CONFIG_SPIRAM_USE_MALLOC: "y"
       CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "2048"
 
@@ -201,6 +201,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: pre_previous_swipe_title
+    type: std::string
+    restore_value: no
+    initial_value: '""'
   - id: boot_sound_played
     type: bool
     restore_value: no
@@ -474,8 +478,8 @@ image:
     transition_image:
       id: sendspin_album_art_transition
     on_image_display:
-      - script.stop: album_art_timeout_fallback
       - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
           id(sendspin_album_art_valid) = true;
           id(album_art_awaiting_swipe_art) = false;
           id(confirmed_art_album_name) = id(sendspin_album).get_state();
@@ -496,12 +500,18 @@ image:
       - logger.log:
           format: "Album art cleared"
           level: WARN
+      - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
+          id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_show_fallback
     on_image_error:
       - logger.log:
           format: "Album art error"
           level: WARN
       - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
           id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_show_fallback
 
   - platform: sendspin
     id: artist_slot
@@ -638,6 +648,17 @@ media_player:
   - platform: sendspin
     id: sendspin_group_media_player
     name: Sendspin Group Media Player
+    on_idle:
+      - if:
+          condition:
+            and:
+              - not:
+                  voice_assistant.is_running:
+              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+          then:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_standby}
 
   - platform: speaker_source
     id: external_media_player
@@ -666,7 +687,6 @@ media_player:
 
     on_play:
       then:
-        - script.stop: mp_idle_debounce
         - if:
             condition:
               and:
@@ -715,11 +735,6 @@ media_player:
                             id: external_media_player
                   then:
                     - script.execute: start_wake_word
-              - if:
-                  condition:
-                    lambda: 'return id(va_phase) == ${va_phase_idle};'
-                  then:
-                    - script.execute: mp_idle_debounce
               - script.execute: led_ring_apply_state
 
     on_pause:
@@ -1456,6 +1471,7 @@ text:
 micro_wake_word:
   id: mww
   stop_after_detection: false
+  task_stack_in_psram: true
   models:
     - model: okay_nabu
       id: okay_nabu
@@ -1784,7 +1800,6 @@ text_sensor:
               - lambda: 'return id(current_album_name) == id(previous_album_name);'
               - lambda: 'return id(current_album_name) == id(confirmed_art_album_name);'
           then:
-            - script.stop: album_art_timeout_fallback
             - lambda: |-
                 id(sendspin_album_art_valid) = true;
                 id(album_art_awaiting_swipe_art) = false;
@@ -1811,11 +1826,6 @@ text_sensor:
     name: "Album Name"
     type: album
     on_value:
-      - lambda: |-
-          id(last_album_art_valid) = id(sendspin_album_art_valid);
-      - lambda: |-
-          id(sendspin_album_art_valid) = false;
-      - script.execute: album_art_timeout_fallback
       - component.update: now_playing_text
       - lvgl.label.update:
           id: controls_album_label
@@ -2980,7 +2990,7 @@ script:
       - script.execute:
           id: album_art_slide
           direction: 1
-      - media_player.previous: sendspin_group_media_player
+      - script.execute: media_player_previous_with_restart_check
 
   - id: player_controls_keep_open
     then:
@@ -3005,7 +3015,7 @@ script:
       - script.execute:
           id: player_controls_slide_to_now_playing
           direction: 1
-      - media_player.previous: sendspin_group_media_player
+      - script.execute: media_player_previous_with_restart_check
 
   - id: player_controls_swipe_next
     then:
@@ -3338,6 +3348,26 @@ script:
           lv_img_set_src(id(incoming_art), id(sendspin_album_art_valid) ? id(sendspin_album_art)->get_lv_image_dsc() : id(fallback_playing_image)->get_lv_image_dsc());
           lv_img_set_zoom(id(incoming_art), LV_ZOOM_NONE);
 
+  - id: media_player_previous_with_restart_check
+    then:
+      - lambda: |-
+          id(pre_previous_swipe_title) = id(sendspin_title).state;
+      - media_player.previous: sendspin_group_media_player
+      - script.execute: restore_art_if_same_title
+
+  - id: restore_art_if_same_title
+    mode: restart
+    then:
+      - delay: 1200ms
+      - if:
+          condition:
+            lambda: 'return id(sendspin_title).state == id(pre_previous_swipe_title);'
+          then:
+            - lambda: |-
+                id(sendspin_album_art_valid) = true;
+                id(album_art_awaiting_swipe_art) = false;
+            - script.execute: album_art_crossfade_apply
+
   - id: album_art_crossfade_apply
     mode: restart
     then:
@@ -3622,15 +3652,12 @@ script:
           }
 
 
-  - id: album_art_timeout_fallback
+  - id: album_art_show_fallback
     mode: restart
     then:
-      - delay: 2000ms
       - if:
           condition:
-            and:
-              - lambda: 'return !id(sendspin_album_art_valid);'
-              - lambda: 'return !id(album_art_slide_active);'
+            lambda: 'return !id(album_art_slide_active);'
           then:
             - if:
                 condition:
@@ -3653,22 +3680,6 @@ script:
             - lvgl.image.update:
                 id: playlist_album_art_widget
                 src: fallback_playing_image
-
-  - id: mp_idle_debounce
-    mode: restart
-    then:
-      - delay: 1200ms
-      - if:
-          condition:
-            and:
-              - media_player.is_idle: external_media_player
-              - not:
-                  voice_assistant.is_running:
-              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
-          then:
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_standby}
 
   - id: ring_timer
     then:
