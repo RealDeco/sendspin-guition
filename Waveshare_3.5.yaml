@@ -347,6 +347,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: pre_previous_swipe_title
+    type: std::string
+    restore_value: no
+    initial_value: '""'
   - id: artist_art_valid
     type: bool
     restore_value: no
@@ -432,6 +436,10 @@ image:
             - lambda: |-
                 lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_move_background(id(standby_background_widget));
+    on_error:
+      - lambda: |-
+          ESP_LOGW("standby_background", "failed to load background image");
+          lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
 
   - platform: online_image
     id: family_photo_image
@@ -471,19 +479,24 @@ image:
           format: "Album art displayed (late by %u ms)"
           args: ["(unsigned) lateness_ms"]
           level: WARN
-      - script.stop: album_art_timeout_fallback
       - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
           id(sendspin_album_art_valid) = true;
           id(album_art_awaiting_swipe_art) = false;
           id(confirmed_art_album_name) = id(sendspin_album).get_state();
       - script.execute: album_art_crossfade_apply
     on_image_clear:
       - lambda: |-
-          ESP_LOGW("imagecheck", id(sendspin_album).get_state().c_str(), "Cleared");
+          ESP_LOGW("imagecheck", "Album art cleared: %s", id(sendspin_album).get_state().c_str());
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
+          id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_show_fallback
     on_image_error:
       - lambda: |-
           ESP_LOGW("album_art", "failed to decode album art");
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
           id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_show_fallback
 
   - platform: sendspin
     id: artist_slot
@@ -630,6 +643,17 @@ media_player:
   - platform: sendspin
     id: sendspin_group_media_player
     name: Sendspin Group Media Player
+    on_idle:
+      - if:
+          condition:
+            and:
+              - not:
+                  voice_assistant.is_running:
+              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+          then:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_standby}
 
   - platform: speaker_source
     id: external_media_player
@@ -658,7 +682,6 @@ media_player:
 
     on_play:
       then:
-        - script.stop: mp_idle_debounce
         - if:
             condition:
               and:
@@ -704,17 +727,12 @@ media_player:
                             id: external_media_player
                   then:
                     - script.execute: start_wake_word
-              - if:
-                  condition:
-                    lambda: 'return id(va_phase) == ${va_phase_idle};'
-                  then:
-                    - script.execute: mp_idle_debounce
 
     on_pause:
       then:
         - if:
             condition:
-              lambda: 'return id(va_phase) == ${va_phase_idle};'
+              lambda: 'return id(va_phase) == ${va_phase_idle} && !id(manual_va_active);'
             then:
               - script.execute: start_wake_word
               - script.execute:
@@ -1032,6 +1050,8 @@ select:
           condition:
             switch.is_on: standby_background_enabled
           then:
+            - lambda: |-
+                lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
             - online_image.set_url:
                 id: standby_background_image
                 url: !lambda |-
@@ -1667,7 +1687,6 @@ text_sensor:
               - lambda: 'return id(current_album_name) == id(previous_album_name);'
               - lambda: 'return id(current_album_name) == id(confirmed_art_album_name);'
           then:
-            - script.stop: album_art_timeout_fallback
             - lambda: |-
                 id(sendspin_album_art_valid) = true;
                 id(album_art_awaiting_swipe_art) = false;
@@ -1693,11 +1712,6 @@ text_sensor:
     name: "Album Name"
     type: album
     on_value:
-      - lambda: |-
-          id(last_album_art_valid) = id(sendspin_album_art_valid);
-      - lambda: |-
-          id(sendspin_album_art_valid) = false;
-      - script.execute: album_art_timeout_fallback
       - lvgl.label.update:
           id: controls_artist_label
           text: !lambda return x;
@@ -2549,38 +2563,7 @@ script:
             - component.update: weather_line
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
-            - lambda: |-
-                lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
-                std::string content = id(standby_frame_content).current_option();
-                if (content == "News Ticker") {
-                  lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_clear_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                } else if (content == "Family Photo") {
-                  lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                  if (id(family_photo_image)->is_loaded()) {
-                    lv_obj_clear_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                  }
-                } else {
-                  lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                  if (content == "None") {
-                    lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  } else {
-                    lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  }
-                }
-            - script.execute:
-                id: refresh_news_ticker_if_stale
-                selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
-            - if:
-                condition:
-                  lambda: 'return id(standby_frame_content).current_option() == "Family Photo" && !id(family_photo_image)->is_loaded();'
-                then:
-                  - script.execute:
-                      id: show_family_photo
-                      selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+            - script.execute: apply_standby_frame_content
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_now_playing};'
@@ -2591,8 +2574,10 @@ script:
             - lvgl.widget.hide: playlist_panel
             - if:
                 condition:
-                  not:
-                    media_player.is_idle: external_media_player
+                  or:
+                    - not:
+                        media_player.is_idle: external_media_player
+                    - lambda: 'return id(manual_va_resume_media);'
                 then:
                   - lambda: |-
                       lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -2601,6 +2586,8 @@ script:
                       if (id(va_phase) == ${va_phase_idle}) {
                         lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                       }
+                else:
+                  - script.execute: apply_standby_frame_content
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_player_controls};'
@@ -2610,8 +2597,10 @@ script:
             - lvgl.widget.hide: playlist_panel
             - if:
                 condition:
-                  not:
-                    media_player.is_idle: external_media_player
+                  or:
+                    - not:
+                        media_player.is_idle: external_media_player
+                    - lambda: 'return id(manual_va_resume_media);'
                 then:
                   - lambda: |-
                       lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -2620,6 +2609,8 @@ script:
                       if (id(va_phase) == ${va_phase_idle}) {
                         lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                       }
+                else:
+                  - script.execute: apply_standby_frame_content
             - lambda: |-
                 lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
@@ -2632,8 +2623,10 @@ script:
             - lvgl.widget.show: playlist_panel
             - if:
                 condition:
-                  not:
-                    media_player.is_idle: external_media_player
+                  or:
+                    - not:
+                        media_player.is_idle: external_media_player
+                    - lambda: 'return id(manual_va_resume_media);'
                 then:
                   - lambda: |-
                       lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -2642,6 +2635,8 @@ script:
                       if (id(va_phase) == ${va_phase_idle}) {
                         lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                       }
+                else:
+                  - script.execute: apply_standby_frame_content
             - script.execute: player_controls_timeout
 
   - id: player_controls_timeout
@@ -2711,6 +2706,8 @@ script:
   - id: load_standby_background
     mode: restart
     then:
+      - lambda: |-
+          lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
       - online_image.set_url:
           id: standby_background_image
           url: !lambda |-
@@ -2787,29 +2784,44 @@ script:
           then:
             - light.turn_off: Sled
 
-  - id: album_art_timeout_fallback
+  - id: album_art_show_fallback
     mode: restart
     then:
-      - delay: 2000ms
       - if:
           condition:
-            lambda: 'return !id(sendspin_album_art_valid);'
+            lambda: 'return id(last_album_art_valid);'
           then:
-            - if:
-                condition:
-                  lambda: 'return id(last_album_art_valid);'
-                then:
-                  - lvgl.image.update:
-                      id: outgoing_art
-                      src: sendspin_album_art_transition
-                else:
-                  - lvgl.image.update:
-                      id: outgoing_art
-                      src: fallback_playing_image
             - lvgl.image.update:
-                id: incoming_art
+                id: outgoing_art
+                src: sendspin_album_art_transition
+          else:
+            - lvgl.image.update:
+                id: outgoing_art
                 src: fallback_playing_image
-            - lvgl.animation.start: album_art_crossfade
+      - lvgl.image.update:
+          id: incoming_art
+          src: fallback_playing_image
+      - lvgl.animation.start: album_art_crossfade
+
+  - id: media_player_previous_with_restart_check
+    then:
+      - lambda: |-
+          id(pre_previous_swipe_title) = id(sendspin_title).state;
+      - media_player.previous: sendspin_group_media_player
+      - script.execute: restore_art_if_same_title
+
+  - id: restore_art_if_same_title
+    mode: restart
+    then:
+      - delay: 1200ms
+      - if:
+          condition:
+            lambda: 'return id(sendspin_title).state == id(pre_previous_swipe_title);'
+          then:
+            - lambda: |-
+                id(sendspin_album_art_valid) = true;
+                id(album_art_awaiting_swipe_art) = false;
+            - script.execute: album_art_crossfade_apply
 
   - id: album_art_crossfade_apply
     mode: restart
@@ -2934,7 +2946,7 @@ script:
             lv_obj_set_style_translate_x((lv_obj_t *)obj, v, 0);
           });
           lv_anim_start(&ain);
-      - media_player.previous: sendspin_group_media_player
+      - script.execute: media_player_previous_with_restart_check
       - delay: 220ms
       - lambda: |-
           if (id(slide_incoming_ptr)) {
@@ -3093,7 +3105,7 @@ script:
       - script.execute:
           id: set_ui_phase
           phase: ${ui_phase_now_playing}
-      - media_player.previous: sendspin_group_media_player
+      - script.execute: media_player_previous_with_restart_check
 
   - id: player_controls_swipe_next
     then:
@@ -3262,7 +3274,7 @@ script:
           condition:
             lambda: 'return !id(touch_swipe_detected);'
           then:
-            - media_player.previous: sendspin_group_media_player
+            - script.execute: media_player_previous_with_restart_check
             - script.execute: player_controls_keep_open
 
   - id: player_controls_next
@@ -3308,6 +3320,42 @@ script:
                 }
                 id(family_photo_image)->set_url(url);
                 id(family_photo_image)->update();
+
+  - id: apply_standby_frame_content
+    mode: restart
+    then:
+      - lambda: |-
+          lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
+          std::string content = id(standby_frame_content).current_option();
+          if (content == "News Ticker") {
+            lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+          } else if (content == "Family Photo") {
+            lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+            if (id(family_photo_image)->is_loaded()) {
+              lv_obj_clear_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+            }
+          } else {
+            lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+            if (content == "None") {
+              lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            }
+          }
+      - script.execute:
+          id: refresh_news_ticker_if_stale
+          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+      - if:
+          condition:
+            lambda: 'return id(standby_frame_content).current_option() == "Family Photo" && !id(family_photo_image)->is_loaded();'
+          then:
+            - script.execute:
+                id: show_family_photo
+                selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
   - id: fetch_news_ticker
     mode: single
@@ -3627,22 +3675,6 @@ script:
           if (id(volume_ring_overlay) != nullptr) {
             lv_obj_add_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
           }
-
-  - id: mp_idle_debounce
-    mode: restart
-    then:
-      - delay: 1200ms
-      - if:
-          condition:
-            and:
-              - media_player.is_idle: external_media_player
-              - not:
-                  voice_assistant.is_running:
-              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
-          then:
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_standby}
 
   - id: ring_timer
     then:
