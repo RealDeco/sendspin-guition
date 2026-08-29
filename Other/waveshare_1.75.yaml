@@ -46,10 +46,10 @@ packages: # github
     ref: main
     refresh: 0s
     files:
-      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.7.3.yaml
+      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
 
 #packages: # local
-#  extcomp: !include localtest/HW/sendspin-external_components_2026.7.3.yaml
+#  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
 
 external_components:
   - source: github://pr#16882
@@ -61,6 +61,8 @@ esp32:
   flash_size: 16MB
   framework:
     type: esp-idf
+#    advanced:
+#      execute_from_psram: True
     sdkconfig_options:
 #      CONFIG_SPIRAM_RODATA: "y"
       CONFIG_SPIRAM_USE_MALLOC: "y"
@@ -122,6 +124,11 @@ api:
           - script.execute:
               id: set_ui_phase
               phase: !lambda 'return id(ui_phase);'
+          - if:
+              condition:
+                switch.is_on: battery_display_switch
+              then:
+                - script.execute: refresh_battery_display
 
 ota:
   - platform: esphome
@@ -239,6 +246,12 @@ sensor:
           if (x > 100) return 100;
           if (x < 0) return 0;
           return x;
+    on_value:
+      - if:
+          condition:
+            switch.is_on: battery_display_switch
+          then:
+            - script.execute: refresh_battery_display
 
 time:
   - platform: homeassistant
@@ -284,6 +297,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: pre_previous_swipe_title
+    type: std::string
+    restore_value: no
+    initial_value: '""'
   - id: boot_sound_played
     type: bool
     restore_value: no
@@ -456,6 +473,18 @@ globals:
     type: int
     restore_value: yes
     initial_value: "0"
+  - id: battery_bar_widget
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: battery_bar_fill
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: artist_art_dot_widget
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
 
 image:
 ### model 1
@@ -562,8 +591,8 @@ image:
           format: "Album art displayed (late by %u ms)"
           args: ["(unsigned) lateness_ms"]
           level: WARN
-      - script.stop: album_art_timeout_fallback
       - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
           id(sendspin_album_art_valid) = true;
           id(album_art_awaiting_swipe_art) = false;
           id(confirmed_art_album_name) = id(sendspin_album).get_state();
@@ -582,10 +611,15 @@ image:
           src: sendspin_album_art
     on_image_clear:
       - lambda: |-
-          ESP_LOGW("imagecheck", id(sendspin_album).get_state().c_str(), "Cleared");
+          ESP_LOGW("imagecheck", "Album art cleared: %s", id(sendspin_album).get_state().c_str());
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
+          id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_show_fallback
     on_image_error:
       - lambda: |-
+          id(last_album_art_valid) = id(sendspin_album_art_valid);
           id(sendspin_album_art_valid) = false;
+      - script.execute: album_art_show_fallback
 
   - platform: sendspin
     id: artist_slot
@@ -737,6 +771,17 @@ media_player:
   - platform: sendspin
     id: sendspin_group_media_player
     name: Sendspin Group Media Player
+    on_idle:
+      - if:
+          condition:
+            and:
+              - not:
+                  voice_assistant.is_running:
+              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+          then:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_standby}
 
   - platform: speaker_source
     id: external_media_player
@@ -765,7 +810,6 @@ media_player:
 
     on_play:
       then:
-        - script.stop: mp_idle_debounce
         - if:
             condition:
               and:
@@ -814,11 +858,6 @@ media_player:
                             id: external_media_player
                   then:
                     - script.execute: start_wake_word
-              - if:
-                  condition:
-                    lambda: 'return id(va_phase) == ${va_phase_idle};'
-                  then:
-                    - script.execute: mp_idle_debounce
               - script.execute: led_ring_apply_state
 
     on_pause:
@@ -937,11 +976,15 @@ touchscreen:
                 } else if (dy < 0) {
                   id(close_playlist_menu)->execute();
                 }
-              } else if (id(ui_phase) == ${ui_phase_standby} && abs_x >= abs_y) {
-                if (dx < 0) {
-                  id(clock_style_choice).make_call().select_next(true).perform();
-                } else {
-                  id(clock_style_choice).make_call().select_previous(true).perform();
+              } else if (id(ui_phase) == ${ui_phase_standby}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(clock_style_choice).make_call().select_next(true).perform();
+                  } else {
+                    id(clock_style_choice).make_call().select_previous(true).perform();
+                  }
+                } else if (dy < 0) {
+                  id(start_manual_va)->execute();
                 }
               }
               return;
@@ -1054,6 +1097,20 @@ switch:
       - lambda: |-
           lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
       - online_image.release: standby_background_image
+
+  - platform: template
+    id: battery_display_switch
+    name: Show battery
+    icon: "mdi:battery"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - script.execute: refresh_battery_display
+    on_turn_off:
+      - lambda: |-
+          if (id(battery_bar_widget) != nullptr)
+            lv_obj_add_flag(id(battery_bar_widget), LV_OBJ_FLAG_HIDDEN);
 
   - platform: template
     id: clock_12h_format
@@ -1478,8 +1535,9 @@ text:
 micro_wake_word:
   id: mww
   microphone: voice_microphone
-  ring_buffer_duration: 500ms
+#  ring_buffer_duration: 500ms
   stop_after_detection: false
+  task_stack_in_psram: true
   models:
     - model: okay_nabu
       id: okay_nabu
@@ -1772,7 +1830,6 @@ text_sensor:
               - lambda: 'return id(current_album_name) == id(previous_album_name);'
               - lambda: 'return id(current_album_name) == id(confirmed_art_album_name);'
           then:
-            - script.stop: album_art_timeout_fallback
             - lambda: |-
                 id(sendspin_album_art_valid) = true;
                 id(album_art_awaiting_swipe_art) = false;
@@ -1799,11 +1856,6 @@ text_sensor:
     name: "Album Name"
     type: album
     on_value:
-      - lambda: |-
-          id(last_album_art_valid) = id(sendspin_album_art_valid);
-      - lambda: |-
-          id(sendspin_album_art_valid) = false;
-      - script.execute: album_art_timeout_fallback
       - component.update: now_playing_text
       - lvgl.label.update:
           id: controls_album_label
@@ -2141,9 +2193,6 @@ script:
             - script.execute:
                 id: set_va_phase
                 phase: ${va_phase_idle}
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_player_controls}
             - if:
                 condition:
                   lambda: return id(manual_va_resume_media);
@@ -2323,6 +2372,17 @@ script:
             - script.execute:
                 id: set_va_phase
                 phase: ${va_phase_idle}
+            - if:
+                condition:
+                  lambda: return id(manual_va_active);
+                then:
+                  - lambda: id(manual_va_active) = false;
+                  - if:
+                      condition:
+                        lambda: return id(manual_va_resume_media);
+                      then:
+                        - lambda: id(manual_va_resume_media) = false;
+                        - media_player.toggle: sendspin_group_media_player
             - delay: 300ms
             - script.execute: start_wake_word
 
@@ -2639,6 +2699,7 @@ script:
             lambda: 'return id(boot_sound_played) && phase == ${ui_phase_standby};'
           then:
             - lvgl.page.show: idle_page
+            - component.update: weather_line
       - if:
           condition:
             lambda: 'return id(boot_sound_played) && phase == ${ui_phase_player_controls};'
@@ -2658,6 +2719,7 @@ script:
           then:
             - lvgl.page.show: playlist_menu_page
             - script.execute: player_controls_timeout
+      - script.execute: refresh_artist_art_dot
 
   - id: player_controls_timeout
     mode: restart
@@ -2843,7 +2905,7 @@ script:
       - script.execute:
           id: album_art_slide
           direction: 1
-      - media_player.previous: sendspin_group_media_player
+      - script.execute: media_player_previous_with_restart_check
 
   - id: player_controls_keep_open
     then:
@@ -2868,7 +2930,7 @@ script:
       - script.execute:
           id: player_controls_slide_to_now_playing
           direction: 1
-      - media_player.previous: sendspin_group_media_player
+      - script.execute: media_player_previous_with_restart_check
 
   - id: player_controls_swipe_next
     then:
@@ -3094,14 +3156,101 @@ script:
           id(album_art_slide_active) = false;
           id(album_art_awaiting_swipe_art) = true;
 
+  - id: refresh_battery_display
+    then:
+      - lambda: |-
+          if (!id(boot_sound_played)) return;
+          if (id(battery_bar_widget) == nullptr) {
+            lv_obj_t *cont = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(cont);
+            lv_obj_set_size(cont, 63, 25);
+            lv_obj_set_pos(cont, 202, 12);
+            lv_obj_clear_flag(cont, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
+            id(battery_bar_widget) = cont;
+
+            lv_obj_t *body = lv_obj_create(cont);
+            lv_obj_remove_style_all(body);
+            lv_obj_set_size(body, 56, 25);
+            lv_obj_set_pos(body, 0, 0);
+            lv_obj_set_style_border_color(body, lv_color_white(), 0);
+            lv_obj_set_style_border_width(body, 2, 0);
+            lv_obj_set_style_outline_color(body, lv_color_black(), 0);
+            lv_obj_set_style_outline_width(body, 1, 0);
+            lv_obj_set_style_outline_pad(body, 0, 0);
+            lv_obj_set_style_bg_color(body, lv_color_hex(0x1A1A1A), 0);
+            lv_obj_set_style_bg_opa(body, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(body, 4, 0);
+            lv_obj_clear_flag(body, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+
+            lv_obj_t *fill = lv_obj_create(cont);
+            lv_obj_remove_style_all(fill);
+            lv_obj_set_size(fill, 0, 17);
+            lv_obj_set_pos(fill, 4, 4);
+            lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(fill, 2, 0);
+            lv_obj_clear_flag(fill, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
+            id(battery_bar_fill) = fill;
+
+            lv_obj_t *nub = lv_obj_create(cont);
+            lv_obj_remove_style_all(nub);
+            lv_obj_set_size(nub, 7, 13);
+            lv_obj_set_pos(nub, 56, 6);
+            lv_obj_set_style_bg_color(nub, lv_color_white(), 0);
+            lv_obj_set_style_bg_opa(nub, LV_OPA_COVER, 0);
+            lv_obj_set_style_outline_color(nub, lv_color_black(), 0);
+            lv_obj_set_style_outline_width(nub, 1, 0);
+            lv_obj_set_style_outline_pad(nub, 0, 0);
+            lv_obj_set_style_radius(nub, 2, 0);
+            lv_obj_clear_flag(nub, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(nub, LV_OBJ_FLAG_SCROLLABLE);
+          }
+
+          float pct = id(battery_percentage).state;
+          if (isnan(pct)) pct = 0;
+          int fill_w = (int)(pct / 100.0f * 48.0f);
+          fill_w = std::max(0, std::min(48, fill_w));
+          lv_obj_set_width(id(battery_bar_fill), fill_w);
+
+          lv_color_t color;
+          if (pct >= 50) color = lv_color_hex(0x4CAF50);
+          else if (pct >= 20) color = lv_color_hex(0xFFC107);
+          else color = lv_color_hex(0xF44336);
+          lv_obj_set_style_bg_color(id(battery_bar_fill), color, 0);
+
+          lv_obj_clear_flag(id(battery_bar_widget), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(battery_bar_widget));
+
   - id: refresh_artist_art_dot
     then:
       - lambda: |-
-          if (id(artist_art_valid) && !id(now_playing_art_mode)) {
-            lv_obj_clear_flag(id(artist_art_dot), LV_OBJ_FLAG_HIDDEN);
-          } else {
-            lv_obj_add_flag(id(artist_art_dot), LV_OBJ_FLAG_HIDDEN);
+          if (id(artist_art_dot_widget) == nullptr) {
+            lv_obj_t *dot = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(dot);
+            lv_obj_set_size(dot, 10, 10);
+            lv_obj_set_pos(dot, ${screenwidth} / 2 - 5, 19);
+            lv_obj_set_style_bg_color(dot, lv_color_hex(0xFF3B30), 0);
+            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(dot, 5, 0);
+            lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+            id(artist_art_dot_widget) = dot;
           }
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: sendspin_page
+              - lambda: 'return id(artist_art_valid) && !id(now_playing_art_mode);'
+          then:
+            - lambda: |-
+                lv_obj_clear_flag(id(artist_art_dot_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_move_foreground(id(artist_art_dot_widget));
+          else:
+            - lambda: |-
+                lv_obj_add_flag(id(artist_art_dot_widget), LV_OBJ_FLAG_HIDDEN);
 
   - id: now_playing_show_artist_art
     mode: restart
@@ -3200,6 +3349,26 @@ script:
           lv_obj_add_flag(id(slide_incoming_art), LV_OBJ_FLAG_HIDDEN);
           lv_img_set_src(id(incoming_art), id(sendspin_album_art_valid) ? id(sendspin_album_art)->get_lv_image_dsc() : id(fallback_playing_image)->get_lv_image_dsc());
           lv_img_set_zoom(id(incoming_art), LV_ZOOM_NONE);
+
+  - id: media_player_previous_with_restart_check
+    then:
+      - lambda: |-
+          id(pre_previous_swipe_title) = id(sendspin_title).state;
+      - media_player.previous: sendspin_group_media_player
+      - script.execute: restore_art_if_same_title
+
+  - id: restore_art_if_same_title
+    mode: restart
+    then:
+      - delay: 1200ms
+      - if:
+          condition:
+            lambda: 'return id(sendspin_title).state == id(pre_previous_swipe_title);'
+          then:
+            - lambda: |-
+                id(sendspin_album_art_valid) = true;
+                id(album_art_awaiting_swipe_art) = false;
+            - script.execute: album_art_crossfade_apply
 
   - id: album_art_crossfade_apply
     mode: restart
@@ -3485,15 +3654,12 @@ script:
           }
 
 
-  - id: album_art_timeout_fallback
+  - id: album_art_show_fallback
     mode: restart
     then:
-      - delay: 2000ms
       - if:
           condition:
-            and:
-              - lambda: 'return !id(sendspin_album_art_valid);'
-              - lambda: 'return !id(album_art_slide_active);'
+            lambda: 'return !id(album_art_slide_active);'
           then:
             - if:
                 condition:
@@ -3516,22 +3682,6 @@ script:
             - lvgl.image.update:
                 id: playlist_album_art_widget
                 src: fallback_playing_image
-
-  - id: mp_idle_debounce
-    mode: restart
-    then:
-      - delay: 2500ms
-      - if:
-          condition:
-            and:
-              - media_player.is_idle: external_media_player
-              - not:
-                  voice_assistant.is_running:
-              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
-          then:
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_standby}
 
   - id: ring_timer
     then:
@@ -4316,22 +4466,6 @@ lvgl:
             height: ${screenheight}
             antialias: false
             clickable: false
-
-        - obj:
-            id: artist_art_dot
-            align: TOP_MID
-            x: 0
-            y: 26
-            width: 18
-            height: 18
-            radius: 9
-            bg_color: 0xFF3B30
-            bg_opa: COVER
-            border_opa: TRANSP
-            pad_all: 0
-            scrollable: false
-            clickable: false
-            hidden: true
 
         - image:
             id: slide_outgoing_art
