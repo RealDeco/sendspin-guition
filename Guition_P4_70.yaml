@@ -54,12 +54,12 @@ esp32:
   cpu_frequency: 360MHz
   framework:
     type: esp-idf
-#    advanced:
-#      enable_idf_experimental_features: yes
+    advanced:
+      execute_from_psram: true
     sdkconfig_options:
-      CONFIG_SPIRAM_XIP_FROM_PSRAM: y
       CONFIG_SPIRAM_USE_MALLOC: y
       CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "65536"
+      CONFIG_MBEDTLS_HARDWARE_AES: n
 
 psram:
   speed: 200MHz
@@ -93,7 +93,7 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   min_version: 2026.8.0
-  name_add_mac_suffix: true
+  name_add_mac_suffix: false
   project:
     name: realdeco.sendspin_guition
     version: "2026.8.0"
@@ -497,6 +497,10 @@ image:
             - lambda: |-
                 lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_move_background(id(standby_background_widget));
+    on_error:
+      - lambda: |-
+          ESP_LOGW("standby_background", "failed to load background image");
+          lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
 
   - platform: online_image
     id: family_photo_image
@@ -791,7 +795,7 @@ media_player:
       then:
         - if:
             condition:
-              lambda: 'return id(va_phase) == ${va_phase_idle};'
+              lambda: 'return id(va_phase) == ${va_phase_idle} && !id(manual_va_active);'
             then:
               - script.execute: start_wake_word
               - script.execute:
@@ -1187,6 +1191,8 @@ select:
           condition:
             switch.is_on: standby_background_enabled
           then:
+            - lambda: |-
+                lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
             - online_image.set_url:
                 id: standby_background_image
                 url: !lambda |-
@@ -2672,38 +2678,7 @@ script:
             - component.update: weather_line
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
-            - lambda: |-
-                lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
-                std::string content = id(standby_frame_content).current_option();
-                if (content == "News Ticker") {
-                  lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_clear_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                } else if (content == "Family Photo") {
-                  lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                  if (id(family_photo_image)->is_loaded()) {
-                    lv_obj_clear_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                  }
-                } else {
-                  lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
-                  lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-                  if (content == "None") {
-                    lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  } else {
-                    lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
-                  }
-                }
-            - script.execute:
-                id: refresh_news_ticker_if_stale
-                selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
-            - if:
-                condition:
-                  lambda: 'return id(standby_frame_content).current_option() == "Family Photo" && !id(family_photo_image)->is_loaded();'
-                then:
-                  - script.execute:
-                      id: show_family_photo
-                      selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+            - script.execute: apply_standby_frame_content
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_now_playing};'
@@ -2714,8 +2689,10 @@ script:
             - lvgl.widget.hide: playlist_panel
             - if:
                 condition:
-                  not:
-                    media_player.is_idle: external_media_player
+                  or:
+                    - not:
+                        media_player.is_idle: external_media_player
+                    - lambda: 'return id(manual_va_resume_media);'
                 then:
                   - lambda: |-
                       lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -2724,6 +2701,8 @@ script:
                       if (id(va_phase) == ${va_phase_idle}) {
                         lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                       }
+                else:
+                  - script.execute: apply_standby_frame_content
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_player_controls};'
@@ -2733,8 +2712,10 @@ script:
             - lvgl.widget.hide: playlist_panel
             - if:
                 condition:
-                  not:
-                    media_player.is_idle: external_media_player
+                  or:
+                    - not:
+                        media_player.is_idle: external_media_player
+                    - lambda: 'return id(manual_va_resume_media);'
                 then:
                   - lambda: |-
                       lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -2743,6 +2724,8 @@ script:
                       if (id(va_phase) == ${va_phase_idle}) {
                         lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                       }
+                else:
+                  - script.execute: apply_standby_frame_content
             - lambda: |-
                 lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
@@ -2755,8 +2738,10 @@ script:
             - lvgl.widget.show: playlist_panel
             - if:
                 condition:
-                  not:
-                    media_player.is_idle: external_media_player
+                  or:
+                    - not:
+                        media_player.is_idle: external_media_player
+                    - lambda: 'return id(manual_va_resume_media);'
                 then:
                   - lambda: |-
                       lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -2765,6 +2750,8 @@ script:
                       if (id(va_phase) == ${va_phase_idle}) {
                         lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                       }
+                else:
+                  - script.execute: apply_standby_frame_content
             - script.execute: player_controls_timeout
 
   - id: player_controls_timeout
@@ -2835,6 +2822,8 @@ script:
   - id: load_standby_background
     mode: restart
     then:
+      - lambda: |-
+          lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
       - online_image.set_url:
           id: standby_background_image
           url: !lambda |-
@@ -3447,6 +3436,42 @@ script:
                 }
                 id(family_photo_image)->set_url(url);
                 id(family_photo_image)->update();
+
+  - id: apply_standby_frame_content
+    mode: restart
+    then:
+      - lambda: |-
+          lv_obj_add_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
+          std::string content = id(standby_frame_content).current_option();
+          if (content == "News Ticker") {
+            lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+          } else if (content == "Family Photo") {
+            lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+            if (id(family_photo_image)->is_loaded()) {
+              lv_obj_clear_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+            }
+          } else {
+            lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
+            if (content == "None") {
+              lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            }
+          }
+      - script.execute:
+          id: refresh_news_ticker_if_stale
+          selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+      - if:
+          condition:
+            lambda: 'return id(standby_frame_content).current_option() == "Family Photo" && !id(family_photo_image)->is_loaded();'
+          then:
+            - script.execute:
+                id: show_family_photo
+                selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
 
   - id: fetch_news_ticker
     mode: single
