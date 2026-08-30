@@ -1985,6 +1985,16 @@ font:
 
   - file:
       type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_news_ticker
+    size: 13
+    glyphsets:
+      - GF_Latin_Core
+      - GF_Cyrillic_Core
+
+  - file:
+      type: gfonts
       family: Figtree
       weight: 300
     id: font_date
@@ -1998,6 +2008,15 @@ font:
       weight: 600
     id: font_boot
     size: 32
+    glyphsets:
+      - GF_Latin_Core
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 600
+    id: font_va_title
+    size: 18
     glyphsets:
       - GF_Latin_Core
 
@@ -2073,7 +2092,7 @@ font:
 
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_status
-    size: 90
+    size: 40
     glyphs:
       - "\U000F0026"
       - "\U000F0020"
@@ -4109,6 +4128,22 @@ touchscreen:
                         id(now_playing_show_album_art)->execute();
                       }
                     }
+                  } else if (id(standby_frame_content).current_option() == "News Ticker") {
+                    // Finger swipes down -> view scrolls down (toward later text).
+                    // Clamp manually so we can't scroll past the actual headline text into blank space.
+                    lv_obj_t *ticker_block = id(news_ticker_block);
+                    lv_obj_t *ticker_label = id(news_ticker_label);
+                    int32_t cur_scroll = lv_obj_get_scroll_y(ticker_block);
+                    int32_t content_h = lv_obj_get_content_height(ticker_block);
+                    int32_t label_h = lv_obj_get_height(ticker_label);
+                    int32_t max_scroll = label_h - content_h;
+                    if (max_scroll < 0) max_scroll = 0;
+                    int32_t target_scroll = cur_scroll - dy;
+                    if (target_scroll < 0) target_scroll = 0;
+                    if (target_scroll > max_scroll) target_scroll = max_scroll;
+                    ESP_LOGW("ticker_scroll", "dy=%d cur=%d target=%d max=%d label_h=%d content_h=%d",
+                             dy, cur_scroll, target_scroll, max_scroll, label_h, content_h);
+                    lv_obj_scroll_to_y(ticker_block, target_scroll, LV_ANIM_ON);
                   }
                 } else if (id(touch_start_x) >= bar_start) {
                   if (id(ui_phase) == ${ui_phase_playlist_menu}) {
@@ -4271,7 +4306,7 @@ lvgl:
         - obj:
             id: left_zone
             align: TOP_LEFT
-            x: 4
+            x: 0
             y: 0
             width: ${imagewidth}
             height: ${imageheight}
@@ -4287,8 +4322,11 @@ lvgl:
                   y: 0
                   width: ${imagewidth}
                   height: ${screenheight}
-                  bg_opa: TRANSP
+                  bg_color: 0x000000
+                  bg_opa: COVER
                   border_opa: TRANSP
+                  radius: 12
+                  clip_corner: true
                   pad_all: 0
                   scrollable: false
                   hidden: true
@@ -4300,8 +4338,11 @@ lvgl:
                         y: 0
                         width: ${imagewidth}
                         height: ${imageheight}
-                        bg_opa: TRANSP
+                        bg_color: 0x000000
+                        bg_opa: COVER
                         border_opa: TRANSP
+                        radius: 12
+                        clip_corner: true
                         pad_all: 0
                         scrollable: false
                         widgets:
@@ -4376,10 +4417,10 @@ lvgl:
                     - obj:
                         id: va_status_ring
                         align: CENTER
-                        y: -30
-                        width: 180
-                        height: 180
-                        radius: 90
+                        y: -42
+                        width: 80
+                        height: 80
+                        radius: 40
                         bg_opa: TRANSP
                         border_width: 3
                         border_color: 0xFF3333
@@ -4389,7 +4430,7 @@ lvgl:
                         id: va_status_icon_glow
                         align: CENTER
                         x: 1
-                        y: -29
+                        y: -41
                         text: "\U000F0026"
                         text_color: 0x803333
                         text_font: font_mdi_status
@@ -4397,7 +4438,7 @@ lvgl:
                     - label:
                         id: va_status_icon
                         align: CENTER
-                        y: -30
+                        y: -42
                         text: "\U000F0026"
                         text_color: 0xFF6666
                         text_font: font_mdi_status
@@ -4405,18 +4446,18 @@ lvgl:
                     - label:
                         id: va_status_title
                         align: CENTER
-                        y: 68
-                        width: 228
+                        y: 15
+                        width: 160
                         text: "ERROR"
                         text_color: 0xFF6666
-                        text_font: font_boot
+                        text_font: font_va_title
                         text_align: CENTER
 
                     - label:
                         id: va_status_subtitle
                         align: CENTER
-                        y: 100
-                        width: 228
+                        y: 52
+                        width: 160
                         text: "Something went wrong"
                         text_color: 0xCCCCCC
                         text_font: font_display
@@ -4434,20 +4475,21 @@ lvgl:
                   border_opa: TRANSP
                   radius: 12
                   clip_corner: true
-                  pad_all: 0
-                  scrollable: true
+                  pad_all: 4
+                  pad_left: 10
+                  scrollable: false
                   scroll_dir: VER
-                  clickable: true
+                  clickable: false
                   hidden: true
                   widgets:
                     - label:
                         id: news_ticker_label
                         align: TOP_MID
                         y: 16
-                        width: 220
+                        width: 152
                         text: "Loading headlines..."
                         text_color: 0x00FF41
-                        text_font: font_display
+                        text_font: font_news_ticker
                         text_align: LEFT
                         long_mode: WRAP
 
