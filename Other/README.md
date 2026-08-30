@@ -23,8 +23,11 @@ Full-duplex audio eliminates the clicking normally heard when switching between 
 * Playlist menu
 * Media player controls
 * LVGL interface
+* Clocks
 
 <img width="600" alt="Ball v2 with built-in speaker" src="https://github.com/user-attachments/assets/3d6a9d27-57fb-43e0-bad7-55e59d0b380c" />
+
+Flappy Ball is variant of the Ball but includes a flappy bird game (hold boot button), and a flight radar (doubleclick boot button)
 
 ---
 
@@ -39,6 +42,7 @@ Full-duplex audio eliminates the clicking normally heard when switching between 
 * RSS news feed
 * Family photo viewer
 * LVGL interface
+* Clocks
 
 Shown here with a custom 3D-printed stand and enclosure designed to hold a 3-inch speaker.
 
@@ -59,6 +63,7 @@ Example: https://www.aliexpress.com/item/1005007635720202.html
 * Playlist menu
 * Media player controls
 * LVGL interface
+* Clocks
 
 Shown here with a custom 3D-printed enclosure designed to hold a 3-inch speaker.
 
@@ -67,3 +72,21 @@ This device has no built-in speaker and a JST 1.25mm female cable is needed for 
 Example: https://www.aliexpress.com/item/1005007635720202.html
 
 <img width="600" alt="Waveshare 1.75-inch OLED with 3D-printed speaker enclosure" src="https://github.com/user-attachments/assets/c34e9f5b-d0f8-4e54-b574-7316cd7962b5" />
+
+---
+
+## Waveshare 3.49" V1 (Since June 2026 there's also a V2, this is for V1)
+
+### Features
+
+* Dual Voice Assistant
+* Sendspin player
+* Playlist menu
+* Media player controls
+* RSS news feed
+* Family photo viewer
+* LVGL interface
+* Clocks
+
+<img width="600" src="https://github.com/user-attachments/assets/7bb6aaa9-0497-4078-8e50-51af22e66556" />
+
