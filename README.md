@@ -24,7 +24,36 @@ NEW!: Added the bigger 7" display from guition (JC1060P470C-I-W-Y) to the projec
 
 NEW: Added Waveshare's 3.5" with Line Out DAC
 
+### More devices [here](Other/)
+
 </div>
+
+---
+
+## Installation:
+
+Either flash directly from the webpage using the links below, or if manually installing remember to keep your name and friendly_name:
+
+```
+substitutions:
+  name: esphome-web-e9f624
+  friendly_name: Xiaozhi Taichi Pi v1
+```
+
+And change name_add_mac_suffix to false:
+
+```
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.8.0
+  name_add_mac_suffix: false <-------- THIS
+  project:
+    name: realdeco.sendspin_guition
+    version: "2026.8.0"
+```
+
+Then compile in Esphome Builder.
 
 ---
 
