@@ -1,5 +1,8 @@
 <div align="center">
 
+<img width="1448" height="844" src="https://github.com/user-attachments/assets/e935a1c7-a0e7-48de-a2c1-1c4329da1baf" />
+
+
 # sendspin-guition
 
 Sendspin player firmware for Guition devices with Line Out.
