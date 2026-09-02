@@ -58,6 +58,21 @@ esphome:
 
 Then compile in Esphome Builder.
 
+<div align="center">
+
+## Device Types
+
+| Small Devices<br>*(1 zone)* | Big Devices<br>*(2–3 zones)* |
+| --------------------------- | ---------------------------- |
+| Guition Puck                | Waveshare 3.5"               |
+| Guition Knob                | Guition 4.3" *               |
+| Spotpear Ball *             | Guition 7.0"                 |
+| Waveshare 1.75" *           | Waveshare 3.49" *            |
+
+"*" = devices without audio jack, but using internal speaker out are located in /Other/
+
+</div>
+
 ---
 
 ## Guition 1.80" Silver Puck
