@@ -15,6 +15,37 @@ substitutions:
   
   ha_weather_entity: weather.forecast_home
 
+# presence and light sensors
+  sensor1_entity: "binary_sensor.room_1_presence"
+  light1_entity: "binary_sensor.room_1_light"
+  sensor1_label: "Room 1"
+
+  sensor2_entity: "binary_sensor.room_2_presence"
+  light2_entity: "binary_sensor.room_2_light"
+  sensor2_label: "Room 2"
+
+  sensor3_entity: "binary_sensor.room_3_presence"
+  light3_entity: "binary_sensor.room_3_light"
+  sensor3_label: "Room 3"
+
+  sensor4_entity: "binary_sensor.room_4_presence"
+  light4_entity: "binary_sensor.room_4_light"
+  sensor4_label: "Room 4"
+
+  sensor5_entity: "binary_sensor.room_5_presence"
+  light5_entity: "binary_sensor.room_5_light"
+  sensor5_label: "Room 5"
+
+  sensor6_entity: "binary_sensor.room_6_presence"
+  light6_entity: "binary_sensor.room_6_light"
+  sensor6_label: "Room 6"
+
+# pulldown menu switches (labels are set from Home Assistant, see the text entities)
+  pulldown1_entity: "light.ceiling"
+  pulldown2_entity: "light.ceiling_2"
+  pulldown3_entity: "light.hue_p45_7_light"
+  pulldown4_entity: "light.color_light"
+
   media_sample_rate: "48000"
 
   imagewidth:  "240"
@@ -29,6 +60,7 @@ substitutions:
   ui_phase_player_controls: "1"
   ui_phase_now_playing: "2"
   ui_phase_playlist_menu: "3"
+  ui_phase_pulldown: "4"
   va_phase_idle: "0"
   va_phase_waiting_for_command: "1"
   va_phase_listening: "2"
@@ -36,6 +68,9 @@ substitutions:
   va_phase_replying: "4"
   va_phase_error: "5"
   va_phase_timer_ringing: "6"
+  clock_style_digital: "0"
+  clock_style_analog: "1"
+  clock_style_rooms: "2"
 
 packages:
   extcomp:
@@ -88,11 +123,16 @@ esphome:
           id: set_va_phase
           phase: ${va_phase_idle}
       - script.execute: refresh_playlist_labels
+      - script.execute: refresh_pulldown_labels
       - script.execute: apply_accent_color_debounced
       - script.execute: led_ring_apply_state
       - script.execute:
           id: apply_clock_style
-          analog: !lambda 'return id(clock_style_choice).current_option() == "Analog Clock";'
+          style_mode: !lambda |-
+            std::string opt = id(clock_style_choice).current_option();
+            if (opt == "Analog Clock") return ${clock_style_analog};
+            if (opt == "Rooms") return ${clock_style_rooms};
+            return ${clock_style_digital};
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
 logger:
@@ -127,6 +167,9 @@ api:
                 switch.is_on: battery_display_switch
               then:
                 - script.execute: refresh_battery_display
+    - delay: 1s
+    - script.execute: rooms_grid_apply
+    - script.execute: refresh_pulldown_states
 
 ota:
   - platform: esphome
@@ -155,6 +198,9 @@ button:
 time:
   - platform: homeassistant
     id: homeassistant_time
+    on_time_sync:
+      - component.update: clock_hms
+      - component.update: clock_date
 
 interval:
   - interval: 1s
@@ -372,10 +418,10 @@ globals:
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
-  - id: clock_style_is_analog
-    type: bool
+  - id: clock_style_mode
+    type: int
     restore_value: no
-    initial_value: "false"
+    initial_value: "${clock_style_digital}"
   - id: shuffle_state
     type: bool
     restore_value: yes
@@ -468,8 +514,12 @@ image:
             - lvgl.image.update:
                 id: standby_background_widget
                 src: standby_background_image
+            - lvgl.image.update:
+                id: pulldown_background_widget
+                src: standby_background_image
             - lambda: |-
                 lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
 
   - platform: sendspin
     id: album_slot
@@ -766,6 +816,93 @@ binary_sensor:
     on_press:
       - sendspin.switch:
 
+  - platform: homeassistant
+    id: room1_presence
+    entity_id: ${sensor1_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+  - platform: homeassistant
+    id: room1_light
+    entity_id: ${light1_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+
+  - platform: homeassistant
+    id: room2_presence
+    entity_id: ${sensor2_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+  - platform: homeassistant
+    id: room2_light
+    entity_id: ${light2_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+
+  - platform: homeassistant
+    id: room3_presence
+    entity_id: ${sensor3_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+  - platform: homeassistant
+    id: room3_light
+    entity_id: ${light3_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+
+  - platform: homeassistant
+    id: room4_presence
+    entity_id: ${sensor4_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+  - platform: homeassistant
+    id: room4_light
+    entity_id: ${light4_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+
+  - platform: homeassistant
+    id: room5_presence
+    entity_id: ${sensor5_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+  - platform: homeassistant
+    id: room5_light
+    entity_id: ${light5_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+
+  - platform: homeassistant
+    id: room6_presence
+    entity_id: ${sensor6_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+  - platform: homeassistant
+    id: room6_light
+    entity_id: ${light6_entity}
+    on_state:
+      - script.execute: rooms_grid_apply
+
+  - platform: homeassistant
+    id: pulldown1_state
+    entity_id: ${pulldown1_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown2_state
+    entity_id: ${pulldown2_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown3_state
+    entity_id: ${pulldown3_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown4_state
+    entity_id: ${pulldown4_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+
 switch:
   - platform: gpio
     name: Speaker Enable
@@ -874,6 +1011,7 @@ switch:
     on_turn_off:
       - lambda: |-
           lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
       - online_image.release: standby_background_image
 
   - platform: template
@@ -900,7 +1038,7 @@ switch:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return !id(clock_style_is_analog);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.widget.show: date_label
       - script.execute: analog_clock_redraw
@@ -1007,10 +1145,14 @@ select:
     options:
       - Digital Clock
       - Analog Clock
+      - Rooms
     set_action:
       - script.execute:
           id: apply_clock_style
-          analog: !lambda 'return x == "Analog Clock";'
+          style_mode: !lambda |-
+            if (x == "Analog Clock") return ${clock_style_analog};
+            if (x == "Rooms") return ${clock_style_rooms};
+            return ${clock_style_digital};
 
   - platform: template
     id: wake_word_engine_location
@@ -1295,6 +1437,46 @@ text:
     restore_value: true
     initial_value: ""
     mode: text
+  - platform: template
+    id: pulldown1_label
+    name: Pulldown button 1 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 1
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown2_label
+    name: Pulldown button 2 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 2
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown3_label
+    name: Pulldown button 3 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 3
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown4_label
+    name: Pulldown button 4 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 4
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
 
 micro_wake_word:
   id: mww
@@ -1490,10 +1672,15 @@ sensor:
     id: ha_weather_temperature
     entity_id: ${ha_weather_entity}
     attribute: temperature
+    on_value:
+      - component.update: weather_temp_big
+      - component.update: weather_line
   - platform: homeassistant
     id: ha_weather_wind_speed
     entity_id: ${ha_weather_entity}
     attribute: wind_speed
+    on_value:
+      - component.update: weather_line
   - platform: sendspin
     id: sendspin_track_progress
     type: track_progress
@@ -1626,11 +1813,16 @@ text_sensor:
     id: ha_weather_temperature_unit
     entity_id: ${ha_weather_entity}
     attribute: temperature_unit
+    on_value:
+      - component.update: weather_temp_big
+      - component.update: weather_line
 
   - platform: homeassistant
     id: ha_weather_wind_speed_unit
     entity_id: ${ha_weather_entity}
     attribute: wind_speed_unit
+    on_value:
+      - component.update: weather_line
 
   - platform: sendspin
     id: sendspin_title
@@ -1733,7 +1925,7 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return !id(clock_style_is_analog);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.label.update:
                 id: clock_label
@@ -1753,6 +1945,15 @@ text_sensor:
                 int32_t label_bottom = clock_area.y2;
                 lv_obj_set_pos(id(clock_ampm_label), label_cx + txt_size.x / 2 + 1, label_bottom - 14);
                 lv_obj_clear_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms};'
+          then:
+            - lvgl.label.update:
+                id: rooms_clock_label
+                text: !lambda return x;
 
   - platform: template
     id: clock_date
@@ -1773,10 +1974,19 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return !id(clock_style_is_analog);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.label.update:
                 id: date_label
+                text: !lambda return x;
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms};'
+          then:
+            - lvgl.label.update:
+                id: rooms_date_label
                 text: !lambda return x;
 
   - platform: template
@@ -1799,7 +2009,7 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return !id(clock_style_is_analog);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.label.update:
                 id: weather_big_temp
@@ -1837,7 +2047,7 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return !id(clock_style_is_analog);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - if:
                 condition:
@@ -1867,7 +2077,7 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return id(clock_style_is_analog);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_analog};'
               - lambda: return id(weather_available);
               - lambda: return id(clock_show_weather).state;
           then:
@@ -1948,6 +2158,11 @@ font:
     glyphs: "0123456789:- "
 
   - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+    id: font_7seg_small
+    size: 26
+    glyphs: "0123456789:- "
+
+  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
     id: font_ampm
     size: 15
     glyphs: "AP"
@@ -2002,6 +2217,12 @@ font:
     glyphs:
       - "\U000F0026"
       - "\U000F0020"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_rooms
+    size: 21
+    glyphs:
+      - "\U000F0004"
 
 output:
   - platform: ledc
@@ -2604,8 +2825,21 @@ script:
           for (auto *label : playlist_labels) {
             lv_obj_set_style_text_color(label, accent2, 0);
           }
+
+          lv_obj_set_style_text_color(id(rooms_clock_label), accent3, 0);
+          lv_obj_set_style_text_color(id(rooms_date_label), accent2, 0);
+          lv_obj_set_style_text_color(id(pulldown_title_label), accent3, 0);
+          lv_obj_t *room_boxes[] = {
+            id(room1_box), id(room2_box), id(room3_box),
+            id(room4_box), id(room5_box), id(room6_box)
+          };
+          for (auto *box : room_boxes) {
+            lv_obj_set_style_border_color(box, accent, 0);
+          }
       - script.execute: refresh_shuffle_repeat_buttons
       - script.execute: analog_clock_redraw
+      - script.execute: rooms_grid_apply
+      - script.execute: refresh_pulldown_states
 
   - id: analog_clock_ensure_created
     then:
@@ -2625,13 +2859,13 @@ script:
   - id: apply_clock_style
     mode: restart
     parameters:
-      analog: bool
+      style_mode: int
     then:
       - lambda: |-
-          id(clock_style_is_analog) = analog;
+          id(clock_style_mode) = style_mode;
       - if:
           condition:
-            lambda: 'return analog;'
+            lambda: 'return style_mode == ${clock_style_analog};'
           then:
             - script.execute: analog_clock_ensure_created
             - lambda: |-
@@ -2641,22 +2875,88 @@ script:
                 lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                  lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                }
             - script.execute: analog_clock_redraw
+            - component.update: clock_hms
+            - component.update: clock_date
+            - component.update: weather_temp_big
             - component.update: weather_line
           else:
-            - lambda: |-
-                lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
-                if (id(clock_show_date).state) {
-                  lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                } else {
-                  lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                }
-                if (id(analog_clock_canvas_widget) != nullptr) {
-                  lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
-                }
-                lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
-            - component.update: weather_line
+            - if:
+                condition:
+                  lambda: 'return style_mode == ${clock_style_rooms};'
+                then:
+                  - lambda: |-
+                      lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                      if (id(analog_clock_canvas_widget) != nullptr) {
+                        lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                      }
+                      lv_obj_clear_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                      for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                        lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
+                      }
+                  - script.execute: rooms_grid_apply
+                  - component.update: clock_hms
+                  - component.update: clock_date
+                  - component.update: weather_temp_big
+                  - component.update: weather_line
+                else:
+                  - lambda: |-
+                      lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                      if (id(clock_show_date).state) {
+                        lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                      } else {
+                        lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                      }
+                      if (id(analog_clock_canvas_widget) != nullptr) {
+                        lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                      }
+                      lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                      for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                        lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                      }
+                  - component.update: clock_hms
+                  - component.update: clock_date
+                  - component.update: weather_temp_big
+                  - component.update: weather_line
+
+  - id: rooms_grid_apply
+    then:
+      - lambda: |-
+          auto apply_box = [&](lv_obj_t *box, lv_obj_t *icon, lv_color_t on_color, bool light_on, bool presence_on) {
+            if (light_on) {
+              lv_obj_set_style_bg_color(box, on_color, 0);
+              lv_obj_set_style_bg_opa(box, LV_OPA_70, 0);
+            } else {
+              lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+            }
+            lv_obj_set_style_text_color(icon, lv_color_hex(0xFFFFFF), 0);
+            if (presence_on) {
+              lv_obj_clear_flag(icon, LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
+            }
+          };
+          apply_box(id(room1_box), id(room1_icon), lv_color_hex(0x4FC3F7), id(room1_light).state, id(room1_presence).state);
+          apply_box(id(room2_box), id(room2_icon), lv_color_hex(0xE53935), id(room2_light).state, id(room2_presence).state);
+          apply_box(id(room3_box), id(room3_icon), lv_color_hex(0xFDD835), id(room3_light).state, id(room3_presence).state);
+          apply_box(id(room4_box), id(room4_icon), lv_color_hex(0xBA68C8), id(room4_light).state, id(room4_presence).state);
+          apply_box(id(room5_box), id(room5_icon), lv_color_hex(0x1A237E), id(room5_light).state, id(room5_presence).state);
+          apply_box(id(room6_box), id(room6_icon), lv_color_hex(0x81C784), id(room6_light).state, id(room6_presence).state);
 
   - id: analog_clock_redraw
     mode: restart
@@ -2665,7 +2965,7 @@ script:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return id(clock_style_is_analog);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_analog};'
               - lambda: 'return id(analog_clock_canvas_widget) != nullptr;'
           then:
             - lambda: |-
@@ -2766,6 +3066,7 @@ script:
       phase: int
     then:
       - script.stop: player_controls_timeout
+      - script.stop: pulldown_timeout
       - lambda: |-
           id(ui_phase) = phase;
       - script.execute: standby_screen_activity
@@ -2794,6 +3095,13 @@ script:
           then:
             - lvgl.page.show: playlist_menu_page
             - script.execute: player_controls_timeout
+      - if:
+          condition:
+            lambda: 'return id(boot_sound_played) && phase == ${ui_phase_pulldown};'
+          then:
+            - lvgl.page.show: pulldown_page
+            - script.execute: refresh_pulldown_states
+            - script.execute: pulldown_timeout
       - script.execute: refresh_artist_art_dot
 
   - id: player_controls_timeout
@@ -2860,6 +3168,76 @@ script:
       - lvgl.label.update:
           id: playlist_6_label
           text: !lambda return id(playlist_6_name).state;
+
+  - id: refresh_pulldown_labels
+    mode: restart
+    then:
+      - lvgl.label.update:
+          id: pulldown1_button_label
+          text: !lambda return id(pulldown1_label).state;
+      - lvgl.label.update:
+          id: pulldown2_button_label
+          text: !lambda return id(pulldown2_label).state;
+      - lvgl.label.update:
+          id: pulldown3_button_label
+          text: !lambda return id(pulldown3_label).state;
+      - lvgl.label.update:
+          id: pulldown4_button_label
+          text: !lambda return id(pulldown4_label).state;
+
+  - id: refresh_pulldown_states
+    then:
+      - lambda: |-
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const lv_color_t accent = lv_color_hex(accent_u32);
+          const uint32_t accent2_u32 = ((uint32_t) id(accent2_red) << 16) | ((uint32_t) id(accent2_green) << 8) | (uint32_t) id(accent2_blue);
+          const lv_color_t accent2 = lv_color_hex(accent2_u32);
+          auto apply_button = [&](lv_obj_t *btn, lv_obj_t *label, bool on) {
+            if (on) {
+              lv_obj_set_style_bg_color(btn, accent, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+            } else {
+              lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+            }
+            lv_obj_set_style_border_color(btn, accent, 0);
+            lv_obj_set_style_text_color(label, accent2, 0);
+          };
+          apply_button(id(pulldown1_button), id(pulldown1_button_label), id(pulldown1_state).state);
+          apply_button(id(pulldown2_button), id(pulldown2_button_label), id(pulldown2_state).state);
+          apply_button(id(pulldown3_button), id(pulldown3_button_label), id(pulldown3_state).state);
+          apply_button(id(pulldown4_button), id(pulldown4_button_label), id(pulldown4_state).state);
+
+  - id: open_pulldown_menu
+    then:
+      - script.stop: player_controls_timeout
+      - script.stop: pulldown_timeout
+      - lambda: |-
+          id(ui_phase) = ${ui_phase_pulldown};
+      - script.execute: standby_screen_activity
+      - lvgl.page.show:
+          id: pulldown_page
+          animation: MOVE_BOTTOM
+          time: 220ms
+      - script.execute: refresh_pulldown_states
+      - script.execute: pulldown_timeout
+
+  - id: close_pulldown_menu
+    then:
+      - script.stop: pulldown_timeout
+      - lambda: |-
+          id(ui_phase) = ${ui_phase_standby};
+      - script.execute: standby_screen_activity
+      - lvgl.page.show:
+          id: idle_page
+          animation: MOVE_TOP
+          time: 220ms
+      - component.update: weather_line
+
+  - id: pulldown_timeout
+    mode: restart
+    then:
+      - delay: 6s
+      - script.execute: close_pulldown_menu
 
   - id: play_playlist
     parameters:
@@ -3869,12 +4247,18 @@ touchscreen:
                   }
                 } else if (dy < 0) {
                   id(start_manual_va)->execute();
+                } else {
+                  id(open_pulldown_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_pulldown}) {
+                if (abs_x < abs_y && dy < 0) {
+                  id(close_pulldown_menu)->execute();
                 }
               }
               return;
             }
 
-            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown}) {
               id(set_ui_phase)->execute(${ui_phase_player_controls});
             }
 
@@ -4129,6 +4513,179 @@ lvgl:
             text_font: font_display_medium
             text_align: CENTER
             hidden: true
+
+        - label:
+            id: rooms_clock_label
+            align: TOP_MID
+            y: 14
+            width: 207
+            text: "--:--"
+            text_color: 0xFFFF00
+            text_font: font_7seg_small
+            text_letter_space: 0
+            text_align: CENTER
+            hidden: true
+
+        - label:
+            id: rooms_date_label
+            align: TOP_MID
+            y: 186
+            width: 190
+            text: "------"
+            text_color: 0xFFFFFF
+            text_font: font_date
+            text_align: CENTER
+            hidden: true
+
+        - obj:
+            id: room1_box
+            align: TOP_LEFT
+            x: 33
+            y: 57
+            width: 67
+            height: 60
+            radius: 8
+            border_width: 2
+            border_color: 0xFFFF00
+            bg_color: 0x4FC3F7
+            bg_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: room1_icon
+                  align: CENTER
+                  text: "\U000F0004"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_rooms
+                  hidden: true
+
+        - obj:
+            id: room2_box
+            align: TOP_LEFT
+            x: 33
+            y: 120
+            width: 67
+            height: 60
+            radius: 8
+            border_width: 2
+            border_color: 0xFFFF00
+            bg_color: 0xE53935
+            bg_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: room2_icon
+                  align: CENTER
+                  text: "\U000F0004"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_rooms
+                  hidden: true
+
+        - obj:
+            id: room3_box
+            align: TOP_LEFT
+            x: 104
+            y: 57
+            width: 39
+            height: 123
+            radius: 8
+            border_width: 2
+            border_color: 0xFFFF00
+            bg_color: 0xFDD835
+            bg_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: room3_icon
+                  align: CENTER
+                  text: "\U000F0004"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_rooms
+                  hidden: true
+
+        - obj:
+            id: room4_box
+            align: TOP_LEFT
+            x: 147
+            y: 57
+            width: 60
+            height: 39
+            radius: 8
+            border_width: 2
+            border_color: 0xFFFF00
+            bg_color: 0xBA68C8
+            bg_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: room4_icon
+                  align: CENTER
+                  text: "\U000F0004"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_rooms
+                  hidden: true
+
+        - obj:
+            id: room5_box
+            align: TOP_LEFT
+            x: 147
+            y: 99
+            width: 60
+            height: 39
+            radius: 8
+            border_width: 2
+            border_color: 0xFFFF00
+            bg_color: 0x1A237E
+            bg_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: room5_icon
+                  align: CENTER
+                  text: "\U000F0004"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_rooms
+                  hidden: true
+
+        - obj:
+            id: room6_box
+            align: TOP_LEFT
+            x: 147
+            y: 141
+            width: 60
+            height: 39
+            radius: 8
+            border_width: 2
+            border_color: 0xFFFF00
+            bg_color: 0x81C784
+            bg_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: room6_icon
+                  align: CENTER
+                  text: "\U000F0004"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_rooms
+                  hidden: true
 
         - canvas:
             id: hourglass_canvas
@@ -4720,6 +5277,151 @@ lvgl:
                   align: CENTER
                   width: 77
                   text: "My playlist 6"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+    - id: pulldown_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: pulldown_background_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: standby_background_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - label:
+            id: pulldown_title_label
+            align: TOP_MID
+            y: 11
+            width: 207
+            text: "Controls"
+            text_color: 0x66CCFF
+            text_font: font_display_medium
+            text_align: CENTER
+
+        - button:
+            id: pulldown1_button
+            align: TOP_MID
+            x: -48
+            y: 37
+            width: 87
+            height: 79
+            radius: 12
+            bg_opa: TRANSP
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 12
+            shadow_opa: 45%
+            on_click:
+              - homeassistant.action:
+                  action: homeassistant.toggle
+                  data:
+                    entity_id: ${pulldown1_entity}
+              - script.execute: pulldown_timeout
+            widgets:
+              - label:
+                  id: pulldown1_button_label
+                  align: CENTER
+                  width: 72
+                  text: "Light 1"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            id: pulldown2_button
+            align: TOP_MID
+            x: 48
+            y: 37
+            width: 87
+            height: 79
+            radius: 12
+            bg_opa: TRANSP
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 12
+            shadow_opa: 45%
+            on_click:
+              - homeassistant.action:
+                  action: homeassistant.toggle
+                  data:
+                    entity_id: ${pulldown2_entity}
+              - script.execute: pulldown_timeout
+            widgets:
+              - label:
+                  id: pulldown2_button_label
+                  align: CENTER
+                  width: 72
+                  text: "Light 2"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            id: pulldown3_button
+            align: TOP_MID
+            x: -48
+            y: 125
+            width: 87
+            height: 79
+            radius: 12
+            bg_opa: TRANSP
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 12
+            shadow_opa: 45%
+            on_click:
+              - homeassistant.action:
+                  action: homeassistant.toggle
+                  data:
+                    entity_id: ${pulldown3_entity}
+              - script.execute: pulldown_timeout
+            widgets:
+              - label:
+                  id: pulldown3_button_label
+                  align: CENTER
+                  width: 72
+                  text: "Light 3"
+                  text_color: 0xFFFFFF
+                  text_font: font_playlist
+                  text_align: CENTER
+
+        - button:
+            id: pulldown4_button
+            align: TOP_MID
+            x: 48
+            y: 125
+            width: 87
+            height: 79
+            radius: 12
+            bg_opa: TRANSP
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 12
+            shadow_opa: 45%
+            on_click:
+              - homeassistant.action:
+                  action: homeassistant.toggle
+                  data:
+                    entity_id: ${pulldown4_entity}
+              - script.execute: pulldown_timeout
+            widgets:
+              - label:
+                  id: pulldown4_button_label
+                  align: CENTER
+                  width: 72
+                  text: "Light 4"
                   text_color: 0xFFFFFF
                   text_font: font_playlist
                   text_align: CENTER
