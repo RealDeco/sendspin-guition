@@ -1910,7 +1910,7 @@ text_sensor:
         hour_disp = t.hour % 12;
         if (hour_disp == 0) hour_disp = 12;
       }
-      bool hide_colons = ((t.second % 2) == 0);
+      bool hide_colons = show_seconds && ((t.second % 2) == 0);
       char buf[16];
       if (show_seconds) {
         if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d %02d", hour_disp, t.minute, t.second);
