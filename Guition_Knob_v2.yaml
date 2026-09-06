@@ -343,6 +343,10 @@ globals:
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
+  - id: retro_static_buf
+    type: uint8_t*
+    restore_value: no
+    initial_value: "nullptr"
   - id: clock_style_mode
     type: int
     restore_value: no
@@ -2193,11 +2197,6 @@ script:
                 const float scale = SIZE / 240.0f;
                 auto S = [&](float v) -> int32_t { return (int32_t) roundf(v * scale); };
 
-                lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_COVER);
-
-                lv_layer_t layer;
-                lv_canvas_init_layer(canvas, &layer);
-
                 const lv_color_t c_matte = lv_color_hex(0x080808);
                 const lv_color_t c_matte_dark = lv_color_hex(0x333333);
                 const lv_color_t c_charcoal = lv_color_hex(0x181818);
@@ -2210,88 +2209,122 @@ script:
                 const lv_color_t c_ring_inner = lv_color_hex(0x101010);
                 const lv_color_t c_tick_minor = lv_color_hex(0x525152);
 
-                auto fill_circle_at = [&](int32_t cx, int32_t cy, int32_t r, lv_color_t color) {
-                  lv_draw_rect_dsc_t dsc;
-                  lv_draw_rect_dsc_init(&dsc);
-                  dsc.bg_color = color;
-                  dsc.bg_opa = LV_OPA_COVER;
-                  dsc.border_opa = LV_OPA_TRANSP;
-                  dsc.radius = LV_RADIUS_CIRCLE;
-                  lv_area_t area = {cx - r, cy - r, cx + r, cy + r};
-                  lv_draw_rect(&layer, &dsc, &area);
-                };
-                auto fill_circle = [&](int32_t r, lv_color_t color) {
-                  fill_circle_at(CX, CY, r, color);
-                };
-                auto stroke_circle = [&](int32_t r, lv_color_t color, int32_t width) {
-                  lv_draw_rect_dsc_t dsc;
-                  lv_draw_rect_dsc_init(&dsc);
-                  dsc.bg_opa = LV_OPA_TRANSP;
-                  dsc.border_color = color;
-                  dsc.border_width = width;
-                  dsc.border_opa = LV_OPA_COVER;
-                  dsc.radius = LV_RADIUS_CIRCLE;
-                  lv_area_t area = {CX - r, CY - r, CX + r, CY + r};
-                  lv_draw_rect(&layer, &dsc, &area);
-                };
+                lv_draw_buf_t *canvas_buf = lv_canvas_get_draw_buf(canvas);
 
-                fill_circle(S(118.0f), c_matte_dark);
-                fill_circle(S(111.0f), c_matte);
+                // The bezel/rings/tick-marks/numerals/caption never change - redrawing
+                // all ~75 of those shapes every second (on top of the moving hands) was
+                // cheap enough on the 360x360 reference device but expensive enough on
+                // this larger canvas to intermittently starve the touchscreen driver's
+                // own timing and make touch stop registering. Draw the static face once,
+                // cache a raw snapshot of the canvas buffer, and on every later call just
+                // memcpy it back (near-instant) before drawing only the moving parts.
+                if (id(retro_static_buf) == nullptr) {
+                  lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_COVER);
 
-                for (int r = 110; r >= 72; r -= 8) {
-                  stroke_circle(S((float) r), (r == 110) ? c_charcoal : c_ring_inner, 1);
+                  lv_layer_t static_layer;
+                  lv_canvas_init_layer(canvas, &static_layer);
+
+                  auto fill_circle_at = [&](int32_t cx, int32_t cy, int32_t r, lv_color_t color) {
+                    lv_draw_rect_dsc_t dsc;
+                    lv_draw_rect_dsc_init(&dsc);
+                    dsc.bg_color = color;
+                    dsc.bg_opa = LV_OPA_COVER;
+                    dsc.border_opa = LV_OPA_TRANSP;
+                    dsc.radius = LV_RADIUS_CIRCLE;
+                    lv_area_t area = {cx - r, cy - r, cx + r, cy + r};
+                    lv_draw_rect(&static_layer, &dsc, &area);
+                  };
+                  auto fill_circle = [&](int32_t r, lv_color_t color) {
+                    fill_circle_at(CX, CY, r, color);
+                  };
+                  auto stroke_circle = [&](int32_t r, lv_color_t color, int32_t width) {
+                    lv_draw_rect_dsc_t dsc;
+                    lv_draw_rect_dsc_init(&dsc);
+                    dsc.bg_opa = LV_OPA_TRANSP;
+                    dsc.border_color = color;
+                    dsc.border_width = width;
+                    dsc.border_opa = LV_OPA_COVER;
+                    dsc.radius = LV_RADIUS_CIRCLE;
+                    lv_area_t area = {CX - r, CY - r, CX + r, CY + r};
+                    lv_draw_rect(&static_layer, &dsc, &area);
+                  };
+
+                  fill_circle(S(118.0f), c_matte_dark);
+                  fill_circle(S(111.0f), c_matte);
+
+                  for (int r = 110; r >= 72; r -= 8) {
+                    stroke_circle(S((float) r), (r == 110) ? c_charcoal : c_ring_inner, 1);
+                  }
+                  stroke_circle(S(117.0f), c_dim_white, 1);
+                  stroke_circle(S(116.0f), c_charcoal, 1);
+                  stroke_circle(S(105.0f), c_charcoal, 1);
+
+                  lv_draw_line_dsc_t static_line_dsc;
+                  lv_draw_line_dsc_init(&static_line_dsc);
+                  static_line_dsc.round_start = true;
+                  static_line_dsc.round_end = true;
+
+                  for (int i = 0; i < 60; i++) {
+                    float a = (i / 60.0f) * 6.2831853f - 1.5707963f;
+                    bool major = (i % 5 == 0);
+                    int32_t r_out = S(major ? 107.0f : 104.0f);
+                    int32_t r_in = S(major ? 91.0f : 99.0f);
+                    static_line_dsc.p1.x = CX + (int32_t) (cosf(a) * r_out);
+                    static_line_dsc.p1.y = CY + (int32_t) (sinf(a) * r_out);
+                    static_line_dsc.p2.x = CX + (int32_t) (cosf(a) * r_in);
+                    static_line_dsc.p2.y = CY + (int32_t) (sinf(a) * r_in);
+                    static_line_dsc.color = major ? c_soft_white : c_tick_minor;
+                    static_line_dsc.width = major ? 2 : 1;
+                    lv_draw_line(&static_layer, &static_line_dsc);
+                  }
+
+                  lv_draw_label_dsc_t numeral_dsc;
+                  lv_draw_label_dsc_init(&numeral_dsc);
+                  numeral_dsc.color = c_soft_white;
+                  numeral_dsc.font = id(font_retro_numeral)->get_lv_font();
+                  numeral_dsc.align = LV_TEXT_ALIGN_CENTER;
+                  numeral_dsc.text_local = true;
+
+                  auto draw_numeral = [&](const char *text, int32_t x, int32_t y) {
+                    numeral_dsc.text = text;
+                    lv_area_t area = {x - S(30.0f), y - S(14.0f), x + S(30.0f), y + S(14.0f)};
+                    lv_draw_label(&static_layer, &numeral_dsc, &area);
+                  };
+
+                  draw_numeral("12", CX, CY - S(78.0f));
+                  draw_numeral("3", CX + S(78.0f), CY);
+                  draw_numeral("6", CX, CY + S(78.0f));
+                  draw_numeral("9", CX - S(78.0f), CY);
+
+                  lv_draw_label_dsc_t caption_dsc;
+                  lv_draw_label_dsc_init(&caption_dsc);
+                  caption_dsc.color = c_dim_white;
+                  caption_dsc.font = id(font_retro_small)->get_lv_font();
+                  caption_dsc.align = LV_TEXT_ALIGN_CENTER;
+                  caption_dsc.text = "RETRO";
+                  caption_dsc.text_local = true;
+                  int32_t caption_y = CY - S(34.0f);
+                  lv_area_t caption_area = {CX - S(50.0f), caption_y - S(10.0f), CX + S(50.0f), caption_y + S(10.0f)};
+                  lv_draw_label(&static_layer, &caption_dsc, &caption_area);
+
+                  lv_canvas_finish_layer(canvas, &static_layer);
+
+                  uint8_t *snapshot = (uint8_t *) malloc(canvas_buf->data_size);
+                  if (snapshot != nullptr) {
+                    memcpy(snapshot, canvas_buf->data, canvas_buf->data_size);
+                    id(retro_static_buf) = snapshot;
+                  }
+                } else {
+                  memcpy(canvas_buf->data, id(retro_static_buf), canvas_buf->data_size);
                 }
-                stroke_circle(S(117.0f), c_dim_white, 1);
-                stroke_circle(S(116.0f), c_charcoal, 1);
-                stroke_circle(S(105.0f), c_charcoal, 1);
+
+                lv_layer_t layer;
+                lv_canvas_init_layer(canvas, &layer);
 
                 lv_draw_line_dsc_t line_dsc;
                 lv_draw_line_dsc_init(&line_dsc);
                 line_dsc.round_start = true;
                 line_dsc.round_end = true;
-
-                for (int i = 0; i < 60; i++) {
-                  float a = (i / 60.0f) * 6.2831853f - 1.5707963f;
-                  bool major = (i % 5 == 0);
-                  int32_t r_out = S(major ? 107.0f : 104.0f);
-                  int32_t r_in = S(major ? 91.0f : 99.0f);
-                  line_dsc.p1.x = CX + (int32_t) (cosf(a) * r_out);
-                  line_dsc.p1.y = CY + (int32_t) (sinf(a) * r_out);
-                  line_dsc.p2.x = CX + (int32_t) (cosf(a) * r_in);
-                  line_dsc.p2.y = CY + (int32_t) (sinf(a) * r_in);
-                  line_dsc.color = major ? c_soft_white : c_tick_minor;
-                  line_dsc.width = major ? 2 : 1;
-                  lv_draw_line(&layer, &line_dsc);
-                }
-
-                lv_draw_label_dsc_t numeral_dsc;
-                lv_draw_label_dsc_init(&numeral_dsc);
-                numeral_dsc.color = c_soft_white;
-                numeral_dsc.font = id(font_retro_numeral)->get_lv_font();
-                numeral_dsc.align = LV_TEXT_ALIGN_CENTER;
-                numeral_dsc.text_local = true;
-
-                auto draw_numeral = [&](const char *text, int32_t x, int32_t y) {
-                  numeral_dsc.text = text;
-                  lv_area_t area = {x - S(30.0f), y - S(14.0f), x + S(30.0f), y + S(14.0f)};
-                  lv_draw_label(&layer, &numeral_dsc, &area);
-                };
-
-                draw_numeral("12", CX, CY - S(78.0f));
-                draw_numeral("3", CX + S(78.0f), CY);
-                draw_numeral("6", CX, CY + S(78.0f));
-                draw_numeral("9", CX - S(78.0f), CY);
-
-                lv_draw_label_dsc_t caption_dsc;
-                lv_draw_label_dsc_init(&caption_dsc);
-                caption_dsc.color = c_dim_white;
-                caption_dsc.font = id(font_retro_small)->get_lv_font();
-                caption_dsc.align = LV_TEXT_ALIGN_CENTER;
-                caption_dsc.text = "RETRO";
-                caption_dsc.text_local = true;
-                int32_t caption_y = CY - S(34.0f);
-                lv_area_t caption_area = {CX - S(50.0f), caption_y - S(10.0f), CX + S(50.0f), caption_y + S(10.0f)};
-                lv_draw_label(&layer, &caption_dsc, &caption_area);
 
                 auto t = id(homeassistant_time).now();
                 int hh24 = t.is_valid() ? t.hour : 0;
@@ -2336,10 +2369,32 @@ script:
                   draw_hand(tail_pos, S(18.0f), 1, c_orange_dark, false);
                 }
 
-                fill_circle_at(CX + S(3.0f), CY + S(3.0f), S(7.0f), c_shadow);
-                fill_circle(S(7.0f), c_matte_dark);
-                stroke_circle(S(7.0f), c_soft_white, 1);
-                fill_circle(S(3.0f), c_orange);
+                auto fill_circle_dyn = [&](int32_t cx, int32_t cy, int32_t r, lv_color_t color) {
+                  lv_draw_rect_dsc_t dsc;
+                  lv_draw_rect_dsc_init(&dsc);
+                  dsc.bg_color = color;
+                  dsc.bg_opa = LV_OPA_COVER;
+                  dsc.border_opa = LV_OPA_TRANSP;
+                  dsc.radius = LV_RADIUS_CIRCLE;
+                  lv_area_t area = {cx - r, cy - r, cx + r, cy + r};
+                  lv_draw_rect(&layer, &dsc, &area);
+                };
+                auto stroke_circle_dyn = [&](int32_t r, lv_color_t color, int32_t width) {
+                  lv_draw_rect_dsc_t dsc;
+                  lv_draw_rect_dsc_init(&dsc);
+                  dsc.bg_opa = LV_OPA_TRANSP;
+                  dsc.border_color = color;
+                  dsc.border_width = width;
+                  dsc.border_opa = LV_OPA_COVER;
+                  dsc.radius = LV_RADIUS_CIRCLE;
+                  lv_area_t area = {CX - r, CY - r, CX + r, CY + r};
+                  lv_draw_rect(&layer, &dsc, &area);
+                };
+
+                fill_circle_dyn(CX + S(3.0f), CY + S(3.0f), S(7.0f), c_shadow);
+                fill_circle_dyn(CX, CY, S(7.0f), c_matte_dark);
+                stroke_circle_dyn(S(7.0f), c_soft_white, 1);
+                fill_circle_dyn(CX, CY, S(3.0f), c_orange);
 
                 lv_draw_label_dsc_t digital_dsc;
                 lv_draw_label_dsc_init(&digital_dsc);
@@ -2361,6 +2416,7 @@ script:
 
                 lv_canvas_finish_layer(canvas, &layer);
                 lv_obj_invalidate(canvas);
+
 
   - id: mario_draw_scene
     mode: restart
@@ -2685,6 +2741,7 @@ script:
       - if:
           condition:
             and:
+              - lvgl.page.is_showing: idle_page
               - lambda: 'return id(clock_style_mode) == ${clock_style_mario};'
               - lambda: 'return !id(mario_anim_active);'
               - lambda: |-
