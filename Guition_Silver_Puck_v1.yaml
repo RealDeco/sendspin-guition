@@ -1,6 +1,6 @@
 substitutions:
-  name: silver-puck-v1
-  friendly_name: Silver Puck v1
+  name: esphome-web-e9f624
+  friendly_name: Xiaozhi Taichi Pi v1
 
 ## SETTINGS ######################################################################################################################################
 
@@ -61,6 +61,8 @@ substitutions:
   clock_style_digital: "0"
   clock_style_analog: "1"
   clock_style_rooms: "2"
+  clock_style_retro: "3"
+  clock_style_mario: "4"
 
 spi:
   id: display_qspi
@@ -108,6 +110,8 @@ esphome:
             std::string opt = id(clock_style_choice).current_option();
             if (opt == "Analog Clock") return ${clock_style_analog};
             if (opt == "Rooms") return ${clock_style_rooms};
+            if (opt == "Retro") return ${clock_style_retro};
+            if (opt == "Mario") return ${clock_style_mario};
             return ${clock_style_digital};
 
 esp32:
@@ -177,6 +181,8 @@ interval:
   - interval: 1s
     then:
       - script.execute: analog_clock_redraw
+      - script.execute: retro_clock_redraw
+      - script.execute: mario_clock_tick
 
 globals:
   - id: sendspin_album_art_valid
@@ -332,6 +338,54 @@ globals:
     type: int
     restore_value: no
     initial_value: "${clock_style_digital}"
+  - id: mario_anim_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: mario_y_offset
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: mario_direction_up
+    type: bool
+    restore_value: no
+    initial_value: "true"
+  - id: mario_last_minute
+    type: int
+    restore_value: no
+    initial_value: "-1"
+  - id: hourblock_offset
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: hourblock_bouncing
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: minuteblock_offset
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: minuteblock_bouncing
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: hourblock_going_up
+    type: bool
+    restore_value: no
+    initial_value: "true"
+  - id: minuteblock_going_up
+    type: bool
+    restore_value: no
+    initial_value: "true"
+  - id: mario_displayed_hour
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: mario_displayed_minute
+    type: int
+    restore_value: no
+    initial_value: "0"
 
 image:
   - platform: file
@@ -504,8 +558,16 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:
       - component.update: clock_hms
+      - script.execute: retro_clock_redraw
+      - script.execute:
+          id: mario_draw_scene
+          full_redraw: true
     on_turn_off:
       - component.update: clock_hms
+      - script.execute: retro_clock_redraw
+      - script.execute:
+          id: mario_draw_scene
+          full_redraw: true
 
   - platform: template
     id: clock_show_date
@@ -537,9 +599,11 @@ switch:
     on_turn_on:
       - component.update: clock_hms
       - script.execute: analog_clock_redraw
+      - script.execute: retro_clock_redraw
     on_turn_off:
       - component.update: clock_hms
       - script.execute: analog_clock_redraw
+      - script.execute: retro_clock_redraw
 
   - platform: template
     id: clock_show_gfx
@@ -627,12 +691,16 @@ select:
       - Digital Clock
       - Analog Clock
       - Rooms
+      - Retro
+      - Mario
     set_action:
       - script.execute:
           id: apply_clock_style
           style_mode: !lambda |-
             if (x == "Analog Clock") return ${clock_style_analog};
             if (x == "Rooms") return ${clock_style_rooms};
+            if (x == "Retro") return ${clock_style_retro};
+            if (x == "Mario") return ${clock_style_mario};
             return ${clock_style_digital};
 
   - platform: template
@@ -1299,7 +1367,7 @@ text_sensor:
         hour_disp = t.hour % 12;
         if (hour_disp == 0) hour_disp = 12;
       }
-      bool hide_colons = ((t.second % 2) == 0);
+      bool hide_colons = show_seconds && ((t.second % 2) == 0);
       char buf[16];
       if (show_seconds) {
         if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d %02d", hour_disp, t.minute, t.second);
@@ -1606,6 +1674,30 @@ font:
     glyphs:
       - "\U000F0004"
 
+  - file:
+      type: gfonts
+      family: Silkscreen
+      weight: 400
+    id: font_retro_numeral
+    size: 24
+    glyphs: "12369"
+
+  - file:
+      type: gfonts
+      family: Silkscreen
+      weight: 400
+    id: font_retro_small
+    size: 16
+    glyphs: "0123456789:RETO"
+
+  - file:
+      type: gfonts
+      family: Silkscreen
+      weight: 400
+    id: font_mario_digits
+    size: 36
+    glyphs: "0123456789"
+
 script:
   - id: apply_accent_color_debounced
     mode: restart
@@ -1765,27 +1857,87 @@ script:
                   - component.update: weather_temp_big
                   - component.update: weather_line
                 else:
-                  - lambda: |-
-                      lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
-                      if (id(clock_show_date).state) {
-                        lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                      } else {
-                        lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                      }
-                      if (id(analog_clock_canvas_widget) != nullptr) {
-                        lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
-                      }
-                      lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
-                      lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
-                      lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-                      lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
-                      for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
-                        lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
-                      }
-                  - component.update: clock_hms
-                  - component.update: clock_date
-                  - component.update: weather_temp_big
-                  - component.update: weather_line
+                  - if:
+                      condition:
+                        lambda: 'return style_mode == ${clock_style_retro};'
+                      then:
+                        - script.execute: analog_clock_ensure_created
+                        - lambda: |-
+                            lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                            for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                              lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                            }
+                        - script.execute: retro_clock_redraw
+                        - component.update: clock_hms
+                        - component.update: clock_date
+                        - component.update: weather_temp_big
+                        - component.update: weather_line
+                      else:
+                        - if:
+                            condition:
+                              lambda: 'return style_mode == ${clock_style_mario};'
+                            then:
+                              - script.execute: analog_clock_ensure_created
+                              - lambda: |-
+                                  lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                  for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                    lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                  }
+                                  id(mario_anim_active) = false;
+                                  id(mario_y_offset) = 0;
+                                  id(hourblock_offset) = 0;
+                                  id(hourblock_bouncing) = false;
+                                  id(hourblock_going_up) = true;
+                                  id(minuteblock_offset) = 0;
+                                  id(minuteblock_bouncing) = false;
+                                  id(minuteblock_going_up) = true;
+                              - script.execute:
+                                  id: mario_draw_scene
+                                  full_redraw: true
+                              - component.update: clock_hms
+                              - component.update: clock_date
+                              - component.update: weather_temp_big
+                              - component.update: weather_line
+                            else:
+                              - lambda: |-
+                                  lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                  if (id(clock_show_date).state) {
+                                    lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                  } else {
+                                    lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                  }
+                                  if (id(analog_clock_canvas_widget) != nullptr) {
+                                    lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                  }
+                                  lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                  for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                    lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                  }
+                              - component.update: clock_hms
+                              - component.update: clock_date
+                              - component.update: weather_temp_big
+                              - component.update: weather_line
 
   - id: rooms_grid_apply
     then:
@@ -1912,6 +2064,630 @@ script:
 
                 lv_canvas_finish_layer(canvas, &layer);
                 lv_obj_invalidate(canvas);
+
+  - id: retro_clock_redraw
+    mode: restart
+    then:
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_mode) == ${clock_style_retro};'
+              - lambda: 'return id(analog_clock_canvas_widget) != nullptr;'
+          then:
+            - lambda: |-
+                lv_obj_t *canvas = id(analog_clock_canvas_widget);
+                const int32_t SIZE = std::min(${screenwidth}, ${screenheight});
+                const int32_t CX = SIZE / 2;
+                const int32_t CY = SIZE / 2;
+                const float scale = SIZE / 240.0f;
+                auto S = [&](float v) -> int32_t { return (int32_t) roundf(v * scale); };
+
+                lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_COVER);
+
+                lv_layer_t layer;
+                lv_canvas_init_layer(canvas, &layer);
+
+                const lv_color_t c_matte = lv_color_hex(0x080808);
+                const lv_color_t c_matte_dark = lv_color_hex(0x333333);
+                const lv_color_t c_charcoal = lv_color_hex(0x181818);
+                const lv_color_t c_white = lv_color_hex(0xFFFFFF);
+                const lv_color_t c_soft_white = lv_color_hex(0xD6D3D6);
+                const lv_color_t c_dim_white = lv_color_hex(0x7B7D7B);
+                const lv_color_t c_shadow = lv_color_hex(0x000000);
+                const lv_color_t c_orange = lv_color_hex(0xFFA600);
+                const lv_color_t c_orange_dark = lv_color_hex(0xB56100);
+                const lv_color_t c_ring_inner = lv_color_hex(0x101010);
+                const lv_color_t c_tick_minor = lv_color_hex(0x525152);
+
+                auto fill_circle_at = [&](int32_t cx, int32_t cy, int32_t r, lv_color_t color) {
+                  lv_draw_rect_dsc_t dsc;
+                  lv_draw_rect_dsc_init(&dsc);
+                  dsc.bg_color = color;
+                  dsc.bg_opa = LV_OPA_COVER;
+                  dsc.border_opa = LV_OPA_TRANSP;
+                  dsc.radius = LV_RADIUS_CIRCLE;
+                  lv_area_t area = {cx - r, cy - r, cx + r, cy + r};
+                  lv_draw_rect(&layer, &dsc, &area);
+                };
+                auto fill_circle = [&](int32_t r, lv_color_t color) {
+                  fill_circle_at(CX, CY, r, color);
+                };
+                auto stroke_circle = [&](int32_t r, lv_color_t color, int32_t width) {
+                  lv_draw_rect_dsc_t dsc;
+                  lv_draw_rect_dsc_init(&dsc);
+                  dsc.bg_opa = LV_OPA_TRANSP;
+                  dsc.border_color = color;
+                  dsc.border_width = width;
+                  dsc.border_opa = LV_OPA_COVER;
+                  dsc.radius = LV_RADIUS_CIRCLE;
+                  lv_area_t area = {CX - r, CY - r, CX + r, CY + r};
+                  lv_draw_rect(&layer, &dsc, &area);
+                };
+
+                fill_circle(S(118.0f), c_matte_dark);
+                fill_circle(S(111.0f), c_matte);
+
+                for (int r = 110; r >= 72; r -= 8) {
+                  stroke_circle(S((float) r), (r == 110) ? c_charcoal : c_ring_inner, 1);
+                }
+                stroke_circle(S(117.0f), c_dim_white, 1);
+                stroke_circle(S(116.0f), c_charcoal, 1);
+                stroke_circle(S(105.0f), c_charcoal, 1);
+
+                lv_draw_line_dsc_t line_dsc;
+                lv_draw_line_dsc_init(&line_dsc);
+                line_dsc.round_start = true;
+                line_dsc.round_end = true;
+
+                for (int i = 0; i < 60; i++) {
+                  float a = (i / 60.0f) * 6.2831853f - 1.5707963f;
+                  bool major = (i % 5 == 0);
+                  int32_t r_out = S(major ? 107.0f : 104.0f);
+                  int32_t r_in = S(major ? 91.0f : 99.0f);
+                  line_dsc.p1.x = CX + (int32_t) (cosf(a) * r_out);
+                  line_dsc.p1.y = CY + (int32_t) (sinf(a) * r_out);
+                  line_dsc.p2.x = CX + (int32_t) (cosf(a) * r_in);
+                  line_dsc.p2.y = CY + (int32_t) (sinf(a) * r_in);
+                  line_dsc.color = major ? c_soft_white : c_tick_minor;
+                  line_dsc.width = major ? 2 : 1;
+                  lv_draw_line(&layer, &line_dsc);
+                }
+
+                lv_draw_label_dsc_t numeral_dsc;
+                lv_draw_label_dsc_init(&numeral_dsc);
+                numeral_dsc.color = c_soft_white;
+                numeral_dsc.font = id(font_retro_numeral)->get_lv_font();
+                numeral_dsc.align = LV_TEXT_ALIGN_CENTER;
+                numeral_dsc.text_local = true;
+
+                auto draw_numeral = [&](const char *text, int32_t x, int32_t y) {
+                  numeral_dsc.text = text;
+                  lv_area_t area = {x - S(30.0f), y - S(14.0f), x + S(30.0f), y + S(14.0f)};
+                  lv_draw_label(&layer, &numeral_dsc, &area);
+                };
+
+                draw_numeral("12", CX, CY - S(78.0f));
+                draw_numeral("3", CX + S(78.0f), CY);
+                draw_numeral("6", CX, CY + S(78.0f));
+                draw_numeral("9", CX - S(78.0f), CY);
+
+                lv_draw_label_dsc_t caption_dsc;
+                lv_draw_label_dsc_init(&caption_dsc);
+                caption_dsc.color = c_dim_white;
+                caption_dsc.font = id(font_retro_small)->get_lv_font();
+                caption_dsc.align = LV_TEXT_ALIGN_CENTER;
+                caption_dsc.text = "RETRO";
+                caption_dsc.text_local = true;
+                int32_t caption_y = CY - S(34.0f);
+                lv_area_t caption_area = {CX - S(50.0f), caption_y - S(10.0f), CX + S(50.0f), caption_y + S(10.0f)};
+                lv_draw_label(&layer, &caption_dsc, &caption_area);
+
+                auto t = id(homeassistant_time).now();
+                int hh24 = t.is_valid() ? t.hour : 0;
+                int hh = hh24 % 12;
+                int mm = t.is_valid() ? t.minute : 0;
+                int ss = t.is_valid() ? t.second : 0;
+
+                float s_pos = ss / 60.0f;
+                float m_pos = (mm + s_pos) / 60.0f;
+                float h_pos = (hh + m_pos) / 12.0f;
+
+                auto draw_hand = [&](float pos, int32_t len, int32_t width, lv_color_t color, bool shadow) {
+                  float a = pos * 6.2831853f - 1.5707963f;
+                  int32_t ex = CX + (int32_t) (cosf(a) * len);
+                  int32_t ey = CY + (int32_t) (sinf(a) * len);
+                  if (shadow) {
+                    line_dsc.p1.x = CX + S(3.0f);
+                    line_dsc.p1.y = CY + S(3.0f);
+                    line_dsc.p2.x = ex + S(3.0f);
+                    line_dsc.p2.y = ey + S(3.0f);
+                    line_dsc.color = c_shadow;
+                    line_dsc.width = width;
+                    lv_draw_line(&layer, &line_dsc);
+                  }
+                  line_dsc.p1.x = CX;
+                  line_dsc.p1.y = CY;
+                  line_dsc.p2.x = ex;
+                  line_dsc.p2.y = ey;
+                  line_dsc.color = color;
+                  line_dsc.width = width;
+                  lv_draw_line(&layer, &line_dsc);
+                };
+
+                draw_hand(h_pos, S(53.0f), S(5.0f), c_white, true);
+                draw_hand(m_pos, S(76.0f), S(3.0f), c_soft_white, true);
+
+                if (id(clock_show_seconds).state) {
+                  draw_hand(s_pos, S(92.0f), S(1.0f), c_orange, true);
+
+                  float tail_pos = s_pos + 0.5f;
+                  if (tail_pos >= 1.0f) tail_pos -= 1.0f;
+                  draw_hand(tail_pos, S(18.0f), 1, c_orange_dark, false);
+                }
+
+                fill_circle_at(CX + S(3.0f), CY + S(3.0f), S(7.0f), c_shadow);
+                fill_circle(S(7.0f), c_matte_dark);
+                stroke_circle(S(7.0f), c_soft_white, 1);
+                fill_circle(S(3.0f), c_orange);
+
+                lv_draw_label_dsc_t digital_dsc;
+                lv_draw_label_dsc_init(&digital_dsc);
+                digital_dsc.color = c_dim_white;
+                digital_dsc.font = id(font_retro_small)->get_lv_font();
+                digital_dsc.align = LV_TEXT_ALIGN_CENTER;
+                digital_dsc.text_local = true;
+                int display_hour = hh24;
+                if (id(clock_12h_format).state) {
+                  display_hour = hh24 % 12;
+                  if (display_hour == 0) display_hour = 12;
+                }
+                char time_buf[8];
+                snprintf(time_buf, sizeof(time_buf), "%02d:%02d", display_hour, mm);
+                digital_dsc.text = time_buf;
+                int32_t digital_y = CY + S(46.0f);
+                lv_area_t digital_area = {CX - S(50.0f), digital_y - S(10.0f), CX + S(50.0f), digital_y + S(10.0f)};
+                lv_draw_label(&layer, &digital_dsc, &digital_area);
+
+                lv_canvas_finish_layer(canvas, &layer);
+                lv_obj_invalidate(canvas);
+
+  - id: mario_draw_scene
+    mode: restart
+    parameters:
+      full_redraw: bool
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: 'return id(clock_style_mode) == ${clock_style_mario};'
+              - lambda: 'return id(analog_clock_canvas_widget) != nullptr;'
+              - or:
+                  # A full_redraw is a deliberate one-time "prepare this style now" paint (called
+                  # when entering Mario style) and must happen even if idle_page isn't the currently
+                  # shown page yet (e.g. boot_sound_page is still showing during startup) - otherwise
+                  # the canvas is left with whatever garbage was in its freshly-allocated buffer until
+                  # something else happens to trigger a redraw. Animation-frame calls (full_redraw:
+                  # false) keep the visibility check, since there's no point animating unseen content.
+                  - lambda: 'return full_redraw;'
+                  - lvgl.page.is_showing: idle_page
+          then:
+            - lambda: |-
+                lv_obj_t *canvas = id(analog_clock_canvas_widget);
+                lv_display_t *mario_disp = lv_obj_get_display(canvas);
+                lv_display_enable_invalidation(mario_disp, false);
+                const int32_t SIZE = std::min(${screenwidth}, ${screenheight});
+                // Fills the entire canvas (not just an inset square) - on a round display this means
+                // decorative corners (hill tip, cloud, far ground-row ends) may clip against the bezel;
+                // the core gameplay area (Mario, both blocks) stays well within the visible circle.
+                const float SCALE = (float) SIZE / 64.0f;
+                const int32_t OFFSET_X = (SIZE - (int32_t) roundf(64.0f * SCALE)) / 2;
+                const int32_t OFFSET_Y = (SIZE - (int32_t) roundf(64.0f * SCALE)) / 2;
+
+                static const uint16_t MASK_COLOR = 0x000E;
+
+                static const uint16_t BLOCK_SPRITE[361] = {
+                  0x000E, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40, 0x9A40,
+                  0x9A40, 0x9A40, 0x000E, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0x0000, 0x0000, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x0000, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0x0000, 0x0000, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x0000, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0x0000,
+                  0x0000, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x0000, 0xE4E4, 0x0000,
+                  0x9A40, 0xE4E4, 0x0000, 0x0000, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000,
+                  0x0000, 0xE4E4, 0x0000, 0x9A40, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4,
+                  0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0xE4E4, 0x0000, 0x000E, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000
+                };
+
+                static const uint16_t BUSH_SPRITE[189] = {
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xBFE3, 0xBFE3, 0x0000,
+                  0x000E, 0x0000, 0x000E, 0x000E, 0x000E, 0x0000, 0xBFE3, 0xBFE3, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x0000, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0x0000, 0xBFE3, 0x0000, 0x000E, 0x0000, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0x0000, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xBFE3, 0xBFE3, 0xBFE3, 0x0560, 0xBFE3, 0xBFE3, 0x0000, 0x000E, 0x0000, 0xBFE3,
+                  0xBFE3, 0xBFE3, 0x0560, 0xBFE3, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xBFE3, 0x0560, 0x0560, 0xBFE3, 0xBFE3, 0x0560,
+                  0xBFE3, 0xBFE3, 0x0000, 0xBFE3, 0x0560, 0x0560, 0xBFE3, 0xBFE3, 0x0560, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0xBFE3, 0x0560,
+                  0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0x0560, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0x000E, 0x000E,
+                  0x0000, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3,
+                  0xBFE3, 0xBFE3, 0xBFE3, 0x000E, 0x000E, 0x0000, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3,
+                  0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0x000E, 0x0000, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3,
+                  0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3, 0xBFE3
+                };
+
+                static const uint16_t CLOUD1_SPRITE[156] = {
+                  0x000E, 0x0000, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xFFFF, 0xFFFF,
+                  0xFFFF, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+                  0x0000, 0x000E, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0xFFFF, 0x3DFF, 0xFFFF, 0xFFFF, 0x3DFF, 0xFFFF, 0xFFFF, 0x0000, 0xFFFF,
+                  0x0000, 0x000E, 0x000E, 0x000E, 0x3DFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x000E,
+                  0x000E, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x000E, 0xFFFF, 0xFFFF,
+                  0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x000E, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+                  0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x000E, 0x000E, 0xFFFF, 0xFFFF, 0xFFFF, 0x3DFF, 0x3DFF, 0xFFFF, 0x3DFF, 0xFFFF,
+                  0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x000E, 0x3DFF, 0x3DFF, 0x3DFF, 0xFFFF, 0xFFFF, 0x3DFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+                  0x000E, 0x000E, 0xFFFF, 0xFFFF, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000,
+                  0x0000, 0x000E, 0x0000, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E
+                };
+
+                static const uint16_t CLOUD2_SPRITE[156] = {
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xFFFF, 0x3DFF, 0xFFFF,
+                  0xFFFF, 0x3DFF, 0xFFFF, 0xFFFF, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0xFFFF, 0x3DFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+                  0xFFFF, 0x000E, 0x000E, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x000E, 0x0000,
+                  0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x000E, 0xFFFF, 0xFFFF, 0xFFFF, 0x3DFF,
+                  0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x000E, 0x000E, 0x0000, 0xFFFF, 0xFFFF, 0x3DFF, 0xFFFF, 0xFFFF,
+                  0xFFFF, 0x3DFF, 0x3DFF, 0xFFFF, 0x3DFF, 0x000E, 0x000E, 0x000E, 0x0000, 0xFFFF, 0xFFFF, 0x3DFF, 0x3DFF, 0x3DFF, 0xFFFF, 0xFFFF,
+                  0x3DFF, 0xFFFF, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0xFFFF, 0xFFFF, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0x000E, 0x0000, 0x0000, 0x0000, 0x000E
+                };
+
+                static const uint16_t GROUND_SPRITE[64] = {
+                  0xE2C2, 0xF6B6, 0xF6B6, 0xF6B6, 0x0000, 0xE2C2, 0xF6B6, 0xE2C2, 0xF6B6, 0xE2C2, 0xE2C2, 0xE2C2, 0x0000, 0xF6B6, 0xE2C2, 0x0000,
+                  0xF6B6, 0xE2C2, 0xE2C2, 0xE2C2, 0x0000, 0xE2C2, 0x0000, 0xE2C2, 0x0000, 0xE2C2, 0xE2C2, 0xE2C2, 0x0000, 0xF6B6, 0xF6B6, 0x0000,
+                  0xF6B6, 0x0000, 0x0000, 0xE2C2, 0x0000, 0xF6B6, 0xE2C2, 0x0000, 0xF6B6, 0xF6B6, 0xF6B6, 0x0000, 0xF6B6, 0xE2C2, 0xE2C2, 0x0000,
+                  0xF6B6, 0xE2C2, 0xE2C2, 0xF6B6, 0xE2C2, 0xE2C2, 0xE2C2, 0x0000, 0xE2C2, 0x0000, 0x0000, 0xF6B6, 0x0000, 0x0000, 0x0000, 0xE2C2
+                };
+
+                static const uint16_t HILL_SPRITE[440] = {
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0000, 0x0560,
+                  0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x0560, 0x0560, 0x0000, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0560, 0x0000, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0000, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E,
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x0560, 0x0000, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0000, 0x000E, 0x000E,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0000, 0x000E, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560,
+                  0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560, 0x0560
+                };
+
+                static const uint16_t MARIO_IDLE_SPRITE[208] = {
+                  0x000E, 0x000E, 0x000E, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0xF801,
+                  0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0x0000, 0xfd28,
+                  0xfd28, 0x0000, 0xfd28, 0xfd28, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xfd28, 0x0000, 0xfd28, 0xfd28, 0xfd28, 0x0000, 0xfd28,
+                  0xfd28, 0xfd28, 0xfd28, 0x000E, 0x000E, 0x0000, 0xfd28, 0x0000, 0x0000, 0xfd28, 0xfd28, 0xfd28, 0x0000, 0xfd28, 0xfd28, 0xfd28,
+                  0xfd28, 0x000E, 0x0000, 0x0000, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x000E, 0x000E, 0x000E,
+                  0x000E, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0x000E, 0x000E, 0x000E, 0x000E, 0x7BCF, 0x7BCF, 0xF801,
+                  0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x7BCF, 0x7BCF, 0x7BCF, 0xF801, 0x7BCF, 0x7BCF, 0xF801,
+                  0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0x000E, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0xF801, 0xF801, 0xF801, 0xF801, 0x7BCF, 0x7BCF, 0x7BCF,
+                  0x7BCF, 0x7BCF, 0xfd28, 0xfd28, 0x7BCF, 0xF801, 0xfd28, 0xF801, 0xF801, 0xfd28, 0xF801, 0x7BCF, 0xfd28, 0xfd28, 0xfd28, 0xfd28,
+                  0xfd28, 0xfd28, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xF801, 0xF801,
+                  0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xfd28, 0xfd28, 0xfd28, 0x000E, 0x000E, 0xF801, 0xF801, 0xF801, 0xF801, 0x000E,
+                  0xF801, 0xF801, 0xF801, 0xF801, 0x000E, 0x000E, 0x000E, 0xC300, 0xC300, 0xC300, 0xC300, 0x000E, 0x000E, 0x000E, 0xC300, 0xC300,
+                  0xC300, 0xC300, 0x000E, 0xC300, 0xC300, 0xC300, 0xC300, 0xC300, 0x000E, 0x000E, 0x000E, 0xC300, 0xC300, 0xC300, 0xC300, 0xC300
+                };
+
+                static const uint16_t MARIO_JUMP_SPRITE[272] = {
+                  0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0xfd28, 0xfd28, 0xfd28,
+                  0xfd28, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0x000E, 0xfd28, 0xfd28,
+                  0xfd28, 0xfd28, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801,
+                  0xfd28, 0xfd28, 0xfd28, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0x0000, 0xfd28, 0xfd28, 0x0000, 0xfd28, 0xfd28,
+                  0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xfd28, 0x0000, 0xfd28, 0xfd28, 0xfd28, 0x0000, 0xfd28,
+                  0xfd28, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0xfd28, 0x0000, 0x0000, 0xfd28, 0xfd28, 0xfd28,
+                  0x0000, 0xfd28, 0xfd28, 0xfd28, 0x7BCF, 0x7BCF, 0x000E, 0x000E, 0x000E, 0x000E, 0x0000, 0x0000, 0xfd28, 0xfd28, 0xfd28, 0xfd28,
+                  0x0000, 0x0000, 0x0000, 0x0000, 0x7BCF, 0x7BCF, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0xfd28, 0xfd28, 0xfd28,
+                  0xfd28, 0xfd28, 0xfd28, 0xfd28, 0x7BCF, 0x7BCF, 0x000E, 0x000E, 0x000E, 0x000E, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0xF801,
+                  0x7BCF, 0x7BCF, 0x7BCF, 0xF801, 0x7BCF, 0x7BCF, 0x000E, 0x000E, 0x000E, 0x000E, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF,
+                  0x7BCF, 0xF801, 0x7BCF, 0x7BCF, 0x7BCF, 0xF801, 0xF801, 0x000E, 0xC300, 0xC300, 0xfd28, 0xfd28, 0x7BCF, 0x7BCF, 0x7BCF, 0x7BCF,
+                  0x7BCF, 0x7BCF, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0x000E, 0xC300, 0xC300, 0xfd28, 0xfd28, 0xfd28, 0xfd28, 0xF801,
+                  0xF801, 0x7BCF, 0xF801, 0xF801, 0xfd28, 0xF801, 0xF801, 0xfd28, 0xF801, 0xC300, 0xC300, 0xC300, 0x000E, 0xfd28, 0xfd28, 0xC300,
+                  0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xC300, 0xC300, 0xC300, 0x000E, 0x000E, 0xC300,
+                  0xC300, 0xC300, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xC300, 0xC300, 0xC300, 0x000E, 0xC300,
+                  0xC300, 0xC300, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E,
+                  0xC300, 0xC300, 0x000E, 0xF801, 0xF801, 0xF801, 0xF801, 0xF801, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E, 0x000E
+                };
+
+                auto rgb565_to_hex = [](uint16_t v) -> uint32_t {
+                  uint8_t r5 = (v >> 11) & 0x1F;
+                  uint8_t g6 = (v >> 5) & 0x3F;
+                  uint8_t b5 = v & 0x1F;
+                  uint8_t r8 = (r5 << 3) | (r5 >> 2);
+                  uint8_t g8 = (g6 << 2) | (g6 >> 4);
+                  uint8_t b8 = (b5 << 3) | (b5 >> 2);
+                  return ((uint32_t) r8 << 16) | ((uint32_t) g8 << 8) | b8;
+                };
+
+                // SCALE is fractional now (filling the full canvas, not a clean integer multiple of 64),
+                // so each source pixel maps to a variable-sized block: its screen-space bounds are found
+                // by rounding both edges independently, which tiles without gaps or overlaps.
+                auto blit = [&](const uint16_t *data, int sw, int sh, int32_t gx, int32_t gy) {
+                  for (int sy = 0; sy < sh; sy++) {
+                    int32_t by0 = OFFSET_Y + (int32_t) roundf((gy + sy) * SCALE);
+                    int32_t by1 = OFFSET_Y + (int32_t) roundf((gy + sy + 1) * SCALE);
+                    for (int sx = 0; sx < sw; sx++) {
+                      uint16_t px = data[sy * sw + sx];
+                      if (px == MASK_COLOR) continue;
+                      lv_color_t color = lv_color_hex(rgb565_to_hex(px));
+                      int32_t bx0 = OFFSET_X + (int32_t) roundf((gx + sx) * SCALE);
+                      int32_t bx1 = OFFSET_X + (int32_t) roundf((gx + sx + 1) * SCALE);
+                      for (int32_t y = by0; y < by1; y++) {
+                        for (int32_t x = bx0; x < bx1; x++) {
+                          lv_canvas_set_px(canvas, x, y, color, LV_OPA_COVER);
+                        }
+                      }
+                    }
+                  }
+                };
+
+                if (full_redraw) {
+                  // Sky fill (whole canvas, so it extends to fill the round bezel)
+                  lv_canvas_fill_bg(canvas, lv_color_hex(rgb565_to_hex(MASK_COLOR)), LV_OPA_COVER);
+
+                  // Background scenery (static, matches the original's one-time setup() draw calls) -
+                  // only needs to be painted once per style-entry, not every animation frame.
+                  blit(HILL_SPRITE, 20, 22, 0, 34);
+                  blit(CLOUD1_SPRITE, 13, 12, 0, 21);
+                  blit(CLOUD2_SPRITE, 13, 12, 51, 7);
+                  blit(BUSH_SPRITE, 21, 9, 43, 47);
+                  for (int i = 0; i < 8; i++) {
+                    blit(GROUND_SPRITE, 8, 8, i * 8, 56);
+                  }
+                } else {
+                  // Animation-frame fast path: only erase the small regions Mario/the blocks can occupy
+                  // (their entire travel range sits over plain sky in the original layout, so a flat
+                  // sky-colored rect fill is a safe, much cheaper stand-in for a full scene redraw).
+                  // This uses its own layer that's finished (flushed to the canvas buffer) immediately -
+                  // lv_draw_rect only queues a draw task, it doesn't render until lv_canvas_finish_layer
+                  // runs, so sharing one layer with the sprite blits below (which write immediately via
+                  // lv_canvas_set_px) would let the queued erase flush AFTER the blits and wipe them out.
+                  lv_layer_t erase_layer;
+                  lv_canvas_init_layer(canvas, &erase_layer);
+                  auto erase_rect = [&](int32_t gx, int32_t gy, int32_t gw, int32_t gh) {
+                    lv_draw_rect_dsc_t erase_dsc;
+                    lv_draw_rect_dsc_init(&erase_dsc);
+                    erase_dsc.bg_color = lv_color_hex(rgb565_to_hex(MASK_COLOR));
+                    erase_dsc.bg_opa = LV_OPA_COVER;
+                    erase_dsc.border_opa = LV_OPA_TRANSP;
+                    int32_t bx0 = OFFSET_X + (int32_t) roundf(gx * SCALE);
+                    int32_t bx1 = OFFSET_X + (int32_t) roundf((gx + gw) * SCALE);
+                    int32_t by0 = OFFSET_Y + (int32_t) roundf(gy * SCALE);
+                    int32_t by1 = OFFSET_Y + (int32_t) roundf((gy + gh) * SCALE);
+                    lv_area_t area = {bx0, by0, bx1 - 1, by1 - 1};
+                    lv_draw_rect(&erase_layer, &erase_dsc, &area);
+                  };
+                  erase_rect(23, 25, 17, 31);
+                  erase_rect(13, 7, 19, 23);
+                  erase_rect(32, 7, 19, 23);
+                  lv_canvas_finish_layer(canvas, &erase_layer);
+                }
+
+                // Blocks (hour/minute), each with its own current bounce offset
+                blit(BLOCK_SPRITE, 19, 19, 13, 11 + id(hourblock_offset));
+                blit(BLOCK_SPRITE, 19, 19, 32, 11 + id(minuteblock_offset));
+
+                // Mario, idle or jumping sprite depending on current animation state
+                if (id(mario_anim_active)) {
+                  blit(MARIO_JUMP_SPRITE, 17, 16, 23, 40 + id(mario_y_offset));
+                } else {
+                  blit(MARIO_IDLE_SPRITE, 13, 16, 23, 40);
+                }
+
+                // Hour/minute digits, drawn on top of each block (matches the source's black text over the block sprite).
+                // The source displays 24-hour, non-zero-padded hour (e.g. "22:39"), zero-padded minute.
+                // The displayed value is only ever refreshed at the moment a block is actually hit (see
+                // mario_jump_animate's collision checks) or when first entering the style - not read live
+                // every frame - so the digits change exactly when the bounce happens, not the instant the
+                // jump starts.
+                if (full_redraw) {
+                  auto boot_t = id(homeassistant_time).now();
+                  if (boot_t.is_valid()) {
+                    id(mario_displayed_hour) = boot_t.hour;
+                    id(mario_displayed_minute) = boot_t.minute;
+                  }
+                }
+                int hh24 = id(mario_displayed_hour);
+                int mm = id(mario_displayed_minute);
+                int display_hour = hh24;
+                if (id(clock_12h_format).state) {
+                  display_hour = hh24 % 12;
+                  if (display_hour == 0) display_hour = 12;
+                }
+                char hbuf[4];
+                char mbuf[4];
+                snprintf(hbuf, sizeof(hbuf), "%d", display_hour);
+                snprintf(mbuf, sizeof(mbuf), "%02d", mm);
+
+                lv_layer_t layer;
+                lv_canvas_init_layer(canvas, &layer);
+
+                lv_draw_label_dsc_t digit_dsc;
+                lv_draw_label_dsc_init(&digit_dsc);
+                digit_dsc.color = lv_color_hex(0x000000);
+                digit_dsc.font = id(font_mario_digits)->get_lv_font();
+                digit_dsc.align = LV_TEXT_ALIGN_CENTER;
+                digit_dsc.text_local = true;
+
+                // lv_draw_label only centers horizontally (align: LEFT/RIGHT/CENTER) - it top-aligns
+                // vertically within whatever area is given, so the area height must tightly match the
+                // font's actual rendered height or the text lands above center instead of on it.
+                const int32_t font_h = id(font_mario_digits)->get_height();
+
+                const int32_t label_half_w = (int32_t) roundf(SCALE * 10.0f);
+
+                digit_dsc.text = hbuf;
+                int32_t hour_cx = OFFSET_X + (int32_t) roundf((13 + 9) * SCALE);
+                int32_t hour_cy = OFFSET_Y + (int32_t) roundf((11 + id(hourblock_offset) + 9) * SCALE);
+                lv_area_t hour_area = {hour_cx - label_half_w, hour_cy - font_h / 2, hour_cx + label_half_w, hour_cy - font_h / 2 + font_h};
+                lv_draw_label(&layer, &digit_dsc, &hour_area);
+
+                digit_dsc.text = mbuf;
+                int32_t minute_cx = OFFSET_X + (int32_t) roundf((32 + 9) * SCALE);
+                int32_t minute_cy = OFFSET_Y + (int32_t) roundf((11 + id(minuteblock_offset) + 9) * SCALE);
+                lv_area_t minute_area = {minute_cx - label_half_w, minute_cy - font_h / 2, minute_cx + label_half_w, minute_cy - font_h / 2 + font_h};
+                lv_draw_label(&layer, &digit_dsc, &minute_area);
+
+                lv_canvas_finish_layer(canvas, &layer);
+                lv_display_enable_invalidation(mario_disp, true);
+                lv_obj_invalidate(canvas);
+
+  - id: mario_clock_tick
+    mode: restart
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: 'return id(clock_style_mode) == ${clock_style_mario};'
+              - lambda: 'return !id(mario_anim_active);'
+              - lambda: |-
+                  auto t = id(homeassistant_time).now();
+                  return t.is_valid() && t.second == 0 && t.minute != id(mario_last_minute);
+          then:
+            - script.execute: mario_jump_animate
+
+  - id: mario_jump_animate
+    mode: restart
+    then:
+      - lambda: |-
+          id(mario_anim_active) = true;
+          auto t = id(homeassistant_time).now();
+          if (t.is_valid()) id(mario_last_minute) = t.minute;
+          id(mario_y_offset) = 0;
+          id(mario_direction_up) = true;
+          id(hourblock_offset) = 0;
+          id(hourblock_bouncing) = false;
+          id(hourblock_going_up) = true;
+          id(minuteblock_offset) = 0;
+          id(minuteblock_bouncing) = false;
+          id(minuteblock_going_up) = true;
+      - while:
+          condition:
+            lambda: 'return id(mario_anim_active);'
+          then:
+            - lambda: |-
+                const int MARIO_PACE = 5;
+                const int MARIO_JUMP_HEIGHT = 14;
+                const int MOVE_PACE = 2;
+                const int MAX_MOVE_HEIGHT = 4;
+
+                if (id(mario_direction_up)) {
+                  id(mario_y_offset) -= MARIO_PACE;
+                  if (-id(mario_y_offset) >= MARIO_JUMP_HEIGHT) {
+                    id(mario_direction_up) = false;
+                  }
+                } else {
+                  id(mario_y_offset) += MARIO_PACE;
+                }
+
+                const int mario_x = 23, mario_w = 17, mario_h = 16;
+                const int mario_y = 40 + id(mario_y_offset);
+
+                auto overlaps = [&](int bx, int by, int bw, int bh) {
+                  return mario_x < bx + bw && mario_x + mario_w > bx &&
+                         mario_y < by + bh && mario_y + mario_h > by;
+                };
+
+                if (!id(hourblock_bouncing) && overlaps(13, 11 + id(hourblock_offset), 19, 19)) {
+                  id(hourblock_bouncing) = true;
+                  id(hourblock_going_up) = true;
+                  id(mario_direction_up) = false;
+                  auto hit_t = id(homeassistant_time).now();
+                  if (hit_t.is_valid()) {
+                    id(mario_displayed_hour) = hit_t.hour;
+                    id(mario_displayed_minute) = hit_t.minute;
+                  }
+                }
+                if (id(hourblock_bouncing)) {
+                  if (id(hourblock_going_up)) {
+                    id(hourblock_offset) -= MOVE_PACE;
+                    if (id(hourblock_offset) <= -MAX_MOVE_HEIGHT) {
+                      id(hourblock_offset) = -MAX_MOVE_HEIGHT;
+                      id(hourblock_going_up) = false;
+                    }
+                  } else {
+                    id(hourblock_offset) += MOVE_PACE;
+                    if (id(hourblock_offset) >= 0) {
+                      id(hourblock_offset) = 0;
+                      id(hourblock_bouncing) = false;
+                    }
+                  }
+                }
+
+                if (!id(minuteblock_bouncing) && overlaps(32, 11 + id(minuteblock_offset), 19, 19)) {
+                  id(minuteblock_bouncing) = true;
+                  id(minuteblock_going_up) = true;
+                  id(mario_direction_up) = false;
+                  auto hit_t2 = id(homeassistant_time).now();
+                  if (hit_t2.is_valid()) {
+                    id(mario_displayed_hour) = hit_t2.hour;
+                    id(mario_displayed_minute) = hit_t2.minute;
+                  }
+                }
+                if (id(minuteblock_bouncing)) {
+                  if (id(minuteblock_going_up)) {
+                    id(minuteblock_offset) -= MOVE_PACE;
+                    if (id(minuteblock_offset) <= -MAX_MOVE_HEIGHT) {
+                      id(minuteblock_offset) = -MAX_MOVE_HEIGHT;
+                      id(minuteblock_going_up) = false;
+                    }
+                  } else {
+                    id(minuteblock_offset) += MOVE_PACE;
+                    if (id(minuteblock_offset) >= 0) {
+                      id(minuteblock_offset) = 0;
+                      id(minuteblock_bouncing) = false;
+                    }
+                  }
+                }
+
+                if (mario_y + mario_h >= 56) {
+                  id(mario_y_offset) = 0;
+                  id(mario_anim_active) = false;
+                }
+            - script.execute:
+                id: mario_draw_scene
+                full_redraw: false
+            - delay: 25ms
+      - script.execute:
+          id: mario_draw_scene
+          full_redraw: false
 
   - id: set_ui_phase
     mode: restart
