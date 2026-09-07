@@ -3691,8 +3691,18 @@ touchscreen:
                     id(now_playing_show_artist_art)->execute();
                   }
                 }
-              } else if (id(ui_phase) == ${ui_phase_player_controls} && abs_y > abs_x && dy > 0) {
-                id(open_playlist_menu)->execute();
+              } else if (id(ui_phase) == ${ui_phase_player_controls}) {
+                if (abs_x >= abs_y) {
+                  if (dx < 0) {
+                    id(now_playing_swipe_left)->execute();
+                  } else {
+                    id(now_playing_swipe_right)->execute();
+                  }
+                } else if (dy < 0) {
+                  id(set_ui_phase)->execute(${ui_phase_standby});
+                } else {
+                  id(open_playlist_menu)->execute();
+                }
               } else if (id(ui_phase) == ${ui_phase_playlist_menu} && abs_y > abs_x && dy < 0) {
                 id(close_playlist_menu)->execute();
               } else if (id(ui_phase) == ${ui_phase_standby}) {
