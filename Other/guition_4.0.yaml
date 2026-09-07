@@ -3015,6 +3015,26 @@ script:
                                 return id(playlist_media_player_entity).state;
             - script.execute: player_controls_keep_open
 
+  - id: player_controls_return
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - if:
+                condition:
+                  lambda: 'return !id(playlist_media_player_entity).state.empty();'
+                then:
+                  - homeassistant.action:
+                      action: media_player.media_play
+                      data_template:
+                        entity_id: "{{ media_player_entity }}"
+                      variables:
+                        media_player_entity: |-
+                          return id(playlist_media_player_entity).state;
+            - script.execute: player_controls_keep_open
+
   - id: player_controls_shuffle_toggle
     mode: restart
     then:
@@ -4344,9 +4364,9 @@ lvgl:
         - button:
             id: controls_group_button
             align: BOTTOM_MID
-            x: 0
+            x: -80
             y: -13
-            width: 213
+            width: 130
             height: 51
             radius: 16
             bg_color: 0x202020
@@ -4365,6 +4385,33 @@ lvgl:
                   id: controls_group_label
                   align: CENTER
                   text: "GROUP"
+                  text_color: 0xFFFFFF
+                  text_font: font_display
+
+        - button:
+            id: controls_return_button
+            align: BOTTOM_MID
+            x: 80
+            y: -13
+            width: 130
+            height: 51
+            radius: 16
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 4
+            on_click:
+              - script.execute: player_controls_return
+            widgets:
+              - label:
+                  id: controls_return_label
+                  align: CENTER
+                  text: "RETURN"
                   text_color: 0xFFFFFF
                   text_font: font_display
 
