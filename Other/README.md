@@ -14,7 +14,7 @@ Full-duplex audio eliminates the clicking normally heard when switching between 
 
 ---
 
-## Ball v2
+## Spotpear Ball v2
 
 ### Features
 
@@ -30,6 +30,23 @@ Full-duplex audio eliminates the clicking normally heard when switching between 
 <img width="600" alt="Ball v2 with built-in speaker" src="https://github.com/user-attachments/assets/3d6a9d27-57fb-43e0-bad7-55e59d0b380c" />
 
 Flappy Ball is variant of the Ball but includes a flappy bird game (hold boot button), and a flight radar (doubleclick boot button)
+
+---
+
+## Spotpear Muma (box or horse)
+
+### Features
+
+* Dual Voice Assistant
+* Sendspin player
+* Playlist menu
+* Media player controls
+* Presence and light map
+* Light control
+* LVGL interface
+* Clocks
+
+<img width="600" alt="Ball v2 with built-in speaker" src="https://github.com/user-attachments/assets/c46fae6a-6c95-4f12-9e52-100b5f2d57d1" />
 
 ---
 
