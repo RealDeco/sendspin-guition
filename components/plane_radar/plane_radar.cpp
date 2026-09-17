@@ -14,7 +14,7 @@
 #include <esp_heap_caps.h>
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
-#include "cJSON.h"
+#include <ArduinoJson.h>
 #endif
 
 namespace esphome {
@@ -114,9 +114,17 @@ void PlaneRadar::cleanup_() {
 // ---- HTTP fetch ----
 
 #ifdef USE_ESP32
-static void *psram_malloc_(size_t sz) {
-    return heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-}
+struct PsramJsonAllocator : ArduinoJson::Allocator {
+    void *allocate(size_t size) override {
+        return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    void deallocate(void *ptr) override {
+        heap_caps_free(ptr);
+    }
+    void *reallocate(void *ptr, size_t new_size) override {
+        return heap_caps_realloc(ptr, new_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+};
 
 struct FetchCtx { char *buf; size_t len; size_t cap; };
 
@@ -137,13 +145,6 @@ static esp_err_t http_event_cb(esp_http_client_event_t *evt) {
 
 void PlaneRadar::fetch_() {
 #ifdef USE_ESP32
-    static bool hooks_set = false;
-    if (!hooks_set) {
-        cJSON_Hooks hooks = { psram_malloc_, heap_caps_free };
-        cJSON_InitHooks(&hooks);
-        hooks_set = true;
-    }
-
     float dist_nm = (float)range_km_ * 0.539957f;
     char url[256];
     snprintf(url, sizeof(url),
@@ -174,35 +175,36 @@ void PlaneRadar::fetch_() {
         return;
     }
 
-    cJSON *root = cJSON_Parse(resp);
+    static PsramJsonAllocator json_allocator;
+    JsonDocument doc(&json_allocator);
+    DeserializationError json_err = deserializeJson(doc, resp, ctx.len);
     heap_caps_free(resp);
-    if (!root) { ESP_LOGW(TAG, "JSON parse failed"); return; }
+    if (json_err) { ESP_LOGW(TAG, "JSON parse failed: %s", json_err.c_str()); return; }
 
     aircraft_count_ = 0;
-    cJSON *ac_arr = cJSON_GetObjectItem(root, "ac");
-    if (cJSON_IsArray(ac_arr)) {
-        cJSON *item;
-        cJSON_ArrayForEach(item, ac_arr) {
+    JsonArrayConst ac_arr = doc["ac"];
+    if (!ac_arr.isNull()) {
+        for (JsonObjectConst item : ac_arr) {
             if (aircraft_count_ >= MAX_AC) break;
-            cJSON *jlat = cJSON_GetObjectItem(item, "lat");
-            cJSON *jlon = cJSON_GetObjectItem(item, "lon");
-            if (!cJSON_IsNumber(jlat) || !cJSON_IsNumber(jlon)) continue;
+            JsonVariantConst jlat = item["lat"];
+            JsonVariantConst jlon = item["lon"];
+            if (!jlat.is<float>() || !jlon.is<float>()) continue;
 
             Aircraft &a = aircraft_[aircraft_count_];
-            a.lat       = (float)jlat->valuedouble;
-            a.lon       = (float)jlon->valuedouble;
+            a.lat       = jlat.as<float>();
+            a.lon       = jlon.as<float>();
             a.valid     = true;
 
-            cJSON *jtrk = cJSON_GetObjectItem(item, "track");
-            a.track_deg = cJSON_IsNumber(jtrk) ? (float)jtrk->valuedouble : 0.0f;
-            cJSON *jgs  = cJSON_GetObjectItem(item, "gs");
-            a.gs_knots  = cJSON_IsNumber(jgs)  ? (float)jgs->valuedouble  : 0.0f;
-            cJSON *jalt = cJSON_GetObjectItem(item, "alt_baro");
-            a.alt_baro  = cJSON_IsNumber(jalt) ? (int)jalt->valuedouble   : 0;
+            JsonVariantConst jtrk = item["track"];
+            a.track_deg = jtrk.is<float>() ? jtrk.as<float>() : 0.0f;
+            JsonVariantConst jgs = item["gs"];
+            a.gs_knots  = jgs.is<float>() ? jgs.as<float>() : 0.0f;
+            JsonVariantConst jalt = item["alt_baro"];
+            a.alt_baro  = jalt.is<int>() ? jalt.as<int>() : 0;
 
-            cJSON *jflight = cJSON_GetObjectItem(item, "flight");
-            if (cJSON_IsString(jflight) && jflight->valuestring) {
-                strncpy(a.callsign, jflight->valuestring, 8);
+            const char *flight = item["flight"] | "";
+            if (flight[0] != '\0') {
+                strncpy(a.callsign, flight, 8);
                 a.callsign[8] = '\0';
                 for (int i = 7; i >= 0 && a.callsign[i] == ' '; i--)
                     a.callsign[i] = '\0';
@@ -212,7 +214,6 @@ void PlaneRadar::fetch_() {
             aircraft_count_++;
         }
     }
-    cJSON_Delete(root);
     ESP_LOGI(TAG, "Fetched %d aircraft, range %d km", aircraft_count_, range_km_);
 
     if (aircraft_update_trigger_)
