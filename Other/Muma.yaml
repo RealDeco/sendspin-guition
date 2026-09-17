@@ -83,8 +83,11 @@ packages:
       - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
 
 external_components:
+  - source: github://RealDeco/sendspin-guition@main
+    components: [audio]
+    refresh: 0s
   - source: github://pr#16882
-    components: [audio, i2s_audio, micro_wake_word, resampler]
+    components: [i2s_audio, micro_wake_word, resampler]
     refresh: 1h
         
 #packages: # local
@@ -110,11 +113,11 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.8.0
+  min_version: 2026.9.0
   name_add_mac_suffix: false
   project:
     name: realdeco.sendspin_guition
-    version: "2026.8.0"
+    version: "2026.9.0"
   on_boot:
     priority: -100
     then:
@@ -4091,9 +4094,9 @@ script:
                   entity_id: "{{ media_player_entity }}"
                   media_content_id: "{{ media_url }}"
                 variables:
-                  media_player_entity: |-
+                  media_player_entity: !lambda |-
                     return id(playlist_media_player_entity).state;
-                  media_url: |-
+                  media_url: !lambda |-
                     return uri;
 
   - id: load_standby_background
@@ -4242,7 +4245,7 @@ script:
                       data_template:
                         entity_id: "{{ media_player_entity }}"
                       variables:
-                        media_player_entity: |-
+                        media_player_entity: !lambda |-
                           return id(playlist_media_player_entity).state;
                 else:
                   - homeassistant.action:
@@ -4252,7 +4255,7 @@ script:
                       data_template:
                         entity_id: "{{ media_player_entity }}"
                       variables:
-                        media_player_entity: |-
+                        media_player_entity: !lambda |-
                           return id(playlist_media_player_entity).state;
 
   - id: player_controls_repeat_cycle
@@ -4276,7 +4279,7 @@ script:
                       data_template:
                         entity_id: "{{ media_player_entity }}"
                       variables:
-                        media_player_entity: |-
+                        media_player_entity: !lambda |-
                           return id(playlist_media_player_entity).state;
             - if:
                 condition:
@@ -4289,7 +4292,7 @@ script:
                       data_template:
                         entity_id: "{{ media_player_entity }}"
                       variables:
-                        media_player_entity: |-
+                        media_player_entity: !lambda |-
                           return id(playlist_media_player_entity).state;
             - if:
                 condition:
@@ -4302,7 +4305,7 @@ script:
                       data_template:
                         entity_id: "{{ media_player_entity }}"
                       variables:
-                        media_player_entity: |-
+                        media_player_entity: !lambda |-
                           return id(playlist_media_player_entity).state;
 
   - id: refresh_shuffle_repeat_buttons
