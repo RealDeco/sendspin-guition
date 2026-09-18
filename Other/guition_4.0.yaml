@@ -1230,7 +1230,6 @@ text_sensor:
           } else if (c == "hail") {
             icon = "\U000F0592";
           }
-          lv_label_set_text(id(weather_icon_glow), icon);
           lv_label_set_text(id(weather_icon), icon);
           lv_label_set_text(id(analog_weather_icon), icon);
           lv_label_set_text(id(home_weather_icon), icon);
@@ -1504,20 +1503,14 @@ text_sensor:
                     - lambda: return id(clock_show_feels_like).state;
                 then:
                   - lvgl.widget.show: weather_label
-                  - lvgl.widget.show: weather_label_glow
                   - lvgl.label.update:
                       id: weather_label
                       text: !lambda return x;
-                  - lvgl.label.update:
-                      id: weather_label_glow
-                      text: !lambda return x;
                 else:
                   - lvgl.widget.hide: weather_label
-                  - lvgl.widget.hide: weather_label_glow
           else:
             - lvgl.widget.hide: weather_header
             - lvgl.widget.hide: weather_label
-            - lvgl.widget.hide: weather_label_glow
       - if:
           condition:
             and:
@@ -4233,15 +4226,6 @@ lvgl:
                   scrollable: false
                   widgets:
                     - label:
-                        id: weather_icon_glow
-                        align: CENTER
-                        x: -72
-                        y: 1
-                        text: "\U000F0590"
-                        text_color: 0x404040
-                        text_font: font_mdi_weather
-
-                    - label:
                         id: weather_icon
                         align: CENTER
                         x: -73
@@ -4267,19 +4251,6 @@ lvgl:
                         text: "\u00B0C"
                         text_color: 0xFFFF00
                         text_font: font_temp_unit
-
-              - label:
-                  id: weather_label_glow
-                  align: TOP_MID
-                  x: 1
-                  y: 276
-                  width: 380
-                  height: 75
-                  text: "Weather..."
-                  text_color: 0x1AA6C8
-                  text_font: font_display
-                  long_mode: WRAP
-                  text_align: CENTER
 
               - label:
                   id: weather_label
