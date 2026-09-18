@@ -66,6 +66,7 @@ substitutions:
   clock_style_rooms: "2"
   clock_style_retro: "3"
   clock_style_mario: "4"
+  clock_style_home: "5"
   va_phase_idle: "0"
   va_phase_waiting_for_command: "1"
   va_phase_listening: "2"
@@ -154,6 +155,7 @@ esphome:
             if (opt == "Rooms") return ${clock_style_rooms};
             if (opt == "Retro") return ${clock_style_retro};
             if (opt == "Mario") return ${clock_style_mario};
+            if (opt == "Home") return ${clock_style_home};
             return ${clock_style_digital};
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
@@ -162,6 +164,7 @@ logger:
 
 api:
   on_client_connected:
+    - delay: 2s
     - if:
         condition:
           lambda: 'return !id(boot_sound_played) && !id(boot_announce_active);'
@@ -184,9 +187,14 @@ api:
           - script.execute:
               id: set_ui_phase
               phase: !lambda 'return id(ui_phase);'
+          - script.execute:
+              id: apply_clock_style
+              style_mode: !lambda 'return id(clock_style_mode);'
     - delay: 1s
     - script.execute: rooms_grid_apply
     - script.execute: refresh_pulldown_states
+    - script.execute: home_rooms_apply
+    - script.execute: refresh_home_light_buttons
 
 ota:
   - platform: esphome
@@ -249,6 +257,9 @@ interval:
       - script.execute:
           id: refresh_news_ticker_if_stale
           selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
+  - interval: 10min
+    then:
+      - script.execute: fetch_daily_forecast
 
 globals:
   - id: boot_sound_played
@@ -1160,6 +1171,7 @@ select:
       - Rooms
       - Retro
       - Mario
+      - Home
     set_action:
       - script.execute:
           id: apply_clock_style
@@ -1168,6 +1180,7 @@ select:
             if (x == "Rooms") return ${clock_style_rooms};
             if (x == "Retro") return ${clock_style_retro};
             if (x == "Mario") return ${clock_style_mario};
+            if (x == "Home") return ${clock_style_home};
             return ${clock_style_digital};
 
   - platform: template
@@ -1831,87 +1844,103 @@ binary_sensor:
     entity_id: ${sensor1_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
   - platform: homeassistant
     id: room1_light
     entity_id: ${light1_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
 
   - platform: homeassistant
     id: room2_presence
     entity_id: ${sensor2_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
   - platform: homeassistant
     id: room2_light
     entity_id: ${light2_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
 
   - platform: homeassistant
     id: room3_presence
     entity_id: ${sensor3_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
   - platform: homeassistant
     id: room3_light
     entity_id: ${light3_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
 
   - platform: homeassistant
     id: room4_presence
     entity_id: ${sensor4_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
   - platform: homeassistant
     id: room4_light
     entity_id: ${light4_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
 
   - platform: homeassistant
     id: room5_presence
     entity_id: ${sensor5_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
   - platform: homeassistant
     id: room5_light
     entity_id: ${light5_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
 
   - platform: homeassistant
     id: room6_presence
     entity_id: ${sensor6_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
   - platform: homeassistant
     id: room6_light
     entity_id: ${light6_entity}
     on_state:
       - script.execute: rooms_grid_apply
+      - script.execute: home_rooms_apply
 
   - platform: homeassistant
     id: pulldown1_state
     entity_id: ${pulldown1_entity}
     on_state:
       - script.execute: refresh_pulldown_states
+      - script.execute: refresh_home_light_buttons
   - platform: homeassistant
     id: pulldown2_state
     entity_id: ${pulldown2_entity}
     on_state:
       - script.execute: refresh_pulldown_states
+      - script.execute: refresh_home_light_buttons
   - platform: homeassistant
     id: pulldown3_state
     entity_id: ${pulldown3_entity}
     on_state:
       - script.execute: refresh_pulldown_states
+      - script.execute: refresh_home_light_buttons
   - platform: homeassistant
     id: pulldown4_state
     entity_id: ${pulldown4_entity}
     on_state:
       - script.execute: refresh_pulldown_states
+      - script.execute: refresh_home_light_buttons
 
 debug:
 
@@ -2140,6 +2169,15 @@ text_sensor:
             - lvgl.label.update:
                 id: rooms_clock_label
                 text: !lambda return x;
+      - if:
+          condition:
+            and:
+              - lambda: 'return !lv_obj_has_flag(id(standby_panel), LV_OBJ_FLAG_HIDDEN);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_home};'
+          then:
+            - lvgl.label.update:
+                id: home_clock_label
+                text: !lambda return x;
 
   - platform: template
     id: clock_date
@@ -2189,6 +2227,7 @@ text_sensor:
       char abuf[16];
       snprintf(abuf, sizeof(abuf), "%d%s", ti, tunit.c_str());
       lv_label_set_text(id(analog_weather_temp), abuf);
+      lv_label_set_text(id(home_weather_temp), abuf);
       return std::string(buf);
     on_value:
       - if:
@@ -2225,6 +2264,9 @@ text_sensor:
                "Wind speed: %.1f %s\nFeels like: %.1f%s",
                wind_ms, wunit.c_str(),
                feels_c, tunit.c_str());
+      char feels_buf[24];
+      snprintf(feels_buf, sizeof(feels_buf), "Feels %.0f%s", feels_c, tunit.c_str());
+      lv_label_set_text(id(home_weather_cond), feels_buf);
       return std::string(buf);
     on_value:
       - lambda: |-
@@ -2438,6 +2480,74 @@ font:
     id: font_mario_digits
     size: 44
     glyphs: "0123456789"
+
+  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+    id: font_7seg_small
+    size: 45
+    glyphs: "0123456789:- "
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_forecast
+    size: 26
+    glyphs:
+      - "\U000F0590"
+      - "\U000F0592"
+      - "\U000F0593"
+      - "\U000F0595"
+      - "\U000F0596"
+      - "\U000F0597"
+      - "\U000F0598"
+      - "\U000F0599"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_rooms_small
+    size: 30
+    glyphs:
+      - "\U000F0004"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_home_weather_icon
+    size: 72
+    glyphs:
+      - "\U000F0590"
+      - "\U000F0592"
+      - "\U000F0593"
+      - "\U000F0595"
+      - "\U000F0596"
+      - "\U000F0597"
+      - "\U000F0598"
+      - "\U000F0599"
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 300
+    id: font_home_weather_temp
+    size: 50
+    glyphs: "0123456789/CF\u00B0-"
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 400
+    id: font_home_weather_cond
+    size: 17
+    glyphs: "0123456789/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\u00B0"
+
+  - file:
+      type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_home_light_label
+    size: 18
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 400
+    id: font_home_small
+    size: 13
+    glyphs: "0123456789/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\u00B0"
 
 script:
   - id: finish_va_reply
@@ -2784,20 +2894,44 @@ script:
           lv_obj_set_style_text_color(id(weather_big_temp), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
           lv_obj_set_style_text_color(id(analog_weather_temp), accent, 0);
+          lv_obj_set_style_text_color(id(home_weather_temp), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_1), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_2), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_3), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_bg_color(id(now_playing_progress_bar), accent, LV_PART_INDICATOR);
           lv_obj_set_style_border_color(id(now_playing_frame), accent, 0);
+          lv_obj_set_style_border_color(id(home_light1_button), accent, 0);
+          lv_obj_set_style_border_color(id(home_light2_button), accent, 0);
+          lv_obj_set_style_border_color(id(home_light3_button), accent, 0);
+          lv_obj_set_style_border_color(id(home_light4_button), accent, 0);
+          lv_obj_set_style_border_color(id(home_room1_box), accent, 0);
+          lv_obj_set_style_border_color(id(home_room2_box), accent, 0);
+          lv_obj_set_style_border_color(id(home_room3_box), accent, 0);
+          lv_obj_set_style_border_color(id(home_room4_box), accent, 0);
+          lv_obj_set_style_border_color(id(home_room5_box), accent, 0);
+          lv_obj_set_style_border_color(id(home_room6_box), accent, 0);
           lv_obj_set_style_text_color(id(date_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(analog_weather_icon), accent2, 0);
+          lv_obj_set_style_text_color(id(home_light1_button_label), accent2, 0);
+          lv_obj_set_style_text_color(id(home_light2_button_label), accent2, 0);
+          lv_obj_set_style_text_color(id(home_light3_button_label), accent2, 0);
+          lv_obj_set_style_text_color(id(home_light4_button_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_label), accent3, 0);
+          lv_obj_set_style_text_color(id(home_clock_label), accent3, 0);
+          lv_obj_set_style_text_color(id(home_weather_cond), accent3, 0);
           lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_mute_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_volume_down_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_volume_up_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_group_label), accent4, 0);
+          lv_obj_set_style_text_color(id(home_weather_icon), accent4, 0);
+          lv_obj_set_style_text_color(id(home_forecast_icon_1), accent4, 0);
+          lv_obj_set_style_text_color(id(home_forecast_icon_2), accent4, 0);
+          lv_obj_set_style_text_color(id(home_forecast_icon_3), accent4, 0);
           lv_obj_set_style_text_color(id(controls_previous_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_next_icon), accent4, 0);
 
@@ -2833,6 +2967,7 @@ script:
       - script.execute: refresh_shuffle_repeat_buttons
       - script.execute: rooms_grid_apply
       - script.execute: refresh_pulldown_states
+      - script.execute: refresh_home_light_buttons
 
   - id: analog_clock_ensure_created
     then:
@@ -2874,6 +3009,9 @@ script:
                 for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                   lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                 }
+                for (auto w : {id(home_clock_label), id(home_weather_icon), id(home_weather_temp), id(home_weather_cond), id(home_room1_box), id(home_room2_box), id(home_room3_box), id(home_room4_box), id(home_room5_box), id(home_room6_box), id(home_forecast_strip), id(home_light1_button), id(home_light2_button), id(home_light3_button), id(home_light4_button)}) {
+                  lv_obj_add_flag(w, LV_OBJ_FLAG_HIDDEN);
+                }
             - script.execute: analog_clock_redraw
             - component.update: clock_hms
             - component.update: clock_date
@@ -2900,6 +3038,9 @@ script:
                       for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                         lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
                       }
+                      for (auto w : {id(home_clock_label), id(home_weather_icon), id(home_weather_temp), id(home_weather_cond), id(home_room1_box), id(home_room2_box), id(home_room3_box), id(home_room4_box), id(home_room5_box), id(home_room6_box), id(home_forecast_strip), id(home_light1_button), id(home_light2_button), id(home_light3_button), id(home_light4_button)}) {
+                        lv_obj_add_flag(w, LV_OBJ_FLAG_HIDDEN);
+                      }
                   - script.execute: rooms_grid_apply
                   - component.update: clock_hms
                   - component.update: clock_date
@@ -2922,6 +3063,9 @@ script:
                             lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
                             for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                               lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                            }
+                            for (auto w : {id(home_clock_label), id(home_weather_icon), id(home_weather_temp), id(home_weather_cond), id(home_room1_box), id(home_room2_box), id(home_room3_box), id(home_room4_box), id(home_room5_box), id(home_room6_box), id(home_forecast_strip), id(home_light1_button), id(home_light2_button), id(home_light3_button), id(home_light4_button)}) {
+                              lv_obj_add_flag(w, LV_OBJ_FLAG_HIDDEN);
                             }
                         - script.execute: retro_clock_redraw
                         - component.update: clock_hms
@@ -2946,6 +3090,9 @@ script:
                                   for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                                     lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                                   }
+                                  for (auto w : {id(home_clock_label), id(home_weather_icon), id(home_weather_temp), id(home_weather_cond), id(home_room1_box), id(home_room2_box), id(home_room3_box), id(home_room4_box), id(home_room5_box), id(home_room6_box), id(home_forecast_strip), id(home_light1_button), id(home_light2_button), id(home_light3_button), id(home_light4_button)}) {
+                                    lv_obj_add_flag(w, LV_OBJ_FLAG_HIDDEN);
+                                  }
                                   id(mario_anim_active) = false;
                                   id(mario_y_offset) = 0;
                                   id(hourblock_offset) = 0;
@@ -2962,27 +3109,69 @@ script:
                               - component.update: weather_temp_big
                               - component.update: weather_line
                             else:
-                              - lambda: |-
-                                  lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
-                                  if (id(clock_show_date).state) {
-                                    lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                  } else {
-                                    lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                  }
-                                  if (id(analog_clock_canvas_widget) != nullptr) {
-                                    lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
-                                  }
-                                  lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
-                                  for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
-                                    lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
-                                  }
-                              - component.update: clock_hms
-                              - component.update: clock_date
-                              - component.update: weather_temp_big
-                              - component.update: weather_line
+                              - if:
+                                  condition:
+                                    lambda: 'return style_mode == ${clock_style_home};'
+                                  then:
+                                    - lambda: |-
+                                        lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                        if (id(analog_clock_canvas_widget) != nullptr) {
+                                          lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                          lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_clear_flag(id(home_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_clear_flag(id(home_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_clear_flag(id(home_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_clear_flag(id(home_weather_cond), LV_OBJ_FLAG_HIDDEN);
+                                        for (auto box : {id(home_room1_box), id(home_room2_box), id(home_room3_box), id(home_room4_box), id(home_room5_box), id(home_room6_box)}) {
+                                          lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_clear_flag(id(home_light1_button), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_clear_flag(id(home_light2_button), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_clear_flag(id(home_light3_button), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_clear_flag(id(home_light4_button), LV_OBJ_FLAG_HIDDEN);
+                                        lv_label_set_text(id(home_clock_label), id(clock_hms).state.c_str());
+                                        lv_label_set_text(id(home_weather_icon), lv_label_get_text(id(analog_weather_icon)));
+                                        lv_label_set_text(id(home_weather_temp), lv_label_get_text(id(analog_weather_temp)));
+                                    - script.execute: home_rooms_apply
+                                    - script.execute: refresh_home_light_buttons
+                                    - script.execute: fetch_daily_forecast
+                                    - component.update: clock_hms
+                                  else:
+                                    - lambda: |-
+                                        lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        if (id(clock_show_date).state) {
+                                          lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        } else {
+                                          lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        if (id(analog_clock_canvas_widget) != nullptr) {
+                                          lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                          lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        for (auto w : {id(home_clock_label), id(home_weather_icon), id(home_weather_temp), id(home_weather_cond), id(home_room1_box), id(home_room2_box), id(home_room3_box), id(home_room4_box), id(home_room5_box), id(home_room6_box), id(home_forecast_strip), id(home_light1_button), id(home_light2_button), id(home_light3_button), id(home_light4_button)}) {
+                                          lv_obj_add_flag(w, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                    - component.update: clock_hms
+                                    - component.update: clock_date
+                                    - component.update: weather_temp_big
+                                    - component.update: weather_line
 
   - id: rooms_grid_apply
     then:
@@ -3007,6 +3196,149 @@ script:
           apply_box(id(room4_box), id(room4_icon), lv_color_hex(0xBA68C8), id(room4_light).state, id(room4_presence).state);
           apply_box(id(room5_box), id(room5_icon), lv_color_hex(0x1A237E), id(room5_light).state, id(room5_presence).state);
           apply_box(id(room6_box), id(room6_icon), lv_color_hex(0x81C784), id(room6_light).state, id(room6_presence).state);
+
+  - id: home_rooms_apply
+    then:
+      - lambda: |-
+          auto apply_box = [&](lv_obj_t *box, lv_obj_t *icon, lv_color_t on_color, bool light_on, bool presence_on) {
+            if (light_on) {
+              lv_obj_set_style_bg_color(box, on_color, 0);
+              lv_obj_set_style_bg_opa(box, LV_OPA_70, 0);
+            } else {
+              lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+            }
+            lv_obj_set_style_text_color(icon, lv_color_hex(0xFFFFFF), 0);
+            if (presence_on) {
+              lv_obj_clear_flag(icon, LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
+            }
+          };
+          apply_box(id(home_room1_box), id(home_room1_icon), lv_color_hex(0x4FC3F7), id(room1_light).state, id(room1_presence).state);
+          apply_box(id(home_room2_box), id(home_room2_icon), lv_color_hex(0xE53935), id(room2_light).state, id(room2_presence).state);
+          apply_box(id(home_room3_box), id(home_room3_icon), lv_color_hex(0xFDD835), id(room3_light).state, id(room3_presence).state);
+          apply_box(id(home_room4_box), id(home_room4_icon), lv_color_hex(0xBA68C8), id(room4_light).state, id(room4_presence).state);
+          apply_box(id(home_room5_box), id(home_room5_icon), lv_color_hex(0x1A237E), id(room5_light).state, id(room5_presence).state);
+          apply_box(id(home_room6_box), id(home_room6_icon), lv_color_hex(0x81C784), id(room6_light).state, id(room6_presence).state);
+
+  - id: refresh_home_light_buttons
+    then:
+      - lambda: |-
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const lv_color_t accent = lv_color_hex(accent_u32);
+          auto apply_button = [&](lv_obj_t *btn, bool on) {
+            lv_obj_set_style_border_color(btn, accent, 0);
+            if (on) {
+              lv_obj_set_style_bg_color(btn, accent, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+            } else {
+              lv_obj_set_style_bg_color(btn, lv_color_hex(0x202020), 0);
+              lv_obj_set_style_bg_opa(btn, 217, 0);
+            }
+          };
+          apply_button(id(home_light1_button), id(pulldown1_state).state);
+          apply_button(id(home_light2_button), id(pulldown2_state).state);
+          apply_button(id(home_light3_button), id(pulldown3_state).state);
+          apply_button(id(home_light4_button), id(pulldown4_state).state);
+
+  - id: fetch_daily_forecast
+    mode: restart
+    then:
+      - homeassistant.action:
+          action: weather.get_forecasts
+          data:
+            entity_id: ${ha_weather_entity}
+            type: daily
+          capture_response: true
+          on_success:
+            - lambda: |-
+                auto icon_for_condition = [](const std::string &condition) -> const char* {
+                  if (condition == "sunny" || condition == "clear") return "\U000F0599";
+                  if (condition == "partlycloudy") return "\U000F0595";
+                  if (condition == "cloudy") return "\U000F0590";
+                  if (condition == "rainy") return "\U000F0597";
+                  if (condition == "pouring") return "\U000F0596";
+                  if (condition == "snowy") return "\U000F0598";
+                  if (condition == "lightning") return "\U000F0593";
+                  if (condition == "hail") return "\U000F0592";
+                  return "\U000F0590";
+                };
+
+                auto weekday_from_iso = [](const char *iso_value, int fallback_offset) -> const char* {
+                  static const char* names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+                  if (iso_value == nullptr || iso_value[0] == '\0') {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  int year = 0;
+                  int month = 0;
+                  int day = 0;
+                  if (sscanf(iso_value, "%d-%d-%d", &year, &month, &day) != 3) {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  if (month < 1 || month > 12) {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  static const int offsets[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+                  if (month < 3) year -= 1;
+                  int day_index = (year + year / 4 - year / 100 + year / 400 + offsets[month - 1] + day) % 7;
+                  if (day_index < 0 || day_index > 6) {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  return names[day_index];
+                };
+
+                JsonArrayConst forecast = response["response"]["${ha_weather_entity}"]["forecast"].as<JsonArrayConst>();
+                if (forecast.isNull() || forecast.size() == 0) {
+                  lv_obj_add_flag(id(home_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                  ESP_LOGW("forecast", "No daily forecast data returned");
+                  return;
+                }
+
+                lv_obj_t *day_labels[3] = {id(home_forecast_day_1), id(home_forecast_day_2), id(home_forecast_day_3)};
+                lv_obj_t *icon_labels[3] = {id(home_forecast_icon_1), id(home_forecast_icon_2), id(home_forecast_icon_3)};
+                lv_obj_t *temp_labels[3] = {id(home_forecast_temp_1), id(home_forecast_temp_2), id(home_forecast_temp_3)};
+
+                size_t start_index = forecast.size() >= 4 ? 1 : 0;
+                std::string tunit = id(ha_weather_temperature_unit).state.c_str();
+                if (tunit.empty()) tunit = "\u00B0C";
+
+                bool rendered_any = false;
+                for (size_t i = 0; i < 3; i++) {
+                  size_t src_index = start_index + i;
+                  if (src_index >= forecast.size()) {
+                    lv_label_set_text(day_labels[i], "--");
+                    lv_label_set_text(icon_labels[i], "\U000F0590");
+                    lv_label_set_text(temp_labels[i], "--");
+                    continue;
+                  }
+                  JsonObjectConst day = forecast[src_index].as<JsonObjectConst>();
+                  const char *datetime_value = day["datetime"] | "";
+                  const char *condition_value = day["condition"] | "cloudy";
+                  float high_temp = day["temperature"] | NAN;
+                  float low_temp = day["templow"] | high_temp;
+
+                  lv_label_set_text(day_labels[i], weekday_from_iso(datetime_value, i));
+                  lv_label_set_text(icon_labels[i], icon_for_condition(std::string(condition_value)));
+
+                  if (std::isnan(high_temp)) {
+                    lv_label_set_text(temp_labels[i], "--");
+                  } else {
+                    char temp_buf[24];
+                    snprintf(temp_buf, sizeof(temp_buf), "%.0f/%.0f%s", high_temp, std::isnan(low_temp) ? high_temp : low_temp, tunit.c_str());
+                    lv_label_set_text(temp_labels[i], temp_buf);
+                    rendered_any = true;
+                  }
+                }
+
+                if (rendered_any) {
+                  lv_obj_clear_flag(id(home_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                } else {
+                  lv_obj_add_flag(id(home_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                }
+          on_error:
+            - lambda: |-
+                lv_obj_add_flag(id(home_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                ESP_LOGW("forecast", "weather.get_forecasts failed");
 
   - id: analog_clock_redraw
     mode: restart
@@ -5441,7 +5773,13 @@ touchscreen:
 
             if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown}) {
               const bool just_waking = id(standby_screen_timeout_enabled).state && id(touch_started_while_dimmed);
-              if (!just_waking) {
+              bool on_home_light_buttons = false;
+              if (id(ui_phase) == ${ui_phase_standby} && id(clock_style_mode) == ${clock_style_home}) {
+                lv_area_t light_btn_area;
+                lv_obj_get_coords(id(home_light1_button), &light_btn_area);
+                on_home_light_buttons = id(touch_last_y) >= light_btn_area.y1 - 8;
+              }
+              if (!just_waking && !on_home_light_buttons) {
                 if (id(ui_phase) != ${ui_phase_standby} || id(touch_start_x) >= ${imagewidth}) {
                   id(set_ui_phase)->execute(${ui_phase_player_controls});
                 }
@@ -6157,6 +6495,447 @@ lvgl:
                                     text_color: 0xFFFFFF
                                     text_font: font_mdi_rooms
                                     hidden: true
+
+                    - obj:
+                        id: home_center_block
+                        align: CENTER
+                        y: -28
+                        width: 480
+                        height: 480
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        widgets:
+                          - label:
+                              id: home_clock_label
+                              align: TOP_MID
+                              y: 18
+                              width: 456
+                              text: "--:--"
+                              text_color: 0xFFFFFF
+                              text_font: font_7seg_small
+                              text_align: CENTER
+                              hidden: true
+
+                          - label:
+                              id: home_weather_icon
+                              align: TOP_LEFT
+                              x: 12
+                              y: 84
+                              width: 190
+                              text: "\U000F0590"
+                              text_color: 0xFFFFFF
+                              text_font: font_home_weather_icon
+                              text_align: CENTER
+                              hidden: true
+
+                          - label:
+                              id: home_weather_temp
+                              align: TOP_LEFT
+                              x: 12
+                              y: 162
+                              width: 190
+                              text: "--"
+                              text_color: 0xFFFF00
+                              text_font: font_home_weather_temp
+                              text_align: CENTER
+                              hidden: true
+
+                          - label:
+                              id: home_weather_cond
+                              align: TOP_LEFT
+                              x: 12
+                              y: 218
+                              width: 190
+                              text: ""
+                              text_color: 0x8EDBFF
+                              text_font: font_home_weather_cond
+                              text_align: CENTER
+                              hidden: true
+
+                          - obj:
+                              id: home_room1_box
+                              align: TOP_LEFT
+                              x: 222
+                              y: 84
+                              width: 93
+                              height: 84
+                              radius: 11
+                              border_width: 2
+                              border_color: 0xFFFF00
+                              bg_color: 0x4FC3F7
+                              bg_opa: TRANSP
+                              pad_all: 0
+                              scrollable: false
+                              clickable: false
+                              hidden: true
+                              widgets:
+                                - label:
+                                    id: home_room1_icon
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_rooms_small
+                                    hidden: true
+
+                          - obj:
+                              id: home_room2_box
+                              align: TOP_LEFT
+                              x: 222
+                              y: 173
+                              width: 93
+                              height: 84
+                              radius: 11
+                              border_width: 2
+                              border_color: 0xFFFF00
+                              bg_color: 0xE53935
+                              bg_opa: TRANSP
+                              pad_all: 0
+                              scrollable: false
+                              clickable: false
+                              hidden: true
+                              widgets:
+                                - label:
+                                    id: home_room2_icon
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_rooms_small
+                                    hidden: true
+
+                          - obj:
+                              id: home_room3_box
+                              align: TOP_LEFT
+                              x: 321
+                              y: 84
+                              width: 54
+                              height: 173
+                              radius: 11
+                              border_width: 2
+                              border_color: 0xFFFF00
+                              bg_color: 0xFDD835
+                              bg_opa: TRANSP
+                              pad_all: 0
+                              scrollable: false
+                              clickable: false
+                              hidden: true
+                              widgets:
+                                - label:
+                                    id: home_room3_icon
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_rooms_small
+                                    hidden: true
+
+                          - obj:
+                              id: home_room4_box
+                              align: TOP_LEFT
+                              x: 380
+                              y: 84
+                              width: 84
+                              height: 54
+                              radius: 11
+                              border_width: 2
+                              border_color: 0xFFFF00
+                              bg_color: 0xBA68C8
+                              bg_opa: TRANSP
+                              pad_all: 0
+                              scrollable: false
+                              clickable: false
+                              hidden: true
+                              widgets:
+                                - label:
+                                    id: home_room4_icon
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_rooms_small
+                                    hidden: true
+
+                          - obj:
+                              id: home_room5_box
+                              align: TOP_LEFT
+                              x: 380
+                              y: 143
+                              width: 84
+                              height: 54
+                              radius: 11
+                              border_width: 2
+                              border_color: 0xFFFF00
+                              bg_color: 0x1A237E
+                              bg_opa: TRANSP
+                              pad_all: 0
+                              scrollable: false
+                              clickable: false
+                              hidden: true
+                              widgets:
+                                - label:
+                                    id: home_room5_icon
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_rooms_small
+                                    hidden: true
+
+                          - obj:
+                              id: home_room6_box
+                              align: TOP_LEFT
+                              x: 380
+                              y: 202
+                              width: 84
+                              height: 55
+                              radius: 11
+                              border_width: 2
+                              border_color: 0xFFFF00
+                              bg_color: 0x81C784
+                              bg_opa: TRANSP
+                              pad_all: 0
+                              scrollable: false
+                              clickable: false
+                              hidden: true
+                              widgets:
+                                - label:
+                                    id: home_room6_icon
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_rooms_small
+                                    hidden: true
+
+                          - obj:
+                              id: home_forecast_strip
+                              align: TOP_LEFT
+                              x: 12
+                              y: 264
+                              width: 456
+                              height: 84
+                              radius: 16
+                              pad_all: 4
+                              scrollable: false
+                              bg_color: 0x000000
+                              bg_opa: 35%
+                              border_opa: 15%
+                              border_color: 0xFFFFFF
+                              border_width: 1
+                              hidden: true
+                              widgets:
+                                - obj:
+                                    align: LEFT_MID
+                                    width: 148
+                                    height: 74
+                                    bg_opa: TRANSP
+                                    border_opa: TRANSP
+                                    pad_all: 0
+                                    scrollable: false
+                                    widgets:
+                                      - label:
+                                          id: home_forecast_day_1
+                                          align: TOP_MID
+                                          text: "--"
+                                          text_color: 0xFFFF00
+                                          text_font: font_home_small
+                                      - label:
+                                          id: home_forecast_icon_1
+                                          align: CENTER
+                                          text: "\U000F0590"
+                                          text_color: 0xFFFFFF
+                                          text_font: font_mdi_forecast
+                                      - label:
+                                          id: home_forecast_temp_1
+                                          align: BOTTOM_MID
+                                          text: "--"
+                                          text_color: 0x8EDBFF
+                                          text_font: font_home_small
+
+                                - obj:
+                                    align: CENTER
+                                    width: 148
+                                    height: 74
+                                    bg_opa: TRANSP
+                                    border_opa: TRANSP
+                                    pad_all: 0
+                                    scrollable: false
+                                    widgets:
+                                      - label:
+                                          id: home_forecast_day_2
+                                          align: TOP_MID
+                                          text: "--"
+                                          text_color: 0xFFFF00
+                                          text_font: font_home_small
+                                      - label:
+                                          id: home_forecast_icon_2
+                                          align: CENTER
+                                          text: "\U000F0590"
+                                          text_color: 0xFFFFFF
+                                          text_font: font_mdi_forecast
+                                      - label:
+                                          id: home_forecast_temp_2
+                                          align: BOTTOM_MID
+                                          text: "--"
+                                          text_color: 0x8EDBFF
+                                          text_font: font_home_small
+
+                                - obj:
+                                    align: RIGHT_MID
+                                    width: 148
+                                    height: 74
+                                    bg_opa: TRANSP
+                                    border_opa: TRANSP
+                                    pad_all: 0
+                                    scrollable: false
+                                    widgets:
+                                      - label:
+                                          id: home_forecast_day_3
+                                          align: TOP_MID
+                                          text: "--"
+                                          text_color: 0xFFFF00
+                                          text_font: font_home_small
+                                      - label:
+                                          id: home_forecast_icon_3
+                                          align: CENTER
+                                          text: "\U000F0590"
+                                          text_color: 0xFFFFFF
+                                          text_font: font_mdi_forecast
+                                      - label:
+                                          id: home_forecast_temp_3
+                                          align: BOTTOM_MID
+                                          text: "--"
+                                          text_color: 0x8EDBFF
+                                          text_font: font_home_small
+
+                          - button:
+                              id: home_light1_button
+                              align: TOP_LEFT
+                              x: 12
+                              y: 356
+                              width: 108
+                              height: 112
+                              radius: 18
+                              bg_color: 0x202020
+                              bg_opa: 85%
+                              border_color: 0x505050
+                              border_width: 1
+                              hidden: true
+                              pressed:
+                                bg_color: 0x66CCFF
+                                bg_opa: COVER
+                                border_color: 0xFFFFFF
+                                border_width: 4
+                              on_click:
+                                - homeassistant.action:
+                                    action: homeassistant.toggle
+                                    data:
+                                      entity_id: ${pulldown1_entity}
+                              widgets:
+                                - label:
+                                    id: home_light1_button_label
+                                    align: CENTER
+                                    width: 96
+                                    text: "Light 1"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_home_light_label
+                                    text_align: CENTER
+
+                          - button:
+                              id: home_light2_button
+                              align: TOP_LEFT
+                              x: 128
+                              y: 356
+                              width: 108
+                              height: 112
+                              radius: 18
+                              bg_color: 0x202020
+                              bg_opa: 85%
+                              border_color: 0x505050
+                              border_width: 1
+                              hidden: true
+                              pressed:
+                                bg_color: 0x66CCFF
+                                bg_opa: COVER
+                                border_color: 0xFFFFFF
+                                border_width: 4
+                              on_click:
+                                - homeassistant.action:
+                                    action: homeassistant.toggle
+                                    data:
+                                      entity_id: ${pulldown2_entity}
+                              widgets:
+                                - label:
+                                    id: home_light2_button_label
+                                    align: CENTER
+                                    width: 96
+                                    text: "Light 2"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_home_light_label
+                                    text_align: CENTER
+
+                          - button:
+                              id: home_light3_button
+                              align: TOP_LEFT
+                              x: 244
+                              y: 356
+                              width: 108
+                              height: 112
+                              radius: 18
+                              bg_color: 0x202020
+                              bg_opa: 85%
+                              border_color: 0x505050
+                              border_width: 1
+                              hidden: true
+                              pressed:
+                                bg_color: 0x66CCFF
+                                bg_opa: COVER
+                                border_color: 0xFFFFFF
+                                border_width: 4
+                              on_click:
+                                - homeassistant.action:
+                                    action: homeassistant.toggle
+                                    data:
+                                      entity_id: ${pulldown3_entity}
+                              widgets:
+                                - label:
+                                    id: home_light3_button_label
+                                    align: CENTER
+                                    width: 96
+                                    text: "Light 3"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_home_light_label
+                                    text_align: CENTER
+
+                          - button:
+                              id: home_light4_button
+                              align: TOP_LEFT
+                              x: 360
+                              y: 356
+                              width: 108
+                              height: 112
+                              radius: 18
+                              bg_color: 0x202020
+                              bg_opa: 85%
+                              border_color: 0x505050
+                              border_width: 1
+                              hidden: true
+                              pressed:
+                                bg_color: 0x66CCFF
+                                bg_opa: COVER
+                                border_color: 0xFFFFFF
+                                border_width: 4
+                              on_click:
+                                - homeassistant.action:
+                                    action: homeassistant.toggle
+                                    data:
+                                      entity_id: ${pulldown4_entity}
+                              widgets:
+                                - label:
+                                    id: home_light4_button_label
+                                    align: CENTER
+                                    width: 96
+                                    text: "Light 4"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_home_light_label
+                                    text_align: CENTER
 
               - obj:
                   id: controls_panel
