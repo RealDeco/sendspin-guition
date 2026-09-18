@@ -259,7 +259,11 @@ interval:
           selected_option: !lambda 'return id(standby_frame_content).current_option().str();'
   - interval: 10min
     then:
-      - script.execute: fetch_daily_forecast
+      - if:
+          condition:
+            lambda: 'return id(clock_style_mode) == ${clock_style_home};'
+          then:
+            - script.execute: fetch_daily_forecast
 
 globals:
   - id: boot_sound_played
@@ -3330,7 +3334,7 @@ script:
                   }
                 }
 
-                if (rendered_any) {
+                if (rendered_any && id(clock_style_mode) == ${clock_style_home}) {
                   lv_obj_clear_flag(id(home_forecast_strip), LV_OBJ_FLAG_HIDDEN);
                 } else {
                   lv_obj_add_flag(id(home_forecast_strip), LV_OBJ_FLAG_HIDDEN);
