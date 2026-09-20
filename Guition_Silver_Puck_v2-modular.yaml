@@ -630,6 +630,12 @@ image:
       - lvgl.image.update:
           id: playlist_album_art_widget
           src: sendspin_album_art
+      - lvgl.image.update:
+          id: pullup_album_art_widget
+          src: sendspin_album_art
+      - lvgl.image.update:
+          id: pulldown_album_art_widget
+          src: sendspin_album_art
     on_image_clear:
       - lambda: |-
           ESP_LOGI("album_art", "Album art cleared");
@@ -835,12 +841,8 @@ media_player:
             then:
               - if:
                   condition:
-                    lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+                    lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
                   then:
-                    - script.execute:
-                        id: set_ui_phase
-                        phase: ${ui_phase_player_controls}
-                  else:
                     - script.execute:
                         id: set_ui_phase
                         phase: ${ui_phase_now_playing}
@@ -1015,7 +1017,7 @@ touchscreen:
               return;
             }
 
-            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown} && id(ui_phase) != ${ui_phase_pullup}) {
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown} && id(ui_phase) != ${ui_phase_pullup} && id(ui_phase) != ${ui_phase_player_controls}) {
               id(set_ui_phase)->execute(${ui_phase_player_controls});
             }
 
@@ -3946,6 +3948,16 @@ script:
       - lambda: |-
           id(pulldown_return_phase) = id(ui_phase);
           id(ui_phase) = ${ui_phase_pulldown};
+          bool show_album_art = id(pulldown_return_phase) == ${ui_phase_now_playing};
+          if (show_album_art) {
+            lv_obj_add_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          }
       - script.execute: standby_screen_activity
       - lvgl.page.show:
           id: pulldown_page
@@ -3990,6 +4002,16 @@ script:
       - lambda: |-
           id(pullup_return_phase) = id(ui_phase);
           id(ui_phase) = ${ui_phase_pullup};
+          bool show_album_art = id(pullup_return_phase) == ${ui_phase_player_controls} || id(pullup_return_phase) == ${ui_phase_now_playing};
+          if (show_album_art) {
+            lv_obj_add_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pullup_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pullup_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pullup_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pullup_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          }
       - script.execute: standby_screen_activity
       - lvgl.page.show:
           id: pullup_page
@@ -4365,7 +4387,7 @@ script:
                   call.perform();
                 }
                 lv_label_set_text(id(controls_mute_icon), new_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
-            - script.execute: player_controls_keep_open
+            - script.execute: player_controls_timeout
 
   - id: player_controls_slide_to_now_playing
     mode: restart
@@ -4870,6 +4892,12 @@ script:
                 src: fallback_playing_image
             - lvgl.image.update:
                 id: playlist_album_art_widget
+                src: fallback_playing_image
+            - lvgl.image.update:
+                id: pullup_album_art_widget
+                src: fallback_playing_image
+            - lvgl.image.update:
+                id: pulldown_album_art_widget
                 src: fallback_playing_image
 
   - id: ring_timer
@@ -6169,6 +6197,30 @@ lvgl:
             clickable: false
             hidden: true
 
+        - image:
+            id: pulldown_album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: pulldown_album_art_dim
+            align: CENTER
+            width: 360
+            height: 360
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
+            hidden: true
+
         - label:
             id: pulldown_title_label
             align: TOP_MID
@@ -6312,6 +6364,30 @@ lvgl:
             height: ${imageheight}
             antialias: false
             clickable: false
+            hidden: true
+
+        - image:
+            id: pullup_album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: pullup_album_art_dim
+            align: CENTER
+            width: 360
+            height: 360
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
             hidden: true
 
         - label:
