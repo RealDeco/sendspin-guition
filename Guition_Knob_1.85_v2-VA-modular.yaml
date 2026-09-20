@@ -73,6 +73,7 @@ substitutions:
   ui_phase_now_playing: "2"
   ui_phase_playlist_menu: "3"
   ui_phase_pulldown: "4"
+  ui_phase_pullup: "5"
   va_phase_idle: "0"
   va_phase_waiting_for_command: "1"
   va_phase_listening: "2"
@@ -339,6 +340,18 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: "0"
+  - id: pullup_return_phase
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: pulldown_return_phase
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: pullup_player_target
+    type: int
+    restore_value: yes
+    initial_value: "0"
   - id: preferred_screen_brightness
     type: float
     restore_value: yes
@@ -501,6 +514,13 @@ image:
     dither: NONE
 
   - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/idle.png
+    id: pullup_va1_icon
+    resize: 122x110
+    type: RGB565
+    dither: NONE
+
+  - platform: file
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/listening.png
     id: va_listening_image1
     resize: ${imagewidth}x${imageheight}
@@ -526,6 +546,13 @@ image:
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/idle.png
     id: va_waiting_image2
     resize: ${imagewidth}x${imageheight}
+    type: RGB565
+    dither: NONE
+
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/idle.png
+    id: pullup_va2_icon
+    resize: 122x110
     type: RGB565
     dither: NONE
 
@@ -570,9 +597,13 @@ image:
             - lvgl.image.update:
                 id: pulldown_background_widget
                 src: standby_background_image
+            - lvgl.image.update:
+                id: pullup_background_widget
+                src: standby_background_image
             - lambda: |-
                 lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
 
 ### sendspin album art
 
@@ -605,6 +636,12 @@ image:
           src: sendspin_album_art
       - lvgl.image.update:
           id: playlist_album_art_widget
+          src: sendspin_album_art
+      - lvgl.image.update:
+          id: pullup_album_art_widget
+          src: sendspin_album_art
+      - lvgl.image.update:
+          id: pulldown_album_art_widget
           src: sendspin_album_art
     on_image_clear:
       - logger.log:
@@ -765,6 +802,7 @@ media_player:
               - not:
                   voice_assistant.is_running:
               - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+              - lambda: 'return !id(manual_va_active);'
           then:
             - script.execute:
                 id: set_ui_phase
@@ -816,12 +854,8 @@ media_player:
             then:
               - if:
                   condition:
-                    lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+                    lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
                   then:
-                    - script.execute:
-                        id: set_ui_phase
-                        phase: ${ui_phase_player_controls}
-                  else:
                     - script.execute:
                         id: set_ui_phase
                         phase: ${ui_phase_now_playing}
@@ -852,7 +886,9 @@ media_player:
         - script.execute: led_ring_apply_state
         - if:
             condition:
-              lambda: 'return id(va_phase) == ${va_phase_idle};'
+              and:
+                - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                - lambda: 'return !id(manual_va_active);'
             then:
               - script.execute: start_wake_word
               - script.execute:
@@ -878,7 +914,12 @@ binary_sensor:
             tag: rotary
             format: "GPIO1 CW pulse"
         - script.execute: standby_screen_activity
-        - media_player.volume_up: external_media_player
+        - lambda: |-
+            if (id(pullup_player_target) == 1) {
+              id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
+            } else {
+              id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
+            }
         - script.execute: haptic_click
         - script.execute: show_volume_ring
 
@@ -900,7 +941,12 @@ binary_sensor:
             tag: rotary
             format: "GPIO2 CCW pulse"
         - script.execute: standby_screen_activity
-        - media_player.volume_down: external_media_player
+        - lambda: |-
+            if (id(pullup_player_target) == 1) {
+              id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
+            } else {
+              id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
+            }
         - script.execute: haptic_click
         - script.execute: show_volume_ring
 
@@ -1030,8 +1076,6 @@ touchscreen:
                   lv_obj_remove_state(id(controls_repeat_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(controls_shuffle_button), LV_STATE_PRESSED);
-                  lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
-                  lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
                 }
                 break;
               }
@@ -1067,10 +1111,14 @@ touchscreen:
                 } else if (dy < 0) {
                   if (id(now_playing_art_mode)) {
                     id(now_playing_show_album_art)->execute();
+                  } else {
+                    id(open_pullup_menu)->execute();
                   }
                 } else {
                   if (id(artist_art_valid) && !id(now_playing_art_mode)) {
                     id(now_playing_show_artist_art)->execute();
+                  } else {
+                    id(open_pulldown_menu)->execute();
                   }
                 }
               } else if (id(ui_phase) == ${ui_phase_player_controls}) {
@@ -1081,7 +1129,7 @@ touchscreen:
                     id(player_controls_swipe_previous)->execute();
                   }
                 } else if (dy < 0) {
-                  id(start_manual_va)->execute();
+                  id(open_pullup_menu)->execute();
                 } else {
                   id(open_playlist_menu)->execute();
                 }
@@ -1103,19 +1151,26 @@ touchscreen:
                     id(clock_style_choice).make_call().select_previous(true).perform();
                   }
                 } else if (dy < 0) {
-                  id(start_manual_va)->execute();
+                  id(open_pullup_menu)->execute();
                 } else {
                   id(open_pulldown_menu)->execute();
                 }
               } else if (id(ui_phase) == ${ui_phase_pulldown}) {
-                if (abs_x < abs_y && dy < 0) {
+                if (abs_x < abs_y && (dy < 0 || dy > 0)) {
                   id(close_pulldown_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_pullup}) {
+                if (abs_x < abs_y && dy > 0) {
+                  id(close_pullup_menu)->execute();
+                } else if (abs_x < abs_y && dy < 0) {
+                  id(pullup_return_phase) = ${ui_phase_standby};
+                  id(close_pullup_menu)->execute();
                 }
               }
               return;
             }
 
-            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown}) {
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown} && id(ui_phase) != ${ui_phase_pullup} && id(ui_phase) != ${ui_phase_player_controls}) {
               id(set_ui_phase)->execute(${ui_phase_player_controls});
             }
 
@@ -2433,6 +2488,15 @@ font:
       - "\U000F049E"
 
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_pullup
+    size: 64
+    glyphs:
+      - "\U000F036C"
+      - "\U000F036D"
+      - "\U000F0004"
+      - "\U000F0849"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_status
     size: 140
     glyphs:
@@ -2733,8 +2797,11 @@ script:
 
   - id: start_manual_va
     mode: restart
+    parameters:
+      image_set: int
     then:
       - script.stop: player_controls_timeout
+      - script.stop: pullup_timeout
       - lambda: |-
           id(manual_va_active) = true;
           id(manual_va_resume_media) = id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_PLAYING;
@@ -2751,12 +2818,13 @@ script:
       - script.execute: stop_wake_word
       - delay: 100ms
       - lambda: |-
-          id(active_image_set) = 1;
-          id(manual_va_slide_up) = true;
+          id(active_image_set) = image_set;
       - script.execute:
           id: set_va_phase
           phase: ${va_phase_waiting_for_command}
       - voice_assistant.start:
+          wake_word: !lambda |-
+            return image_set == 2 ? id(wake_word_2_label).state : id(wake_word_1_label).state;
 
   - id: stop_active_va
     mode: restart
@@ -2918,8 +2986,6 @@ script:
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_album_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_mute_icon), accent4, 0);
-          lv_obj_set_style_text_color(id(controls_volume_down_icon), accent4, 0);
-          lv_obj_set_style_text_color(id(controls_volume_up_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_group_label), accent4, 0);
 
           lv_obj_t *playlist_buttons[] = {
@@ -2944,6 +3010,14 @@ script:
           lv_obj_set_style_text_color(id(rooms_clock_label), accent3, 0);
           lv_obj_set_style_text_color(id(rooms_date_label), accent2, 0);
           lv_obj_set_style_text_color(id(pulldown_title_label), accent3, 0);
+          lv_obj_set_style_text_color(id(pullup_title_label), accent3, 0);
+          lv_obj_t *pullup_buttons[] = {
+            id(pullup_va1_button), id(pullup_va2_button), id(pullup_mute_button), id(pullup_target_button)
+          };
+          for (auto *btn : pullup_buttons) {
+            lv_obj_set_style_border_color(btn, accent, 0);
+            lv_obj_set_style_shadow_color(btn, accent, 0);
+          }
           lv_obj_t *room_boxes[] = {
             id(room1_box), id(room2_box), id(room3_box),
             id(room4_box), id(room5_box), id(room6_box)
@@ -3919,6 +3993,7 @@ script:
     then:
       - script.stop: player_controls_timeout
       - script.stop: pulldown_timeout
+      - script.stop: pullup_timeout
       - lambda: |-
           id(ui_phase) = phase;
       - script.execute: standby_screen_activity
@@ -3934,7 +4009,7 @@ script:
           then:
             - lvgl.page.show: player_controls_page
             - lambda: |-
-                lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
+                lv_label_set_text(id(controls_mute_icon), (id(pullup_player_target) == 1 ? id(sendspin_group_media_player).is_muted() : id(external_media_player).is_muted()) ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
       - if:
           condition:
@@ -3954,6 +4029,13 @@ script:
             - lvgl.page.show: pulldown_page
             - script.execute: refresh_pulldown_states
             - script.execute: pulldown_timeout
+      - if:
+          condition:
+            lambda: 'return id(boot_sound_played) && phase == ${ui_phase_pullup};'
+          then:
+            - lvgl.page.show: pullup_page
+            - script.execute: refresh_pullup_state
+            - script.execute: pullup_timeout
 
   - id: player_controls_timeout
     mode: restart
@@ -4070,7 +4152,18 @@ script:
       - script.stop: player_controls_timeout
       - script.stop: pulldown_timeout
       - lambda: |-
+          id(pulldown_return_phase) = id(ui_phase);
           id(ui_phase) = ${ui_phase_pulldown};
+          bool show_album_art = id(pulldown_return_phase) == ${ui_phase_now_playing};
+          if (show_album_art) {
+            lv_obj_add_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          }
       - script.execute: standby_screen_activity
       - lvgl.page.show:
           id: pulldown_page
@@ -4083,19 +4176,107 @@ script:
     then:
       - script.stop: pulldown_timeout
       - lambda: |-
-          id(ui_phase) = ${ui_phase_standby};
+          id(ui_phase) = id(pulldown_return_phase);
       - script.execute: standby_screen_activity
-      - lvgl.page.show:
-          id: idle_page
-          animation: MOVE_TOP
-          time: 220ms
-      - component.update: weather_line
+      - if:
+          condition:
+            lambda: 'return id(pulldown_return_phase) == ${ui_phase_now_playing};'
+          then:
+            - lvgl.page.show:
+                id: sendspin_page
+                animation: MOVE_TOP
+                time: 220ms
+            - script.execute: now_playing_show_album_art
+          else:
+            - lvgl.page.show:
+                id: idle_page
+                animation: MOVE_TOP
+                time: 220ms
+            - component.update: weather_line
 
   - id: pulldown_timeout
     mode: restart
     then:
       - delay: 6s
       - script.execute: close_pulldown_menu
+
+  - id: open_pullup_menu
+    then:
+      - script.stop: player_controls_timeout
+      - script.stop: pulldown_timeout
+      - script.stop: pullup_timeout
+      - lambda: |-
+          id(pullup_return_phase) = id(ui_phase);
+          id(ui_phase) = ${ui_phase_pullup};
+          bool show_album_art = id(pullup_return_phase) == ${ui_phase_player_controls} || id(pullup_return_phase) == ${ui_phase_now_playing};
+          if (show_album_art) {
+            lv_obj_add_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pullup_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pullup_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pullup_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pullup_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          }
+      - script.execute: standby_screen_activity
+      - lvgl.page.show:
+          id: pullup_page
+          animation: MOVE_TOP
+          time: 220ms
+      - script.execute: refresh_pullup_state
+      - script.execute: pullup_timeout
+
+  - id: close_pullup_menu
+    then:
+      - script.stop: pullup_timeout
+      - lambda: |-
+          id(ui_phase) = id(pullup_return_phase);
+      - script.execute: standby_screen_activity
+      - if:
+          condition:
+            lambda: 'return id(pullup_return_phase) == ${ui_phase_player_controls};'
+          then:
+            - lvgl.page.show:
+                id: player_controls_page
+                animation: MOVE_BOTTOM
+                time: 220ms
+            - lambda: |-
+                lv_label_set_text(id(controls_mute_icon), (id(pullup_player_target) == 1 ? id(sendspin_group_media_player).is_muted() : id(external_media_player).is_muted()) ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
+            - script.execute: player_controls_timeout
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(pullup_return_phase) == ${ui_phase_now_playing};'
+                then:
+                  - lvgl.page.show:
+                      id: sendspin_page
+                      animation: MOVE_BOTTOM
+                      time: 220ms
+                else:
+                  - lvgl.page.show:
+                      id: idle_page
+                      animation: MOVE_BOTTOM
+                      time: 220ms
+                  - component.update: weather_line
+
+  - id: pullup_timeout
+    mode: restart
+    then:
+      - delay: 6s
+      - script.execute: close_pullup_menu
+
+  - id: refresh_pullup_state
+    then:
+      - lambda: |-
+          bool mic_muted = id(mute).state;
+          lv_label_set_text(id(pullup_mute_label), mic_muted ? "\U000F036D" : "\U000F036C");
+          lv_obj_set_style_bg_color(id(pullup_mute_button), lv_color_hex(mic_muted ? 0xFF3333 : 0x00CC66), 0);
+          lv_obj_set_style_bg_opa(id(pullup_mute_button), LV_OPA_40, 0);
+
+          bool is_group = id(pullup_player_target) == 1;
+          lv_label_set_text(id(pullup_target_label), is_group ? "\U000F0849" : "\U000F0004");
+          lv_obj_set_style_bg_color(id(pullup_target_button), lv_color_hex(is_group ? 0xFFAA00 : 0x3399FF), 0);
+          lv_obj_set_style_bg_opa(id(pullup_target_button), LV_OPA_40, 0);
 
   - id: play_playlist
     parameters:
@@ -4359,28 +4540,6 @@ script:
               break;
           }
 
-  - id: player_controls_volume_down
-    then:
-      - delay: 75ms
-      - if:
-          condition:
-            lambda: 'return !id(touch_swipe_detected);'
-          then:
-            - media_player.volume_down: external_media_player
-            - script.execute: show_volume_ring
-            - script.execute: player_controls_keep_open
-
-  - id: player_controls_volume_up
-    then:
-      - delay: 75ms
-      - if:
-          condition:
-            lambda: 'return !id(touch_swipe_detected);'
-          then:
-            - media_player.volume_up: external_media_player
-            - script.execute: show_volume_ring
-            - script.execute: player_controls_keep_open
-
   - id: player_controls_mute
     then:
       - delay: 75ms
@@ -4389,12 +4548,20 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - lambda: |-
-                bool new_muted = !id(external_media_player).is_muted();
-                auto call = id(external_media_player).make_call();
-                call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
-                call.perform();
+                bool new_muted;
+                if (id(pullup_player_target) == 1) {
+                  new_muted = !id(sendspin_group_media_player).is_muted();
+                  auto call = id(sendspin_group_media_player).make_call();
+                  call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                  call.perform();
+                } else {
+                  new_muted = !id(external_media_player).is_muted();
+                  auto call = id(external_media_player).make_call();
+                  call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                  call.perform();
+                }
                 lv_label_set_text(id(controls_mute_icon), new_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
-            - script.execute: player_controls_keep_open
+            - script.execute: player_controls_timeout
 
   - id: player_controls_slide_to_now_playing
     mode: restart
@@ -4832,7 +4999,8 @@ script:
             lv_obj_set_style_text_font(id(volume_ring_label), id(font_7seg), 0);
           }
 
-          const float volume = std::max(0.0f, std::min(1.0f, id(external_media_player).volume));
+          const float raw_volume = (id(pullup_player_target) == 1) ? id(sendspin_group_media_player).volume : id(external_media_player).volume;
+          const float volume = std::max(0.0f, std::min(1.0f, raw_volume));
           const int pct = (int) lroundf(volume * 100.0f);
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
@@ -4898,6 +5066,12 @@ script:
                 src: fallback_playing_image
             - lvgl.image.update:
                 id: playlist_album_art_widget
+                src: fallback_playing_image
+            - lvgl.image.update:
+                id: pullup_album_art_widget
+                src: fallback_playing_image
+            - lvgl.image.update:
+                id: pulldown_album_art_widget
                 src: fallback_playing_image
 
   - id: ring_timer
@@ -5758,10 +5932,11 @@ lvgl:
         - button:
             id: controls_mute_button
             align: BOTTOM_MID
-            y: -65
-            width: 58
-            height: 48
-            radius: 24
+            x: -65
+            y: -45
+            width: 110
+            height: 70
+            radius: 20
             bg_color: 0x202020
             bg_opa: 85%
             border_color: 0x505050
@@ -5860,71 +6035,13 @@ lvgl:
                   text_font: font_mdi_controls
 
         - button:
-            id: controls_volume_down_button
-            align: BOTTOM_MID
-            x: -72
-            y: -65
-            width: 58
-            height: 48
-            radius: 24
-            bg_color: 0x202020
-            bg_opa: 85%
-            border_color: 0x505050
-            border_width: 1
-            pressed:
-              bg_color: 0x66CCFF
-              bg_opa: COVER
-              border_color: 0xFFFFFF
-              border_width: 3
-            on_click:
-              - script.execute: player_controls_volume_down
-            on_long_press_repeat:
-              - script.execute: player_controls_volume_down
-            widgets:
-              - label:
-                  id: controls_volume_down_icon
-                  align: CENTER
-                  text: "\U000F075E"
-                  text_color: 0xFFFFFF
-                  text_font: font_mdi_controls
-
-        - button:
-            id: controls_volume_up_button
-            align: BOTTOM_MID
-            x: 72
-            y: -65
-            width: 58
-            height: 48
-            radius: 24
-            bg_color: 0x202020
-            bg_opa: 85%
-            border_color: 0x505050
-            border_width: 1
-            pressed:
-              bg_color: 0x66CCFF
-              bg_opa: COVER
-              border_color: 0xFFFFFF
-              border_width: 3
-            on_click:
-              - script.execute: player_controls_volume_up
-            on_long_press_repeat:
-              - script.execute: player_controls_volume_up
-            widgets:
-              - label:
-                  id: controls_volume_up_icon
-                  align: CENTER
-                  text: "\U000F075D"
-                  text_color: 0xFFFFFF
-                  text_font: font_mdi_controls
-
-        - button:
             id: controls_group_button
             align: BOTTOM_MID
-            x: 0
-            y: -10
-            width: 160
-            height: 38
-            radius: 12
+            x: 65
+            y: -45
+            width: 110
+            height: 70
+            radius: 20
             bg_color: 0x202020
             bg_opa: 85%
             border_color: 0x505050
@@ -6315,12 +6432,36 @@ lvgl:
             clickable: false
             hidden: true
 
+        - image:
+            id: pulldown_album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: pulldown_album_art_dim
+            align: CENTER
+            width: 360
+            height: 360
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
+            hidden: true
+
         - label:
             id: pulldown_title_label
             align: TOP_MID
             y: 16
             width: 310
-            text: "Controls"
+            text: "Lights"
             text_color: 0x66CCFF
             text_font: font_display_medium
             text_align: CENTER
@@ -6443,4 +6584,166 @@ lvgl:
                   text: "Light 4"
                   text_color: 0xFFFFFF
                   text_font: font_playlist
+                  text_align: CENTER
+
+    - id: pullup_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: pullup_background_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: standby_background_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - image:
+            id: pullup_album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: pullup_album_art_dim
+            align: CENTER
+            width: 360
+            height: 360
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
+            hidden: true
+
+        - label:
+            id: pullup_title_label
+            align: TOP_MID
+            y: 16
+            width: 310
+            text: "Control"
+            text_color: 0x66CCFF
+            text_font: font_display_medium
+            text_align: CENTER
+
+        - button:
+            id: pullup_va1_button
+            align: TOP_MID
+            x: -72
+            y: 55
+            width: 130
+            height: 118
+            radius: 20
+            bg_opa: TRANSP
+            clip_corner: true
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            on_click:
+              - script.execute:
+                  id: start_manual_va
+                  image_set: 1
+            widgets:
+              - image:
+                  id: pullup_va1_icon_widget
+                  align: CENTER
+                  src: pullup_va1_icon
+                  width: 122
+                  height: 110
+                  antialias: false
+                  clickable: false
+
+        - button:
+            id: pullup_va2_button
+            align: TOP_MID
+            x: 72
+            y: 55
+            width: 130
+            height: 118
+            radius: 20
+            bg_opa: TRANSP
+            clip_corner: true
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            on_click:
+              - script.execute:
+                  id: start_manual_va
+                  image_set: 2
+            widgets:
+              - image:
+                  id: pullup_va2_icon_widget
+                  align: CENTER
+                  src: pullup_va2_icon
+                  width: 122
+                  height: 110
+                  antialias: false
+                  clickable: false
+
+        - button:
+            id: pullup_mute_button
+            align: TOP_MID
+            x: -72
+            y: 187
+            width: 130
+            height: 118
+            radius: 20
+            bg_opa: TRANSP
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            on_click:
+              - switch.toggle: mute
+              - script.execute: refresh_pullup_state
+              - script.execute: pullup_timeout
+            widgets:
+              - label:
+                  id: pullup_mute_label
+                  align: CENTER
+                  text: "\U000F036C"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_pullup
+                  text_align: CENTER
+
+        - button:
+            id: pullup_target_button
+            align: TOP_MID
+            x: 72
+            y: 187
+            width: 130
+            height: 118
+            radius: 20
+            bg_opa: TRANSP
+            border_color: 0xFFFF00
+            border_width: 4
+            shadow_color: 0xFFFF00
+            shadow_width: 18
+            shadow_opa: 45%
+            on_click:
+              - lambda: |-
+                  id(pullup_player_target) = id(pullup_player_target) == 1 ? 0 : 1;
+              - script.execute: refresh_pullup_state
+              - script.execute: pullup_timeout
+            widgets:
+              - label:
+                  id: pullup_target_label
+                  align: CENTER
+                  text: "\U000F0004"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_pullup
                   text_align: CENTER
