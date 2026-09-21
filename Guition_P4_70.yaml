@@ -61,6 +61,7 @@ substitutions:
   ui_phase_now_playing: "2"
   ui_phase_playlist_menu: "3"
   ui_phase_pulldown: "4"
+  ui_phase_pullup: "5"
   clock_style_digital: "0"
   clock_style_analog: "1"
   clock_style_rooms: "2"
@@ -266,6 +267,18 @@ interval:
             - script.execute: fetch_daily_forecast
 
 globals:
+  - id: light_slider_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: light_slider_target
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: light_slider_just_opened
+    type: bool
+    restore_value: no
+    initial_value: "false"
   - id: boot_sound_played
     type: bool
     restore_value: no
@@ -314,6 +327,14 @@ globals:
     type: int
     restore_value: no
     initial_value: "${ui_phase_standby}"
+  - id: pullup_return_phase
+    type: int
+    restore_value: no
+    initial_value: "${ui_phase_standby}"
+  - id: pullup_player_target
+    type: int
+    restore_value: yes
+    initial_value: "0"
   - id: touch_active
     type: bool
     restore_value: no
@@ -545,6 +566,13 @@ image:
     dither: NONE
 
   - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/idle.png
+    id: pullup_va1_icon
+    resize: 108x108
+    type: RGB565
+    dither: NONE
+
+  - platform: file
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/${imagewidth}x${imageheight}/listening.png
     id: va_listening_image1
     resize: ${imagewidth}x${imageheight}
@@ -570,6 +598,13 @@ image:
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/idle.png
     id: va_waiting_image2
     resize: ${imagewidth}x${imageheight}
+    type: RGB565
+    dither: NONE
+
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/${imagewidth}x${imageheight}/idle.png
+    id: pullup_va2_icon
+    resize: 108x108
     type: RGB565
     dither: NONE
 
@@ -830,6 +865,7 @@ media_player:
               - not:
                   voice_assistant.is_running:
               - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+              - lambda: 'return !id(manual_va_active);'
           then:
             - script.execute:
                 id: set_ui_phase
@@ -880,12 +916,8 @@ media_player:
             then:
               - if:
                   condition:
-                    lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
+                    lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
                   then:
-                    - script.execute:
-                        id: set_ui_phase
-                        phase: ${ui_phase_player_controls}
-                  else:
                     - script.execute:
                         id: set_ui_phase
                         phase: ${ui_phase_now_playing}
@@ -1970,6 +2002,22 @@ sensor:
     attribute: wind_speed
     on_value:
       - component.update: weather_line
+  - platform: homeassistant
+    id: pulldown1_brightness
+    entity_id: ${pulldown1_entity}
+    attribute: brightness
+  - platform: homeassistant
+    id: pulldown2_brightness
+    entity_id: ${pulldown2_entity}
+    attribute: brightness
+  - platform: homeassistant
+    id: pulldown3_brightness
+    entity_id: ${pulldown3_entity}
+    attribute: brightness
+  - platform: homeassistant
+    id: pulldown4_brightness
+    entity_id: ${pulldown4_entity}
+    attribute: brightness
   - platform: sendspin
     id: sendspin_track_progress
     type: track_progress
@@ -2449,6 +2497,15 @@ font:
       - "\U000F049E"
 
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_pullup
+    size: 64
+    glyphs:
+      - "\U000F036C"
+      - "\U000F036D"
+      - "\U000F0004"
+      - "\U000F0849"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_status
     size: 140
     glyphs:
@@ -2492,7 +2549,7 @@ font:
 
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_forecast
-    size: 26
+    size: 42
     glyphs:
       - "\U000F0590"
       - "\U000F0592"
@@ -2553,7 +2610,73 @@ font:
     size: 13
     glyphs: "0123456789/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\u00B0"
 
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 600
+    id: font_home_forecast_temp
+    size: 22
+    glyphs: "0123456789/ CF\u00B0-"
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 400
+    id: font_home_forecast_day
+    size: 17
+    glyphs: "0123456789/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\u00B0"
+
 script:
+  - id: apply_light_slider_brightness
+    parameters:
+      target_entity: string
+      target_pct: int
+    then:
+      - homeassistant.action:
+          action: light.turn_on
+          data_template:
+            entity_id: "{{ entity_id }}"
+            brightness_pct: "{{ pct }}"
+          variables:
+            entity_id: !lambda |-
+              return target_entity;
+            pct: !lambda |-
+              return target_pct;
+
+  - id: light_slider_timeout
+    mode: restart
+    then:
+      - delay: 6s
+      - lambda: |-
+          if (id(touch_active)) return;
+          lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+          id(light_slider_active) = false;
+          id(light_slider_target) = 0;
+          id(light_slider_just_opened) = false;
+
+  - id: open_light_slider
+    parameters:
+      light_num: int
+    then:
+      - lambda: |-
+          id(light_slider_target) = light_num;
+          id(light_slider_active) = true;
+          float b = NAN;
+          int popup_x = 21;
+          switch (light_num) {
+            case 1: b = id(pulldown1_brightness).state; popup_x = 21;  break;
+            case 2: b = id(pulldown2_brightness).state; popup_x = 137; break;
+            case 3: b = id(pulldown3_brightness).state; popup_x = 253; break;
+            case 4: b = id(pulldown4_brightness).state; popup_x = 369; break;
+          }
+          int pct = std::isnan(b) ? 1 : (int) std::lround(b / 255.0f * 100.0f);
+          if (pct < 1) pct = 1;
+          if (pct > 100) pct = 100;
+          lv_slider_set_value(id(home_light_slider), pct, LV_ANIM_OFF);
+          lv_obj_set_x(id(home_light_slider_popup), popup_x);
+          lv_obj_clear_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+      - script.execute: light_slider_timeout
+
   - id: finish_va_reply
     mode: restart
     then:
@@ -2725,6 +2848,8 @@ script:
 
   - id: start_manual_va
     mode: restart
+    parameters:
+      image_set: int
     then:
       - script.stop: player_controls_timeout
       - lambda: |-
@@ -2743,11 +2868,13 @@ script:
       - script.execute: stop_wake_word
       - delay: 100ms
       - lambda: |-
-          id(active_image_set) = 1;
+          id(active_image_set) = image_set;
       - script.execute:
           id: set_va_phase
           phase: ${va_phase_waiting_for_command}
       - voice_assistant.start:
+          wake_word: !lambda |-
+            return image_set == 2 ? id(wake_word_2_label).state : id(wake_word_1_label).state;
 
   - id: stop_active_va
     mode: restart
@@ -2902,6 +3029,9 @@ script:
           lv_obj_set_style_text_color(id(home_forecast_temp_1), accent, 0);
           lv_obj_set_style_text_color(id(home_forecast_temp_2), accent, 0);
           lv_obj_set_style_text_color(id(home_forecast_temp_3), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_low_1), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_low_2), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_low_3), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_bg_color(id(now_playing_progress_bar), accent, LV_PART_INDICATOR);
@@ -2996,6 +3126,11 @@ script:
     then:
       - lambda: |-
           id(clock_style_mode) = style_mode;
+          lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+          id(light_slider_active) = false;
+          id(light_slider_target) = 0;
+          id(light_slider_just_opened) = false;
+      - script.stop: light_slider_timeout
       - if:
           condition:
             lambda: 'return style_mode == ${clock_style_analog};'
@@ -3234,10 +3369,10 @@ script:
             lv_obj_set_style_border_color(btn, accent, 0);
             if (on) {
               lv_obj_set_style_bg_color(btn, accent, 0);
-              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_40, 0);
             } else {
-              lv_obj_set_style_bg_color(btn, lv_color_hex(0x202020), 0);
-              lv_obj_set_style_bg_opa(btn, 217, 0);
+              lv_obj_set_style_bg_color(btn, lv_color_hex(0x000000), 0);
+              lv_obj_set_style_bg_opa(btn, 148, 0);
             }
           };
           apply_button(id(home_light1_button), id(pulldown1_state).state);
@@ -3301,6 +3436,7 @@ script:
                 lv_obj_t *day_labels[3] = {id(home_forecast_day_1), id(home_forecast_day_2), id(home_forecast_day_3)};
                 lv_obj_t *icon_labels[3] = {id(home_forecast_icon_1), id(home_forecast_icon_2), id(home_forecast_icon_3)};
                 lv_obj_t *temp_labels[3] = {id(home_forecast_temp_1), id(home_forecast_temp_2), id(home_forecast_temp_3)};
+                lv_obj_t *temp_low_labels[3] = {id(home_forecast_temp_low_1), id(home_forecast_temp_low_2), id(home_forecast_temp_low_3)};
 
                 size_t start_index = forecast.size() >= 4 ? 1 : 0;
                 std::string tunit = id(ha_weather_temperature_unit).state.c_str();
@@ -3313,6 +3449,7 @@ script:
                     lv_label_set_text(day_labels[i], "--");
                     lv_label_set_text(icon_labels[i], "\U000F0590");
                     lv_label_set_text(temp_labels[i], "--");
+                    lv_label_set_text(temp_low_labels[i], "--");
                     continue;
                   }
                   JsonObjectConst day = forecast[src_index].as<JsonObjectConst>();
@@ -3327,10 +3464,18 @@ script:
                   if (std::isnan(high_temp)) {
                     lv_label_set_text(temp_labels[i], "--");
                   } else {
-                    char temp_buf[24];
-                    snprintf(temp_buf, sizeof(temp_buf), "%.0f/%.0f%s", high_temp, std::isnan(low_temp) ? high_temp : low_temp, tunit.c_str());
+                    char temp_buf[16];
+                    snprintf(temp_buf, sizeof(temp_buf), "%.0f%s", high_temp, tunit.c_str());
                     lv_label_set_text(temp_labels[i], temp_buf);
                     rendered_any = true;
+                  }
+
+                  if (std::isnan(low_temp)) {
+                    lv_label_set_text(temp_low_labels[i], "--");
+                  } else {
+                    char temp_low_buf[16];
+                    snprintf(temp_low_buf, sizeof(temp_low_buf), "%.0f%s", low_temp, tunit.c_str());
+                    lv_label_set_text(temp_low_labels[i], temp_low_buf);
                   }
                 }
 
@@ -4128,6 +4273,7 @@ script:
     then:
       - script.stop: player_controls_timeout
       - script.stop: pulldown_timeout
+      - script.stop: pullup_timeout
       - lambda: |-
           id(ui_phase) = phase;
       - script.execute: standby_screen_activity
@@ -4145,6 +4291,7 @@ script:
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - script.execute: apply_standby_frame_content
       - if:
           condition:
@@ -4155,6 +4302,7 @@ script:
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - if:
                 condition:
                   or:
@@ -4179,6 +4327,7 @@ script:
             - lvgl.widget.show: controls_panel
             - lvgl.widget.hide: playlist_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - if:
                 condition:
                   or:
@@ -4196,7 +4345,8 @@ script:
                 else:
                   - script.execute: apply_standby_frame_content
             - lambda: |-
-                lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
+                bool controls_muted = id(pullup_player_target) == 1 ? id(sendspin_group_media_player).is_muted() : id(external_media_player).is_muted();
+                lv_label_set_text(id(controls_mute_icon), controls_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
       - if:
           condition:
@@ -4206,6 +4356,7 @@ script:
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.show: playlist_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - if:
                 condition:
                   or:
@@ -4231,8 +4382,20 @@ script:
             - lvgl.widget.hide: controls_panel
             - lvgl.widget.hide: playlist_panel
             - lvgl.widget.show: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - script.execute: refresh_pulldown_states
             - script.execute: pulldown_timeout
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_pullup};'
+          then:
+            - lvgl.widget.hide: standby_panel
+            - lvgl.widget.hide: controls_panel
+            - lvgl.widget.hide: playlist_panel
+            - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.show: pullup_panel
+            - script.execute: refresh_pullup_state
+            - script.execute: pullup_timeout
 
   - id: player_controls_timeout
     mode: restart
@@ -4304,9 +4467,10 @@ script:
           auto apply_button = [&](lv_obj_t *btn, lv_obj_t *label, bool on) {
             if (on) {
               lv_obj_set_style_bg_color(btn, accent, 0);
-              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_40, 0);
             } else {
-              lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+              lv_obj_set_style_bg_color(btn, lv_color_hex(0x000000), 0);
+              lv_obj_set_style_bg_opa(btn, 148, 0);
             }
             lv_obj_set_style_border_color(btn, accent, 0);
             lv_obj_set_style_text_color(label, accent2, 0);
@@ -4323,6 +4487,49 @@ script:
       - script.execute:
           id: set_ui_phase
           phase: ${ui_phase_standby}
+
+  - id: open_pullup_menu
+    then:
+      - lambda: |-
+          id(pullup_return_phase) = id(ui_phase);
+      - script.execute:
+          id: set_ui_phase
+          phase: ${ui_phase_pullup}
+
+  - id: close_pullup_menu
+    then:
+      - script.execute:
+          id: set_ui_phase
+          phase: !lambda 'return id(pullup_return_phase);'
+
+  - id: pullup_timeout
+    mode: restart
+    then:
+      - delay: 6s
+      - script.execute: close_pullup_menu
+
+  - id: refresh_pullup_state
+    then:
+      - lambda: |-
+          const uint32_t pullup_accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const lv_color_t pullup_accent = lv_color_hex(pullup_accent_u32);
+          lv_obj_t *pullup_buttons[] = {
+            id(pullup_va1_button), id(pullup_va2_button), id(pullup_mute_button), id(pullup_target_button)
+          };
+          for (auto *button : pullup_buttons) {
+            lv_obj_set_style_border_color(button, pullup_accent, 0);
+            lv_obj_set_style_shadow_color(button, pullup_accent, 0);
+          }
+
+          bool mic_muted = id(mute).state;
+          lv_label_set_text(id(pullup_mute_label), mic_muted ? "\U000F036D" : "\U000F036C");
+          lv_obj_set_style_bg_color(id(pullup_mute_button), lv_color_hex(mic_muted ? 0xFF3333 : 0x00CC66), 0);
+          lv_obj_set_style_bg_opa(id(pullup_mute_button), LV_OPA_40, 0);
+
+          bool is_group = id(pullup_player_target) == 1;
+          lv_label_set_text(id(pullup_target_label), is_group ? "\U000F0849" : "\U000F0004");
+          lv_obj_set_style_bg_color(id(pullup_target_button), lv_color_hex(is_group ? 0xFFAA00 : 0x3399FF), 0);
+          lv_obj_set_style_bg_opa(id(pullup_target_button), LV_OPA_40, 0);
 
   - id: play_playlist
     parameters:
@@ -4879,7 +5086,12 @@ script:
           condition:
             lambda: 'return !id(touch_swipe_detected);'
           then:
-            - media_player.volume_down: external_media_player
+            - lambda: |-
+                if (id(pullup_player_target) == 1) {
+                  id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
+                } else {
+                  id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
+                }
             - script.execute: show_volume_ring
             - script.execute: player_controls_keep_open
 
@@ -4890,7 +5102,12 @@ script:
           condition:
             lambda: 'return !id(touch_swipe_detected);'
           then:
-            - media_player.volume_up: external_media_player
+            - lambda: |-
+                if (id(pullup_player_target) == 1) {
+                  id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
+                } else {
+                  id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
+                }
             - script.execute: show_volume_ring
             - script.execute: player_controls_keep_open
 
@@ -4902,12 +5119,20 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - lambda: |-
-                bool new_muted = !id(external_media_player).is_muted();
-                auto call = id(external_media_player).make_call();
-                call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
-                call.perform();
+                bool new_muted;
+                if (id(pullup_player_target) == 1) {
+                  new_muted = !id(sendspin_group_media_player).is_muted();
+                  auto call = id(sendspin_group_media_player).make_call();
+                  call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                  call.perform();
+                } else {
+                  new_muted = !id(external_media_player).is_muted();
+                  auto call = id(external_media_player).make_call();
+                  call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                  call.perform();
+                }
                 lv_label_set_text(id(controls_mute_icon), new_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
-            - script.execute: player_controls_keep_open
+            - script.execute: player_controls_timeout
 
   - id: player_controls_previous
     then:
@@ -5303,7 +5528,8 @@ script:
             lv_obj_set_style_text_font(id(volume_ring_label), id(font_7seg), 0);
           }
 
-          const float volume = std::max(0.0f, std::min(1.0f, id(external_media_player).volume));
+          const float raw_volume = id(pullup_player_target) == 1 ? id(sendspin_group_media_player).volume : id(external_media_player).volume;
+          const float volume = std::max(0.0f, std::min(1.0f, raw_volume));
           const int pct = (int) lroundf(volume * 100.0f);
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
@@ -5633,6 +5859,7 @@ touchscreen:
         - lambda: |-
             if (!id(touch_active)) return;
             id(touch_active) = false;
+            if (id(light_slider_active)) return;
 
             const int dx = id(touch_last_x) - id(touch_start_x);
             const int dy = id(touch_last_y) - id(touch_start_y);
@@ -5672,7 +5899,7 @@ touchscreen:
                   }
                 } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
                   if (dy < 0) {
-                    id(start_manual_va)->execute();
+                    id(open_pullup_menu)->execute();
                   } else {
                     id(set_ui_phase)->execute(${ui_phase_pulldown});
                   }
@@ -5706,7 +5933,7 @@ touchscreen:
                   }
                 } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
                   if (dy < 0) {
-                    id(start_manual_va)->execute();
+                    id(open_pullup_menu)->execute();
                   } else {
                     id(set_ui_phase)->execute(${ui_phase_playlist_menu});
                   }
@@ -5758,7 +5985,7 @@ touchscreen:
                   }
                 } else if (id(touch_start_x) >= id(main_display).get_width() / 2) {
                   if (dy < 0) {
-                    id(start_manual_va)->execute();
+                    id(open_pullup_menu)->execute();
                   } else {
                     id(set_ui_phase)->execute(${ui_phase_pulldown});
                   }
@@ -5771,11 +5998,15 @@ touchscreen:
                     id(set_ui_phase)->execute(${ui_phase_now_playing});
                   }
                 }
+              } else if (id(ui_phase) == ${ui_phase_pullup}) {
+                if (abs_x < abs_y && dy > 0 && id(touch_start_x) >= id(main_display).get_width() / 2) {
+                  id(close_pullup_menu)->execute();
+                }
               }
               return;
             }
 
-            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown}) {
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(ui_phase) != ${ui_phase_pulldown} && id(ui_phase) != ${ui_phase_pullup} && id(ui_phase) != ${ui_phase_player_controls}) {
               const bool just_waking = id(standby_screen_timeout_enabled).state && id(touch_started_while_dimmed);
               bool on_home_light_buttons = false;
               if (id(ui_phase) == ${ui_phase_standby} && id(clock_style_mode) == ${clock_style_home}) {
@@ -6736,22 +6967,42 @@ lvgl:
                                     widgets:
                                       - label:
                                           id: home_forecast_day_1
-                                          align: TOP_MID
+                                          align: TOP_LEFT
+                                          x: 26
+                                          y: 2
                                           text: "--"
                                           text_color: 0xFFFF00
-                                          text_font: font_home_small
+                                          text_font: font_home_forecast_day
+                                      - label:
+                                          id: home_forecast_temp_1
+                                          align: BOTTOM_LEFT
+                                          x: 26
+                                          y: -2
+                                          width: 50
+                                          text: "--"
+                                          text_color: 0x8EDBFF
+                                          text_font: font_home_forecast_temp
+                                          text_align: LEFT
                                       - label:
                                           id: home_forecast_icon_1
-                                          align: CENTER
+                                          align: TOP_RIGHT
+                                          x: -26
+                                          y: 2
+                                          width: 44
                                           text: "\U000F0590"
                                           text_color: 0xFFFFFF
                                           text_font: font_mdi_forecast
+                                          text_align: CENTER
                                       - label:
-                                          id: home_forecast_temp_1
-                                          align: BOTTOM_MID
+                                          id: home_forecast_temp_low_1
+                                          align: BOTTOM_RIGHT
+                                          x: -26
+                                          y: -2
+                                          width: 44
                                           text: "--"
                                           text_color: 0x8EDBFF
                                           text_font: font_home_small
+                                          text_align: CENTER
 
                                 - obj:
                                     align: CENTER
@@ -6764,22 +7015,42 @@ lvgl:
                                     widgets:
                                       - label:
                                           id: home_forecast_day_2
-                                          align: TOP_MID
+                                          align: TOP_LEFT
+                                          x: 26
+                                          y: 2
                                           text: "--"
                                           text_color: 0xFFFF00
-                                          text_font: font_home_small
+                                          text_font: font_home_forecast_day
+                                      - label:
+                                          id: home_forecast_temp_2
+                                          align: BOTTOM_LEFT
+                                          x: 26
+                                          y: -2
+                                          width: 50
+                                          text: "--"
+                                          text_color: 0x8EDBFF
+                                          text_font: font_home_forecast_temp
+                                          text_align: LEFT
                                       - label:
                                           id: home_forecast_icon_2
-                                          align: CENTER
+                                          align: TOP_RIGHT
+                                          x: -26
+                                          y: 2
+                                          width: 44
                                           text: "\U000F0590"
                                           text_color: 0xFFFFFF
                                           text_font: font_mdi_forecast
+                                          text_align: CENTER
                                       - label:
-                                          id: home_forecast_temp_2
-                                          align: BOTTOM_MID
+                                          id: home_forecast_temp_low_2
+                                          align: BOTTOM_RIGHT
+                                          x: -26
+                                          y: -2
+                                          width: 44
                                           text: "--"
                                           text_color: 0x8EDBFF
                                           text_font: font_home_small
+                                          text_align: CENTER
 
                                 - obj:
                                     align: RIGHT_MID
@@ -6792,22 +7063,42 @@ lvgl:
                                     widgets:
                                       - label:
                                           id: home_forecast_day_3
-                                          align: TOP_MID
+                                          align: TOP_LEFT
+                                          x: 26
+                                          y: 2
                                           text: "--"
                                           text_color: 0xFFFF00
-                                          text_font: font_home_small
+                                          text_font: font_home_forecast_day
+                                      - label:
+                                          id: home_forecast_temp_3
+                                          align: BOTTOM_LEFT
+                                          x: 26
+                                          y: -2
+                                          width: 50
+                                          text: "--"
+                                          text_color: 0x8EDBFF
+                                          text_font: font_home_forecast_temp
+                                          text_align: LEFT
                                       - label:
                                           id: home_forecast_icon_3
-                                          align: CENTER
+                                          align: TOP_RIGHT
+                                          x: -26
+                                          y: 2
+                                          width: 44
                                           text: "\U000F0590"
                                           text_color: 0xFFFFFF
                                           text_font: font_mdi_forecast
+                                          text_align: CENTER
                                       - label:
-                                          id: home_forecast_temp_3
-                                          align: BOTTOM_MID
+                                          id: home_forecast_temp_low_3
+                                          align: BOTTOM_RIGHT
+                                          x: -26
+                                          y: -2
+                                          width: 44
                                           text: "--"
                                           text_color: 0x8EDBFF
                                           text_font: font_home_small
+                                          text_align: CENTER
 
                           - button:
                               id: home_light1_button
@@ -6820,7 +7111,7 @@ lvgl:
                               bg_color: 0x202020
                               bg_opa: 85%
                               border_color: 0x505050
-                              border_width: 1
+                              border_width: 2
                               hidden: true
                               pressed:
                                 bg_color: 0x66CCFF
@@ -6828,10 +7119,39 @@ lvgl:
                                 border_color: 0xFFFFFF
                                 border_width: 4
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown1_entity}
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(light_slider_active);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown1_entity}
+                                    else:
+                                      - if:
+                                          condition:
+                                            lambda: 'return id(light_slider_just_opened);'
+                                          then:
+                                            - lambda: 'id(light_slider_just_opened) = false;'
+                                          else:
+                                            - if:
+                                                condition:
+                                                  lambda: 'return id(light_slider_target) == 1;'
+                                                then:
+                                                  - script.stop: light_slider_timeout
+                                                  - lambda: |-
+                                                      lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                                      id(light_slider_active) = false;
+                                                      id(light_slider_target) = 0;
+                                                else:
+                                                  - script.execute:
+                                                      id: open_light_slider
+                                                      light_num: 1
+                              on_long_press:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 1
+                                - lambda: 'id(light_slider_just_opened) = true;'
                               widgets:
                                 - label:
                                     id: home_light1_button_label
@@ -6853,7 +7173,7 @@ lvgl:
                               bg_color: 0x202020
                               bg_opa: 85%
                               border_color: 0x505050
-                              border_width: 1
+                              border_width: 2
                               hidden: true
                               pressed:
                                 bg_color: 0x66CCFF
@@ -6861,10 +7181,39 @@ lvgl:
                                 border_color: 0xFFFFFF
                                 border_width: 4
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown2_entity}
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(light_slider_active);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown2_entity}
+                                    else:
+                                      - if:
+                                          condition:
+                                            lambda: 'return id(light_slider_just_opened);'
+                                          then:
+                                            - lambda: 'id(light_slider_just_opened) = false;'
+                                          else:
+                                            - if:
+                                                condition:
+                                                  lambda: 'return id(light_slider_target) == 2;'
+                                                then:
+                                                  - script.stop: light_slider_timeout
+                                                  - lambda: |-
+                                                      lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                                      id(light_slider_active) = false;
+                                                      id(light_slider_target) = 0;
+                                                else:
+                                                  - script.execute:
+                                                      id: open_light_slider
+                                                      light_num: 2
+                              on_long_press:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 2
+                                - lambda: 'id(light_slider_just_opened) = true;'
                               widgets:
                                 - label:
                                     id: home_light2_button_label
@@ -6886,7 +7235,7 @@ lvgl:
                               bg_color: 0x202020
                               bg_opa: 85%
                               border_color: 0x505050
-                              border_width: 1
+                              border_width: 2
                               hidden: true
                               pressed:
                                 bg_color: 0x66CCFF
@@ -6894,10 +7243,39 @@ lvgl:
                                 border_color: 0xFFFFFF
                                 border_width: 4
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown3_entity}
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(light_slider_active);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown3_entity}
+                                    else:
+                                      - if:
+                                          condition:
+                                            lambda: 'return id(light_slider_just_opened);'
+                                          then:
+                                            - lambda: 'id(light_slider_just_opened) = false;'
+                                          else:
+                                            - if:
+                                                condition:
+                                                  lambda: 'return id(light_slider_target) == 3;'
+                                                then:
+                                                  - script.stop: light_slider_timeout
+                                                  - lambda: |-
+                                                      lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                                      id(light_slider_active) = false;
+                                                      id(light_slider_target) = 0;
+                                                else:
+                                                  - script.execute:
+                                                      id: open_light_slider
+                                                      light_num: 3
+                              on_long_press:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 3
+                                - lambda: 'id(light_slider_just_opened) = true;'
                               widgets:
                                 - label:
                                     id: home_light3_button_label
@@ -6919,7 +7297,7 @@ lvgl:
                               bg_color: 0x202020
                               bg_opa: 85%
                               border_color: 0x505050
-                              border_width: 1
+                              border_width: 2
                               hidden: true
                               pressed:
                                 bg_color: 0x66CCFF
@@ -6927,10 +7305,39 @@ lvgl:
                                 border_color: 0xFFFFFF
                                 border_width: 4
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown4_entity}
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(light_slider_active);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown4_entity}
+                                    else:
+                                      - if:
+                                          condition:
+                                            lambda: 'return id(light_slider_just_opened);'
+                                          then:
+                                            - lambda: 'id(light_slider_just_opened) = false;'
+                                          else:
+                                            - if:
+                                                condition:
+                                                  lambda: 'return id(light_slider_target) == 4;'
+                                                then:
+                                                  - script.stop: light_slider_timeout
+                                                  - lambda: |-
+                                                      lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                                      id(light_slider_active) = false;
+                                                      id(light_slider_target) = 0;
+                                                else:
+                                                  - script.execute:
+                                                      id: open_light_slider
+                                                      light_num: 4
+                              on_long_press:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 4
+                                - lambda: 'id(light_slider_just_opened) = true;'
                               widgets:
                                 - label:
                                     id: home_light4_button_label
@@ -6940,6 +7347,48 @@ lvgl:
                                     text_color: 0xFFFFFF
                                     text_font: font_home_light_label
                                     text_align: CENTER
+
+                          - obj:
+                              id: home_light_slider_popup
+                              align: TOP_LEFT
+                              x: 21
+                              y: 8
+                              width: 90
+                              height: 340
+                              radius: 16
+                              bg_color: 0x101010
+                              bg_opa: 92%
+                              border_color: 0x505050
+                              border_width: 1
+                              pad_all: 10
+                              scrollable: false
+                              hidden: true
+                              widgets:
+                                - slider:
+                                    id: home_light_slider
+                                    align: CENTER
+                                    width: 24
+                                    height: 280
+                                    min_value: 1
+                                    max_value: 100
+                                    value: 100
+                                    on_value:
+                                      - script.execute: light_slider_timeout
+                                    on_release:
+                                      - lambda: |-
+                                          int pct = lv_slider_get_value(id(home_light_slider));
+                                          std::string entity;
+                                          switch (id(light_slider_target)) {
+                                            case 1: entity = "${pulldown1_entity}"; break;
+                                            case 2: entity = "${pulldown2_entity}"; break;
+                                            case 3: entity = "${pulldown3_entity}"; break;
+                                            case 4: entity = "${pulldown4_entity}"; break;
+                                            default: entity = ""; break;
+                                          }
+                                          if (!entity.empty()) {
+                                            id(apply_light_slider_brightness)->execute(entity, pct);
+                                          }
+                                      - script.execute: light_slider_timeout
 
               - obj:
                   id: controls_panel
@@ -7463,7 +7912,7 @@ lvgl:
                         align: TOP_MID
                         y: 100
                         width: 400
-                        text: "Controls"
+                        text: "Lights"
                         text_color: 0x66CCFF
                         text_font: font_display_medium_bold
                         text_align: CENTER
@@ -7484,7 +7933,7 @@ lvgl:
                               align: TOP_MID
                               x: -72
                               y: 0
-                              width: 130
+                              width: 118
                               height: 118
                               radius: 20
                               bg_opa: TRANSP
@@ -7514,7 +7963,7 @@ lvgl:
                               align: TOP_MID
                               x: 72
                               y: 0
-                              width: 130
+                              width: 118
                               height: 118
                               radius: 20
                               bg_opa: TRANSP
@@ -7544,7 +7993,7 @@ lvgl:
                               align: TOP_MID
                               x: -72
                               y: 138
-                              width: 130
+                              width: 118
                               height: 118
                               radius: 20
                               bg_opa: TRANSP
@@ -7574,7 +8023,7 @@ lvgl:
                               align: TOP_MID
                               x: 72
                               y: 138
-                              width: 130
+                              width: 118
                               height: 118
                               radius: 20
                               bg_opa: TRANSP
@@ -7597,4 +8046,153 @@ lvgl:
                                     text: "Light 4"
                                     text_color: 0xFFFFFF
                                     text_font: font_playlist
+                                    text_align: CENTER
+
+              - obj:
+                  id: pullup_panel
+                  align: CENTER
+                  width: 480
+                  height: ${screenheight}
+                  bg_opa: TRANSP
+                  border_opa: TRANSP
+                  pad_all: 0
+                  scrollable: false
+                  hidden: true
+                  widgets:
+                    - label:
+                        id: pullup_title_label
+                        align: TOP_MID
+                        y: 100
+                        width: 400
+                        text: "Control"
+                        text_color: 0x66CCFF
+                        text_font: font_display_medium_bold
+                        text_align: CENTER
+
+                    - obj:
+                        id: pullup_content_block
+                        align: TOP_MID
+                        y: 160
+                        width: 480
+                        height: 256
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        widgets:
+                          - button:
+                              id: pullup_va1_button
+                              align: TOP_MID
+                              x: -72
+                              y: 0
+                              width: 118
+                              height: 118
+                              radius: 20
+                              bg_opa: TRANSP
+                              clip_corner: true
+                              border_color: 0xFFFF00
+                              border_width: 4
+                              shadow_color: 0xFFFF00
+                              shadow_width: 18
+                              shadow_opa: 45%
+                              on_click:
+                                - script.execute:
+                                    id: start_manual_va
+                                    image_set: 1
+                              widgets:
+                                - image:
+                                    id: pullup_va1_icon_widget
+                                    align: CENTER
+                                    src: pullup_va1_icon
+                                    width: 108
+                                    height: 108
+                                    radius: 15
+                                    clip_corner: true
+                                    antialias: false
+                                    clickable: false
+
+                          - button:
+                              id: pullup_va2_button
+                              align: TOP_MID
+                              x: 72
+                              y: 0
+                              width: 118
+                              height: 118
+                              radius: 20
+                              bg_opa: TRANSP
+                              clip_corner: true
+                              border_color: 0xFFFF00
+                              border_width: 4
+                              shadow_color: 0xFFFF00
+                              shadow_width: 18
+                              shadow_opa: 45%
+                              on_click:
+                                - script.execute:
+                                    id: start_manual_va
+                                    image_set: 2
+                              widgets:
+                                - image:
+                                    id: pullup_va2_icon_widget
+                                    align: CENTER
+                                    src: pullup_va2_icon
+                                    width: 108
+                                    height: 108
+                                    radius: 15
+                                    clip_corner: true
+                                    antialias: false
+                                    clickable: false
+
+                          - button:
+                              id: pullup_mute_button
+                              align: TOP_MID
+                              x: -72
+                              y: 138
+                              width: 118
+                              height: 118
+                              radius: 20
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 4
+                              shadow_color: 0xFFFF00
+                              shadow_width: 18
+                              shadow_opa: 45%
+                              on_click:
+                                - switch.toggle: mute
+                                - script.execute: refresh_pullup_state
+                                - script.execute: pullup_timeout
+                              widgets:
+                                - label:
+                                    id: pullup_mute_label
+                                    align: CENTER
+                                    text: "\U000F036C"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_pullup
+                                    text_align: CENTER
+
+                          - button:
+                              id: pullup_target_button
+                              align: TOP_MID
+                              x: 72
+                              y: 138
+                              width: 118
+                              height: 118
+                              radius: 20
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 4
+                              shadow_color: 0xFFFF00
+                              shadow_width: 18
+                              shadow_opa: 45%
+                              on_click:
+                                - lambda: |-
+                                    id(pullup_player_target) = id(pullup_player_target) == 1 ? 0 : 1;
+                                - script.execute: refresh_pullup_state
+                                - script.execute: pullup_timeout
+                              widgets:
+                                - label:
+                                    id: pullup_target_label
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_pullup
                                     text_align: CENTER
