@@ -59,6 +59,7 @@ substitutions:
   ui_phase_now_playing: "2"
   ui_phase_playlist_menu: "3"
   ui_phase_pulldown: "4"
+  ui_phase_pullup: "5"
   clock_style_none: "0"
   clock_style_digital: "1"
   clock_style_analog: "2"
@@ -262,6 +263,14 @@ globals:
     type: int
     restore_value: no
     initial_value: "${ui_phase_standby}"
+  - id: pullup_return_phase
+    type: int
+    restore_value: no
+    initial_value: "${ui_phase_standby}"
+  - id: pullup_player_target
+    type: int
+    restore_value: yes
+    initial_value: "0"
   - id: touch_active
     type: bool
     restore_value: no
@@ -490,6 +499,12 @@ image:
     type: RGB565
     dither: NONE
   - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/240x240/idle.png
+    id: pullup_va1_icon
+    resize: 56x56
+    type: RGB565
+    dither: NONE
+  - platform: file
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/240x240/listening.png
     id: va_listening_image1
     resize: ${imagewidth}x${imageheight}
@@ -511,6 +526,12 @@ image:
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/240x240/idle.png
     id: va_waiting_image2
     resize: ${imagewidth}x${imageheight}
+    type: RGB565
+    dither: NONE
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/240x240/idle.png
+    id: pullup_va2_icon
+    resize: 56x56
     type: RGB565
     dither: NONE
   - platform: file
@@ -761,6 +782,7 @@ media_player:
               - not:
                   voice_assistant.is_running:
               - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+              - lambda: 'return !id(manual_va_active);'
           then:
             - script.execute:
                 id: set_ui_phase
@@ -805,19 +827,13 @@ media_player:
               - script.execute: stop_wake_word
         - if:
             condition:
-              lambda: 'return id(va_phase) == ${va_phase_idle};'
+              and:
+                - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
             then:
-              - if:
-                  condition:
-                    lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
-                  then:
-                    - script.execute:
-                        id: set_ui_phase
-                        phase: ${ui_phase_player_controls}
-                  else:
-                    - script.execute:
-                        id: set_ui_phase
-                        phase: ${ui_phase_now_playing}
+              - script.execute:
+                  id: set_ui_phase
+                  phase: ${ui_phase_now_playing}
 
     on_idle:
       then:
@@ -843,7 +859,9 @@ media_player:
       then:
         - if:
             condition:
-              lambda: 'return id(va_phase) == ${va_phase_idle};'
+              and:
+                - lambda: 'return id(va_phase) == ${va_phase_idle};'
+                - lambda: 'return !id(manual_va_active);'
             then:
               - script.execute: start_wake_word
               - script.execute:
@@ -2382,6 +2400,15 @@ font:
       - "\U000F049E"
 
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_pullup
+    size: 38
+    glyphs:
+      - "\U000F036C"
+      - "\U000F036D"
+      - "\U000F0004"
+      - "\U000F0849"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_rooms
     size: 16
     glyphs:
@@ -2587,6 +2614,8 @@ script:
 
   - id: start_manual_va
     mode: restart
+    parameters:
+      image_set: int
     then:
       - script.stop: player_controls_timeout
       - lambda: |-
@@ -2605,11 +2634,13 @@ script:
       - script.execute: stop_wake_word
       - delay: 100ms
       - lambda: |-
-          id(active_image_set) = 1;
+          id(active_image_set) = image_set;
       - script.execute:
           id: set_va_phase
           phase: ${va_phase_waiting_for_command}
       - voice_assistant.start:
+          wake_word: !lambda |-
+            return image_set == 2 ? id(wake_word_2_label).state : id(wake_word_1_label).state;
 
   - id: stop_active_va
     mode: restart
@@ -3038,9 +3069,10 @@ script:
             lv_obj_set_style_text_color(label, accent2, 0);
             if (on) {
               lv_obj_set_style_bg_color(btn, accent, 0);
-              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_40, 0);
             } else {
-              lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+              lv_obj_set_style_bg_color(btn, lv_color_hex(0x000000), 0);
+              lv_obj_set_style_bg_opa(btn, 148, 0);
             }
           };
           apply_button(id(pulldown1_button), id(pulldown1_button_label), id(pulldown1_state).state);
@@ -3074,6 +3106,51 @@ script:
             - script.execute:
                 id: set_ui_phase
                 phase: ${ui_phase_now_playing}
+
+  - id: open_pullup_menu
+    then:
+      - lambda: |-
+          id(pullup_return_phase) = id(ui_phase);
+      - script.execute:
+          id: set_ui_phase
+          phase: ${ui_phase_pullup}
+
+  - id: close_pullup_menu
+    then:
+      - script.execute:
+          id: set_ui_phase
+          phase: !lambda 'return id(pullup_return_phase);'
+
+  - id: pullup_timeout
+    mode: restart
+    then:
+      - delay: 6s
+      - script.execute: close_pullup_menu
+
+  - id: refresh_pullup_state
+    then:
+      - lambda: |-
+          const int r = std::max(0, std::min(255, id(accent_red)));
+          const int g = std::max(0, std::min(255, id(accent_green)));
+          const int b = std::max(0, std::min(255, id(accent_blue)));
+          const lv_color_t pullup_accent = lv_color_hex(((uint32_t) r << 16) | ((uint32_t) g << 8) | (uint32_t) b);
+          lv_obj_t *pullup_buttons[] = {
+            id(pullup_va1_button), id(pullup_va2_button), id(pullup_mute_button), id(pullup_target_button)
+          };
+          for (auto *button : pullup_buttons) {
+            lv_obj_set_style_border_color(button, pullup_accent, 0);
+            lv_obj_set_style_shadow_color(button, pullup_accent, 0);
+          }
+
+          bool mic_muted = id(mute).state;
+          lv_label_set_text(id(pullup_mute_label), mic_muted ? "\U000F036D" : "\U000F036C");
+          lv_obj_set_style_bg_color(id(pullup_mute_button), lv_color_hex(mic_muted ? 0xFF3333 : 0x00CC66), 0);
+          lv_obj_set_style_bg_opa(id(pullup_mute_button), LV_OPA_40, 0);
+
+          bool is_group = id(pullup_player_target) == 1;
+          lv_label_set_text(id(pullup_target_label), is_group ? "\U000F0849" : "\U000F0004");
+          lv_obj_set_style_bg_color(id(pullup_target_button), lv_color_hex(is_group ? 0xFFAA00 : 0x3399FF), 0);
+          lv_obj_set_style_bg_opa(id(pullup_target_button), LV_OPA_40, 0);
 
   - id: analog_clock_redraw
     mode: restart
@@ -3901,6 +3978,7 @@ script:
           then:
             - lvgl.widget.show: standby_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - component.update: weather_line
             - lvgl.widget.show: now_playing_info_group
             - lvgl.widget.hide: now_playing_secondary_controls
@@ -3944,6 +4022,7 @@ script:
           then:
             - lvgl.widget.show: standby_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - component.update: weather_line
             - lvgl.widget.show: now_playing_info_group
             - lvgl.widget.hide: now_playing_secondary_controls
@@ -3967,6 +4046,7 @@ script:
           then:
             - lvgl.widget.show: standby_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - component.update: weather_line
             - lvgl.widget.hide: now_playing_info_group
             - lvgl.widget.show: now_playing_secondary_controls
@@ -3985,7 +4065,8 @@ script:
                         lv_obj_clear_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN);
                       }
             - lambda: |-
-                lv_label_set_text(id(controls_mute_icon), id(external_media_player).is_muted() ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
+                bool controls_muted = id(pullup_player_target) == 1 ? id(sendspin_group_media_player).is_muted() : id(external_media_player).is_muted();
+                lv_label_set_text(id(controls_mute_icon), controls_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
             - script.execute: player_controls_timeout
       - if:
           condition:
@@ -3993,6 +4074,7 @@ script:
           then:
             - lvgl.widget.show: standby_panel
             - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.hide: pullup_panel
             - component.update: weather_line
             - lvgl.widget.show: now_playing_info_group
             - lvgl.widget.hide: now_playing_secondary_controls
@@ -4016,9 +4098,19 @@ script:
             lambda: 'return phase == ${ui_phase_pulldown};'
           then:
             - lvgl.widget.hide: standby_panel
+            - lvgl.widget.hide: pullup_panel
             - lvgl.widget.show: pulldown_panel
             - script.execute: refresh_pulldown_states
             - script.execute: pulldown_timeout
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_pullup};'
+          then:
+            - lvgl.widget.hide: standby_panel
+            - lvgl.widget.hide: pulldown_panel
+            - lvgl.widget.show: pullup_panel
+            - script.execute: refresh_pullup_state
+            - script.execute: pullup_timeout
 
   - id: player_controls_timeout
     mode: restart
@@ -4616,7 +4708,12 @@ script:
           condition:
             lambda: 'return !id(touch_swipe_detected);'
           then:
-            - media_player.volume_down: external_media_player
+            - lambda: |-
+                if (id(pullup_player_target) == 1) {
+                  id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
+                } else {
+                  id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
+                }
             - script.execute: show_volume_ring
             - script.execute: player_controls_keep_open
 
@@ -4627,7 +4724,12 @@ script:
           condition:
             lambda: 'return !id(touch_swipe_detected);'
           then:
-            - media_player.volume_up: external_media_player
+            - lambda: |-
+                if (id(pullup_player_target) == 1) {
+                  id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
+                } else {
+                  id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
+                }
             - script.execute: show_volume_ring
             - script.execute: player_controls_keep_open
 
@@ -4639,12 +4741,20 @@ script:
             lambda: 'return !id(touch_swipe_detected);'
           then:
             - lambda: |-
-                bool new_muted = !id(external_media_player).is_muted();
-                auto call = id(external_media_player).make_call();
-                call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
-                call.perform();
+                bool new_muted;
+                if (id(pullup_player_target) == 1) {
+                  new_muted = !id(sendspin_group_media_player).is_muted();
+                  auto call = id(sendspin_group_media_player).make_call();
+                  call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                  call.perform();
+                } else {
+                  new_muted = !id(external_media_player).is_muted();
+                  auto call = id(external_media_player).make_call();
+                  call.set_command(new_muted ? media_player::MEDIA_PLAYER_COMMAND_MUTE : media_player::MEDIA_PLAYER_COMMAND_UNMUTE);
+                  call.perform();
+                }
                 lv_label_set_text(id(controls_mute_icon), new_muted ? "\xF3\xB0\x9D\x9F" : "\xF3\xB0\x95\xBE");
-            - script.execute: player_controls_keep_open
+            - script.execute: player_controls_timeout
 
   - id: player_controls_group_toggle
     then:
@@ -5016,7 +5126,8 @@ script:
             lv_obj_set_style_text_font(id(volume_ring_label), id(font_7seg), 0);
           }
 
-          const float volume = std::max(0.0f, std::min(1.0f, id(external_media_player).volume));
+          const float raw_volume = id(pullup_player_target) == 1 ? id(sendspin_group_media_player).volume : id(external_media_player).volume;
+          const float volume = std::max(0.0f, std::min(1.0f, raw_volume));
           const int pct = (int) lroundf(volume * 100.0f);
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
@@ -5424,8 +5535,9 @@ touchscreen:
                     lv_obj_scroll_to_y(ticker_block, target_scroll, LV_ANIM_ON);
                   }
                 } else if (id(touch_start_x) < bar_start) {
-                  // clock/weather zone: previously unused vertical gesture, now claimed
-                  // by the pulldown quick-actions menu (swipe down to open, up to close).
+                  // clock/weather zone: vertical gesture claimed by the pulldown quick-actions
+                  // menu (swipe down to open, up to close) and the pullup quick-actions menu
+                  // (swipe up to open from a valid origin phase, down to close).
                   if (id(ui_phase) == ${ui_phase_pulldown}) {
                     if (dy < 0) {
                       if (id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_IDLE) {
@@ -5434,8 +5546,14 @@ touchscreen:
                         id(set_ui_phase)->execute(${ui_phase_now_playing});
                       }
                     }
+                  } else if (id(ui_phase) == ${ui_phase_pullup}) {
+                    if (dy > 0) {
+                      id(close_pullup_menu)->execute();
+                    }
                   } else if (dy > 0) {
                     id(set_ui_phase)->execute(${ui_phase_pulldown});
+                  } else if (dy < 0 && (id(ui_phase) == ${ui_phase_standby} || id(ui_phase) == ${ui_phase_player_controls} || id(ui_phase) == ${ui_phase_now_playing})) {
+                    id(open_pullup_menu)->execute();
                   }
                 } else if (id(touch_start_x) >= bar_start) {
                   if (id(ui_phase) == ${ui_phase_playlist_menu}) {
@@ -5444,7 +5562,7 @@ touchscreen:
                     }
                   } else {
                     if (dy < 0) {
-                      id(start_manual_va)->execute();
+                      id(start_manual_va)->execute(1);
                     } else {
                       id(set_ui_phase)->execute(${ui_phase_playlist_menu});
                     }
@@ -5470,6 +5588,26 @@ touchscreen:
                 } else if (ty >= 98 && ty <= 168) {
                   if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown3_entity}")); }
                   else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown4_entity}")); }
+                }
+                return;
+              }
+              // Same hit-zone rectangles as the pulldown menu above - pulldown_panel and
+              // pullup_panel are never shown at the same time, so it's safe to reuse the
+              // exact same screen space for both menus' 2x2 grids.
+              if (id(ui_phase) == ${ui_phase_pullup} && tx < bar_start) {
+                if (ty >= 24 && ty <= 94) {
+                  if (tx >= 192 && tx <= 268) { id(start_manual_va)->execute(1); }
+                  else if (tx >= 272 && tx <= 348) { id(start_manual_va)->execute(2); }
+                } else if (ty >= 98 && ty <= 168) {
+                  if (tx >= 192 && tx <= 268) {
+                    id(mute).toggle();
+                    id(refresh_pullup_state)->execute();
+                    id(pullup_timeout)->execute();
+                  } else if (tx >= 272 && tx <= 348) {
+                    id(pullup_player_target) = id(pullup_player_target) == 1 ? 0 : 1;
+                    id(refresh_pullup_state)->execute();
+                    id(pullup_timeout)->execute();
+                  }
                 }
                 return;
               }
@@ -5523,7 +5661,7 @@ touchscreen:
                 }
               }
               const bool just_waking = id(standby_screen_timeout_enabled).state && id(touch_started_while_dimmed);
-              if (!just_waking && tx >= bar_start) {
+              if (!just_waking && tx >= bar_start && id(ui_phase) != ${ui_phase_player_controls}) {
                 id(set_ui_phase)->execute(${ui_phase_player_controls});
               }
             }
@@ -6335,6 +6473,128 @@ lvgl:
                                     text_color: 0xFFFFFF
                                     text_font: font_playlist
                                     text_align: CENTER
+
+              - obj:
+                  id: pullup_panel
+                  align: CENTER
+                  width: ${imagewidth}
+                  height: ${imageheight}
+                  bg_opa: TRANSP
+                  border_opa: TRANSP
+                  pad_all: 0
+                  scrollable: false
+                  hidden: true
+                  widgets:
+                    - obj:
+                        id: pullup_content_block
+                        align: TOP_MID
+                        y: 8
+                        width: 172
+                        height: 144
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        widgets:
+                          - button:
+                              id: pullup_va1_button
+                              align: TOP_MID
+                              x: -40
+                              y: 0
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - image:
+                                    id: pullup_va1_icon_widget
+                                    align: CENTER
+                                    src: pullup_va1_icon
+                                    width: 56
+                                    height: 56
+                                    radius: 4
+                                    clip_corner: true
+                                    antialias: false
+                                    clickable: false
+
+                          - button:
+                              id: pullup_va2_button
+                              align: TOP_MID
+                              x: 40
+                              y: 0
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - image:
+                                    id: pullup_va2_icon_widget
+                                    align: CENTER
+                                    src: pullup_va2_icon
+                                    width: 56
+                                    height: 56
+                                    radius: 4
+                                    clip_corner: true
+                                    antialias: false
+                                    clickable: false
+
+                          - button:
+                              id: pullup_mute_button
+                              align: TOP_MID
+                              x: -40
+                              y: 74
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: pullup_mute_label
+                                    align: CENTER
+                                    text: "\U000F036C"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_pullup
+
+                          - button:
+                              id: pullup_target_button
+                              align: TOP_MID
+                              x: 40
+                              y: 74
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: pullup_target_label
+                                    align: CENTER
+                                    text: "\U000F0004"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_mdi_pullup
 
         - obj:
             id: playlist_panel
