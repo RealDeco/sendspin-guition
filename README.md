@@ -233,6 +233,18 @@ DAC
 
 This is a display without mic or audio meant to be the controller for your Sendspin devices.
 
+Perfect control device for the small SendspinZero players here: https://github.com/RealDeco/SendspinZero
+
+<div align="center">
+
+
+
+<br><br>
+<img height="400"  src="https://github.com/user-attachments/assets/fbedb9ce-e207-4ee1-a43c-1b6a734ac505" />
+
+
+</div>
+
 ### Where to buy
 
 Without relays:
