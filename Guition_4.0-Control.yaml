@@ -1,6 +1,6 @@
 substitutions:
-  name: esphome-web-c89274
-  friendly_name: Guition 4.0
+  name: guition-40-control
+  friendly_name: Guition 4.0 Control
 
 ## SETTINGS ######################################################################################################################################
 
