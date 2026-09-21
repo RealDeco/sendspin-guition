@@ -6427,6 +6427,8 @@ lvgl:
                   src: pullup_va1_icon
                   width: 108
                   height: 108
+                  radius: 15
+                  clip_corner: true
                   antialias: false
                   clickable: false
 
@@ -6456,6 +6458,8 @@ lvgl:
                   src: pullup_va2_icon
                   width: 108
                   height: 108
+                  radius: 15
+                  clip_corner: true
                   antialias: false
                   clickable: false
 
