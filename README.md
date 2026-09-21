@@ -229,6 +229,22 @@ DAC
 
 ---
 
+## Guition 4.0" (ESP32-S3-4848S040) Control device
+
+This is a display without mic or audio meant to be the controller for your Sendspin devices.
+
+### Where to buy
+
+Without relays:
+[https://www.aliexpress.com/item/1005008214679682.html](https://www.aliexpress.com/item/1005008214679682.html)
+
+With relays:
+[https://www.aliexpress.com/item/1005006302251538.html](https://www.aliexpress.com/item/1005006302251538.html)
+
+(the model with relays can be directly mounted in standard 86mm wall mounts)
+
+---
+
 ### **How to use** (general for all)
 
 Sendspin Player:
