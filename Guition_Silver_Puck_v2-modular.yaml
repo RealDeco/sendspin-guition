@@ -509,7 +509,7 @@ image:
   - platform: file
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel1}/360x360/idle.png
     id: pullup_va1_icon
-    resize: 122x110
+    resize: 108x108
     type: RGB565
     dither: NONE
 
@@ -545,7 +545,7 @@ image:
   - platform: file
     file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel2}/360x360/idle.png
     id: pullup_va2_icon
-    resize: 122x110
+    resize: 108x108
     type: RGB565
     dither: NONE
 
@@ -3929,9 +3929,10 @@ script:
           auto apply_button = [&](lv_obj_t *btn, lv_obj_t *label, bool on) {
             if (on) {
               lv_obj_set_style_bg_color(btn, accent, 0);
-              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_40, 0);
             } else {
-              lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+              lv_obj_set_style_bg_color(btn, lv_color_hex(0x000000), 0);
+              lv_obj_set_style_bg_opa(btn, 148, 0);
             }
             lv_obj_set_style_border_color(btn, accent, 0);
             lv_obj_set_style_text_color(label, accent2, 0);
@@ -6236,7 +6237,7 @@ lvgl:
             align: TOP_MID
             x: -72
             y: 55
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
@@ -6266,7 +6267,7 @@ lvgl:
             align: TOP_MID
             x: 72
             y: 55
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
@@ -6296,7 +6297,7 @@ lvgl:
             align: TOP_MID
             x: -72
             y: 187
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
@@ -6326,7 +6327,7 @@ lvgl:
             align: TOP_MID
             x: 72
             y: 187
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
@@ -6405,7 +6406,7 @@ lvgl:
             align: TOP_MID
             x: -72
             y: 55
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
@@ -6424,8 +6425,8 @@ lvgl:
                   id: pullup_va1_icon_widget
                   align: CENTER
                   src: pullup_va1_icon
-                  width: 122
-                  height: 110
+                  width: 108
+                  height: 108
                   antialias: false
                   clickable: false
 
@@ -6434,7 +6435,7 @@ lvgl:
             align: TOP_MID
             x: 72
             y: 55
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
@@ -6453,8 +6454,8 @@ lvgl:
                   id: pullup_va2_icon_widget
                   align: CENTER
                   src: pullup_va2_icon
-                  width: 122
-                  height: 110
+                  width: 108
+                  height: 108
                   antialias: false
                   clickable: false
 
@@ -6463,7 +6464,7 @@ lvgl:
             align: TOP_MID
             x: -72
             y: 187
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
@@ -6490,7 +6491,7 @@ lvgl:
             align: TOP_MID
             x: 72
             y: 187
-            width: 130
+            width: 118
             height: 118
             radius: 20
             bg_opa: TRANSP
