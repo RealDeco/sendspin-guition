@@ -217,6 +217,18 @@ interval:
             - script.execute: fetch_daily_forecast
 
 globals:
+  - id: light_slider_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: light_slider_target
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: light_slider_just_opened
+    type: bool
+    restore_value: no
+    initial_value: "false"
   - id: boot_revealed
     type: bool
     restore_value: no
@@ -1204,6 +1216,22 @@ sensor:
     attribute: wind_speed
     on_value:
       - component.update: weather_line
+  - platform: homeassistant
+    id: pulldown1_brightness
+    entity_id: ${pulldown1_entity}
+    attribute: brightness
+  - platform: homeassistant
+    id: pulldown2_brightness
+    entity_id: ${pulldown2_entity}
+    attribute: brightness
+  - platform: homeassistant
+    id: pulldown3_brightness
+    entity_id: ${pulldown3_entity}
+    attribute: brightness
+  - platform: homeassistant
+    id: pulldown4_brightness
+    entity_id: ${pulldown4_entity}
+    attribute: brightness
 
 text_sensor:
   - platform: homeassistant
@@ -1687,9 +1715,25 @@ font:
     size: 13
     glyphs: "0123456789/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\u00B0"
 
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 600
+    id: font_home_forecast_temp
+    size: 22
+    glyphs: "0123456789/ CF\u00B0-"
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 400
+    id: font_home_forecast_day
+    size: 17
+    glyphs: "0123456789/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\u00B0"
+
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_forecast
-    size: 26
+    size: 42
     glyphs:
       - "\U000F0590"
       - "\U000F0592"
@@ -1788,6 +1832,9 @@ script:
           lv_obj_set_style_text_color(id(home_forecast_temp_1), accent, 0);
           lv_obj_set_style_text_color(id(home_forecast_temp_2), accent, 0);
           lv_obj_set_style_text_color(id(home_forecast_temp_3), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_low_1), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_low_2), accent, 0);
+          lv_obj_set_style_text_color(id(home_forecast_temp_low_3), accent, 0);
           lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_border_color(id(home_light1_button), accent, 0);
@@ -1879,6 +1926,11 @@ script:
     then:
       - lambda: |-
           id(clock_style_mode) = style_mode;
+          lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+          id(light_slider_active) = false;
+          id(light_slider_target) = 0;
+          id(light_slider_just_opened) = false;
+      - script.stop: light_slider_timeout
       - if:
           condition:
             lambda: 'return style_mode == ${clock_style_analog};'
@@ -2123,16 +2175,66 @@ script:
             lv_obj_set_style_border_color(btn, accent, 0);
             if (on) {
               lv_obj_set_style_bg_color(btn, accent, 0);
-              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_40, 0);
             } else {
-              lv_obj_set_style_bg_color(btn, lv_color_hex(0x202020), 0);
-              lv_obj_set_style_bg_opa(btn, 217, 0);
+              lv_obj_set_style_bg_color(btn, lv_color_hex(0x000000), 0);
+              lv_obj_set_style_bg_opa(btn, 148, 0);
             }
           };
           apply_button(id(home_light1_button), id(pulldown1_state).state);
           apply_button(id(home_light2_button), id(pulldown2_state).state);
           apply_button(id(home_light3_button), id(pulldown3_state).state);
           apply_button(id(home_light4_button), id(pulldown4_state).state);
+
+  - id: apply_light_slider_brightness
+    parameters:
+      target_entity: string
+      target_pct: int
+    then:
+      - homeassistant.action:
+          action: light.turn_on
+          data_template:
+            entity_id: "{{ entity_id }}"
+            brightness_pct: "{{ pct }}"
+          variables:
+            entity_id: !lambda |-
+              return target_entity;
+            pct: !lambda |-
+              return target_pct;
+
+  - id: light_slider_timeout
+    mode: restart
+    then:
+      - delay: 6s
+      - lambda: |-
+          if (id(touch_active)) return;
+          lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+          id(light_slider_active) = false;
+          id(light_slider_target) = 0;
+          id(light_slider_just_opened) = false;
+
+  - id: open_light_slider
+    parameters:
+      light_num: int
+    then:
+      - lambda: |-
+          id(light_slider_target) = light_num;
+          id(light_slider_active) = true;
+          float b = NAN;
+          int popup_x = 21;
+          switch (light_num) {
+            case 1: b = id(pulldown1_brightness).state; popup_x = 21;  break;
+            case 2: b = id(pulldown2_brightness).state; popup_x = 137; break;
+            case 3: b = id(pulldown3_brightness).state; popup_x = 253; break;
+            case 4: b = id(pulldown4_brightness).state; popup_x = 369; break;
+          }
+          int pct = std::isnan(b) ? 1 : (int) std::lround(b / 255.0f * 100.0f);
+          if (pct < 1) pct = 1;
+          if (pct > 100) pct = 100;
+          lv_slider_set_value(id(home_light_slider), pct, LV_ANIM_OFF);
+          lv_obj_set_x(id(home_light_slider_popup), popup_x);
+          lv_obj_clear_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+      - script.execute: light_slider_timeout
 
   - id: fetch_daily_forecast
     mode: restart
@@ -2190,6 +2292,7 @@ script:
                 lv_obj_t *day_labels[3] = {id(home_forecast_day_1), id(home_forecast_day_2), id(home_forecast_day_3)};
                 lv_obj_t *icon_labels[3] = {id(home_forecast_icon_1), id(home_forecast_icon_2), id(home_forecast_icon_3)};
                 lv_obj_t *temp_labels[3] = {id(home_forecast_temp_1), id(home_forecast_temp_2), id(home_forecast_temp_3)};
+                lv_obj_t *temp_low_labels[3] = {id(home_forecast_temp_low_1), id(home_forecast_temp_low_2), id(home_forecast_temp_low_3)};
 
                 size_t start_index = forecast.size() >= 4 ? 1 : 0;
                 std::string tunit = id(ha_weather_temperature_unit).state.c_str();
@@ -2202,6 +2305,7 @@ script:
                     lv_label_set_text(day_labels[i], "--");
                     lv_label_set_text(icon_labels[i], "\U000F0590");
                     lv_label_set_text(temp_labels[i], "--");
+                    lv_label_set_text(temp_low_labels[i], "--");
                     continue;
                   }
                   JsonObjectConst day = forecast[src_index].as<JsonObjectConst>();
@@ -2216,10 +2320,18 @@ script:
                   if (std::isnan(high_temp)) {
                     lv_label_set_text(temp_labels[i], "--");
                   } else {
-                    char temp_buf[24];
-                    snprintf(temp_buf, sizeof(temp_buf), "%.0f/%.0f%s", high_temp, std::isnan(low_temp) ? high_temp : low_temp, tunit.c_str());
+                    char temp_buf[16];
+                    snprintf(temp_buf, sizeof(temp_buf), "%.0f%s", high_temp, tunit.c_str());
                     lv_label_set_text(temp_labels[i], temp_buf);
                     rendered_any = true;
+                  }
+
+                  if (std::isnan(low_temp)) {
+                    lv_label_set_text(temp_low_labels[i], "--");
+                  } else {
+                    char temp_low_buf[16];
+                    snprintf(temp_low_buf, sizeof(temp_low_buf), "%.0f%s", low_temp, tunit.c_str());
+                    lv_label_set_text(temp_low_labels[i], temp_low_buf);
                   }
                 }
 
@@ -3178,9 +3290,10 @@ script:
           auto apply_button = [&](lv_obj_t *btn, lv_obj_t *label, bool on) {
             if (on) {
               lv_obj_set_style_bg_color(btn, accent, 0);
-              lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+              lv_obj_set_style_bg_opa(btn, LV_OPA_40, 0);
             } else {
-              lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+              lv_obj_set_style_bg_color(btn, lv_color_hex(0x000000), 0);
+              lv_obj_set_style_bg_opa(btn, 148, 0);
             }
             lv_obj_set_style_border_color(btn, accent, 0);
             lv_obj_set_style_text_color(label, accent2, 0);
@@ -4029,6 +4142,7 @@ touchscreen:
         - lambda: |-
             if (!id(touch_active)) return;
             id(touch_active) = false;
+            if (id(light_slider_active)) return;
 
             const int dx = id(touch_last_x) - id(touch_start_x);
             const int dy = id(touch_last_y) - id(touch_start_y);
@@ -4693,22 +4807,42 @@ lvgl:
                   widgets:
                     - label:
                         id: home_forecast_day_1
-                        align: TOP_MID
+                        align: TOP_LEFT
+                        x: 26
+                        y: 2
                         text: "--"
                         text_color: 0xFFFF00
-                        text_font: font_home_small
+                        text_font: font_home_forecast_day
+                    - label:
+                        id: home_forecast_temp_1
+                        align: BOTTOM_LEFT
+                        x: 26
+                        y: -2
+                        width: 50
+                        text: "--"
+                        text_color: 0x8EDBFF
+                        text_font: font_home_forecast_temp
+                        text_align: LEFT
                     - label:
                         id: home_forecast_icon_1
-                        align: CENTER
+                        align: TOP_RIGHT
+                        x: -26
+                        y: 2
+                        width: 44
                         text: "\U000F0590"
                         text_color: 0xFFFFFF
                         text_font: font_mdi_forecast
+                        text_align: CENTER
                     - label:
-                        id: home_forecast_temp_1
-                        align: BOTTOM_MID
+                        id: home_forecast_temp_low_1
+                        align: BOTTOM_RIGHT
+                        x: -26
+                        y: -2
+                        width: 44
                         text: "--"
                         text_color: 0x8EDBFF
                         text_font: font_home_small
+                        text_align: CENTER
 
               - obj:
                   align: CENTER
@@ -4721,22 +4855,42 @@ lvgl:
                   widgets:
                     - label:
                         id: home_forecast_day_2
-                        align: TOP_MID
+                        align: TOP_LEFT
+                        x: 26
+                        y: 2
                         text: "--"
                         text_color: 0xFFFF00
-                        text_font: font_home_small
+                        text_font: font_home_forecast_day
+                    - label:
+                        id: home_forecast_temp_2
+                        align: BOTTOM_LEFT
+                        x: 26
+                        y: -2
+                        width: 50
+                        text: "--"
+                        text_color: 0x8EDBFF
+                        text_font: font_home_forecast_temp
+                        text_align: LEFT
                     - label:
                         id: home_forecast_icon_2
-                        align: CENTER
+                        align: TOP_RIGHT
+                        x: -26
+                        y: 2
+                        width: 44
                         text: "\U000F0590"
                         text_color: 0xFFFFFF
                         text_font: font_mdi_forecast
+                        text_align: CENTER
                     - label:
-                        id: home_forecast_temp_2
-                        align: BOTTOM_MID
+                        id: home_forecast_temp_low_2
+                        align: BOTTOM_RIGHT
+                        x: -26
+                        y: -2
+                        width: 44
                         text: "--"
                         text_color: 0x8EDBFF
                         text_font: font_home_small
+                        text_align: CENTER
 
               - obj:
                   align: RIGHT_MID
@@ -4749,22 +4903,42 @@ lvgl:
                   widgets:
                     - label:
                         id: home_forecast_day_3
-                        align: TOP_MID
+                        align: TOP_LEFT
+                        x: 26
+                        y: 2
                         text: "--"
                         text_color: 0xFFFF00
-                        text_font: font_home_small
+                        text_font: font_home_forecast_day
+                    - label:
+                        id: home_forecast_temp_3
+                        align: BOTTOM_LEFT
+                        x: 26
+                        y: -2
+                        width: 50
+                        text: "--"
+                        text_color: 0x8EDBFF
+                        text_font: font_home_forecast_temp
+                        text_align: LEFT
                     - label:
                         id: home_forecast_icon_3
-                        align: CENTER
+                        align: TOP_RIGHT
+                        x: -26
+                        y: 2
+                        width: 44
                         text: "\U000F0590"
                         text_color: 0xFFFFFF
                         text_font: font_mdi_forecast
+                        text_align: CENTER
                     - label:
-                        id: home_forecast_temp_3
-                        align: BOTTOM_MID
+                        id: home_forecast_temp_low_3
+                        align: BOTTOM_RIGHT
+                        x: -26
+                        y: -2
+                        width: 44
                         text: "--"
                         text_color: 0x8EDBFF
                         text_font: font_home_small
+                        text_align: CENTER
 
         - button:
             id: home_light1_button
@@ -4785,10 +4959,39 @@ lvgl:
               border_color: 0xFFFFFF
               border_width: 4
             on_click:
-              - homeassistant.action:
-                  action: homeassistant.toggle
-                  data:
-                    entity_id: ${pulldown1_entity}
+              - if:
+                  condition:
+                    lambda: 'return !id(light_slider_active);'
+                  then:
+                    - homeassistant.action:
+                        action: homeassistant.toggle
+                        data:
+                          entity_id: ${pulldown1_entity}
+                  else:
+                    - if:
+                        condition:
+                          lambda: 'return id(light_slider_just_opened);'
+                        then:
+                          - lambda: 'id(light_slider_just_opened) = false;'
+                        else:
+                          - if:
+                              condition:
+                                lambda: 'return id(light_slider_target) == 1;'
+                              then:
+                                - script.stop: light_slider_timeout
+                                - lambda: |-
+                                    lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                    id(light_slider_active) = false;
+                                    id(light_slider_target) = 0;
+                              else:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 1
+            on_long_press:
+              - script.execute:
+                  id: open_light_slider
+                  light_num: 1
+              - lambda: 'id(light_slider_just_opened) = true;'
             widgets:
               - label:
                   id: home_light1_button_label
@@ -4818,10 +5021,39 @@ lvgl:
               border_color: 0xFFFFFF
               border_width: 4
             on_click:
-              - homeassistant.action:
-                  action: homeassistant.toggle
-                  data:
-                    entity_id: ${pulldown2_entity}
+              - if:
+                  condition:
+                    lambda: 'return !id(light_slider_active);'
+                  then:
+                    - homeassistant.action:
+                        action: homeassistant.toggle
+                        data:
+                          entity_id: ${pulldown2_entity}
+                  else:
+                    - if:
+                        condition:
+                          lambda: 'return id(light_slider_just_opened);'
+                        then:
+                          - lambda: 'id(light_slider_just_opened) = false;'
+                        else:
+                          - if:
+                              condition:
+                                lambda: 'return id(light_slider_target) == 2;'
+                              then:
+                                - script.stop: light_slider_timeout
+                                - lambda: |-
+                                    lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                    id(light_slider_active) = false;
+                                    id(light_slider_target) = 0;
+                              else:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 2
+            on_long_press:
+              - script.execute:
+                  id: open_light_slider
+                  light_num: 2
+              - lambda: 'id(light_slider_just_opened) = true;'
             widgets:
               - label:
                   id: home_light2_button_label
@@ -4851,10 +5083,39 @@ lvgl:
               border_color: 0xFFFFFF
               border_width: 4
             on_click:
-              - homeassistant.action:
-                  action: homeassistant.toggle
-                  data:
-                    entity_id: ${pulldown3_entity}
+              - if:
+                  condition:
+                    lambda: 'return !id(light_slider_active);'
+                  then:
+                    - homeassistant.action:
+                        action: homeassistant.toggle
+                        data:
+                          entity_id: ${pulldown3_entity}
+                  else:
+                    - if:
+                        condition:
+                          lambda: 'return id(light_slider_just_opened);'
+                        then:
+                          - lambda: 'id(light_slider_just_opened) = false;'
+                        else:
+                          - if:
+                              condition:
+                                lambda: 'return id(light_slider_target) == 3;'
+                              then:
+                                - script.stop: light_slider_timeout
+                                - lambda: |-
+                                    lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                    id(light_slider_active) = false;
+                                    id(light_slider_target) = 0;
+                              else:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 3
+            on_long_press:
+              - script.execute:
+                  id: open_light_slider
+                  light_num: 3
+              - lambda: 'id(light_slider_just_opened) = true;'
             widgets:
               - label:
                   id: home_light3_button_label
@@ -4884,10 +5145,39 @@ lvgl:
               border_color: 0xFFFFFF
               border_width: 4
             on_click:
-              - homeassistant.action:
-                  action: homeassistant.toggle
-                  data:
-                    entity_id: ${pulldown4_entity}
+              - if:
+                  condition:
+                    lambda: 'return !id(light_slider_active);'
+                  then:
+                    - homeassistant.action:
+                        action: homeassistant.toggle
+                        data:
+                          entity_id: ${pulldown4_entity}
+                  else:
+                    - if:
+                        condition:
+                          lambda: 'return id(light_slider_just_opened);'
+                        then:
+                          - lambda: 'id(light_slider_just_opened) = false;'
+                        else:
+                          - if:
+                              condition:
+                                lambda: 'return id(light_slider_target) == 4;'
+                              then:
+                                - script.stop: light_slider_timeout
+                                - lambda: |-
+                                    lv_obj_add_flag(id(home_light_slider_popup), LV_OBJ_FLAG_HIDDEN);
+                                    id(light_slider_active) = false;
+                                    id(light_slider_target) = 0;
+                              else:
+                                - script.execute:
+                                    id: open_light_slider
+                                    light_num: 4
+            on_long_press:
+              - script.execute:
+                  id: open_light_slider
+                  light_num: 4
+              - lambda: 'id(light_slider_just_opened) = true;'
             widgets:
               - label:
                   id: home_light4_button_label
@@ -4897,6 +5187,48 @@ lvgl:
                   text_color: 0xFFFFFF
                   text_font: font_home_light_label
                   text_align: CENTER
+
+        - obj:
+            id: home_light_slider_popup
+            align: TOP_LEFT
+            x: 21
+            y: 8
+            width: 90
+            height: 340
+            radius: 16
+            bg_color: 0x101010
+            bg_opa: 92%
+            border_color: 0x505050
+            border_width: 1
+            pad_all: 10
+            scrollable: false
+            hidden: true
+            widgets:
+              - slider:
+                  id: home_light_slider
+                  align: CENTER
+                  width: 24
+                  height: 280
+                  min_value: 1
+                  max_value: 100
+                  value: 100
+                  on_value:
+                    - script.execute: light_slider_timeout
+                  on_release:
+                    - lambda: |-
+                        int pct = lv_slider_get_value(id(home_light_slider));
+                        std::string entity;
+                        switch (id(light_slider_target)) {
+                          case 1: entity = "${pulldown1_entity}"; break;
+                          case 2: entity = "${pulldown2_entity}"; break;
+                          case 3: entity = "${pulldown3_entity}"; break;
+                          case 4: entity = "${pulldown4_entity}"; break;
+                          default: entity = ""; break;
+                        }
+                        if (!entity.empty()) {
+                          id(apply_light_slider_brightness)->execute(entity, pct);
+                        }
+                    - script.execute: light_slider_timeout
 
     - id: player_controls_page
       bg_color: 0x000000
@@ -5525,7 +5857,7 @@ lvgl:
             align: TOP_MID
             y: 21
             width: 413
-            text: "Controls"
+            text: "Lights"
             text_color: 0x66CCFF
             text_font: font_display_medium
             text_align: CENTER
