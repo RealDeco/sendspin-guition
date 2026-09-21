@@ -231,13 +231,15 @@ DAC
 
 ## Guition 4.0" (ESP32-S3-4848S040) Control device
 
-This is a display without mic or audio meant to be the controller for your Sendspin devices.
-
-Perfect control device for the small SendspinZero players here: https://github.com/RealDeco/SendspinZero
+This is a display without mic or audio meant to be the controller for your Sendspin devices. Perfect for the small SendspinZero DIY players here: https://github.com/RealDeco/SendspinZero
 
 <div align="center">
 
+### Flash Firmware
 
+<a href="https://realdeco.github.io/sendspin-guition/Guition_4.0-Control/index.html">
+  <strong>Guition 4.0 Control</strong>
+</a>
 
 <br><br>
 <img height="400"  src="https://github.com/user-attachments/assets/fbedb9ce-e207-4ee1-a43c-1b6a734ac505" />
@@ -253,7 +255,7 @@ Without relays:
 With relays:
 [https://www.aliexpress.com/item/1005006302251538.html](https://www.aliexpress.com/item/1005006302251538.html)
 
-(the model with relays can be directly mounted in standard 86mm wall mounts)
+(the model with relays can be directly mounted in standard 86mm wall mounts like this one: https://www.aliexpress.com/item/1005006554991525.html, the model without needs 3d printed case) 
 
 ---
 
@@ -282,12 +284,12 @@ and allow the device to perform Home Assistant actions:
 <img width="830" height="519" alt="Screenshot 2026-06-19 at 18 53 30" src="https://github.com/user-attachments/assets/c6773cad-7b1c-4e11-81c5-8d7cfa0cde0b" />
 
 
-For Dual Voice Assistants to work, you need to set SAME NAME in the label box below the wake words like this:
+For devices with Voice Assistants, to make DUAL VA work, you need to set SAME NAME in the label box below the wake words like this:
 
 <img width="716" height="300" alt="Screenshot 2026-06-19 at 18 44 04" src="https://github.com/user-attachments/assets/ca05e6b1-0301-47f0-a5ea-a36a9d551d5f" />
 
 
-This is because we can't read from the device which wakewords are set in HA, and we need that to compare with the wake word used.
+This is because we need that to compare with the wake word used and and decide which avatar to show.
 
 ---
 
