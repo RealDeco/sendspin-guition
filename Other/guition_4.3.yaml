@@ -202,6 +202,8 @@ ota:
 
 ### REM THIS OUT IF USING ETHERNET *START* ***
 wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
   on_connect:
     - delay: 1s
     - if:
@@ -219,25 +221,6 @@ button:
     name: "Restart"
     entity_category: config
     icon: "mdi:restart"
-
-### REM THIS OUT IF USING ETHERNET *END* ***
-
-#ethernet:
-#  type: IP101
-#  mdc_pin: GPIO31
-#  mdio_pin: GPIO52
-#  power_pin: GPIO51
-#  clk:
-#    pin: GPIO50
-#    mode: CLK_EXT_IN
-#  phy_addr: 1
-#  on_connect:
-#    - delay: 1s
-#    - if:
-#        condition:
-#          switch.is_on: standby_background_enabled
-#        then:
-#          - script.execute: load_standby_background
 
 time:
   - platform: homeassistant
