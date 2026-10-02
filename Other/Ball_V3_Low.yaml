@@ -666,7 +666,7 @@ binary_sensor:
           - ON for at most 350ms
           - OFF for at least 350ms
         then:
-          - sendspin.switch:
+          - media_player.toggle: sendspin_group_media_player
       - timing:
           - ON for at most 350ms
           - OFF for at most 350ms
@@ -683,6 +683,10 @@ binary_sensor:
           - OFF for at least 351ms
         then:
           - script.execute: now_playing_swipe_right
+      - timing:
+          - ON for at least 700ms
+        then:
+          - sendspin.switch:
 
   - platform: homeassistant
     id: room1_presence
