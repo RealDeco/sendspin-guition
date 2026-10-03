@@ -84,11 +84,8 @@ packages:
 
 external_components:
   - source: github://RealDeco/sendspin-guition@main
-    components: [audio]
+    components: [audio, i2s_audio, micro_wake_word, resampler]
     refresh: 0s
-  - source: github://pr#16882
-    components: [i2s_audio, micro_wake_word, resampler]
-    refresh: 1h
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -3696,6 +3693,13 @@ script:
                 };
 
                 if (full_redraw) {
+                  // Clear the whole 172x172 canvas first - the sky/scene fill below only covers the
+                  // centered 128x128 square, leaving the side margins and bottom date strip untouched.
+                  // Without this, those regions show whatever garbage was in the freshly-allocated,
+                  // never-zeroed canvas buffer (see analog_clock_ensure_created) until something else
+                  // happens to redraw over them.
+                  lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_TRANSP);
+
                   // Sky fill (only the SIZE x SIZE square, horizontally centered within the wider
                   // 172px canvas via OFFSET_X - this canvas is a 172x172 square, and the
                   // scene is also narrower than 172 now to leave room for a date strip below, so the
