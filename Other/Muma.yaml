@@ -85,11 +85,8 @@ packages:
 
 external_components:
   - source: github://RealDeco/sendspin-guition@main
-    components: [audio]
+    components: [audio, i2s_audio, micro_wake_word, resampler]
     refresh: 0s
-  - source: github://pr#16882
-    components: [i2s_audio, micro_wake_word, resampler]
-    refresh: 1h
         
 #packages: # local
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
@@ -746,7 +743,7 @@ microphone:
     i2s_audio_id: i2s_audio_bus
     i2s_din_pin: GPIO10
     adc_type: external
-    channel: stereo
+    channel: right
     pdm: false
     sample_rate: ${media_sample_rate}
     bits_per_sample: 16bit
@@ -773,7 +770,6 @@ speaker:
   - platform: mixer
     id: mixing_speaker
     output_speaker: i2s_speaker
-    num_channels: 2
     task_stack_in_psram: true
     source_speakers:
       - id: announcement_mixing_input
