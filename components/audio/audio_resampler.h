@@ -49,6 +49,9 @@ class AudioResampler {
   /// @return ESP_OK if successsful, ESP_ERR_NO_MEM if the transfer buffer wasn't allocated
   esp_err_t add_sink(std::weak_ptr<ring_buffer::RingBuffer> &output_ring_buffer);
 
+  // Patched in from esphome/esphome#16882 (commit 3db4594): lets a resampler feed an
+  // AudioSinkCallback consumer (needed by components/resampler/microphone). Otherwise
+  // this file is unmodified mainline.
   /// @brief Adds a sink callback for resampled audio.
   /// @param callback pointer to callback implementation
   /// @return ESP_OK if successsful, ESP_ERR_NO_MEM if the transfer buffer wasn't allocated
