@@ -91,12 +91,9 @@ packages:
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
 
 external_components:
-  - source: github://pr#16882
-    components: [i2s_audio, micro_wake_word, resampler]
-    refresh: 1h
   - source: github://RealDeco/sendspin-guition@main
-    components: [plane_radar, flappy_bird, audio]
-    refresh: 0d
+    components: [plane_radar, flappy_bird, audio, i2s_audio, micro_wake_word, resampler]
+    refresh: 0s
 
 plane_radar:
   id: radar
@@ -782,7 +779,7 @@ microphone:
     i2s_audio_id: i2s_audio_bus
     i2s_din_pin: GPIO10
     adc_type: external
-    channel: stereo
+    channel: left
     pdm: false
     sample_rate: ${media_sample_rate}
     bits_per_sample: 16bit
@@ -809,7 +806,6 @@ speaker:
   - platform: mixer
     id: mixing_speaker
     output_speaker: i2s_speaker
-    num_channels: 2
     task_stack_in_psram: true
     source_speakers:
       - id: announcement_mixing_input
