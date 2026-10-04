@@ -117,19 +117,4 @@ Example: https://www.aliexpress.com/item/1005007635720202.html
 
 ---
 
-## Guition 4.0 (ESP32-S3-4848S040)
-
-This is a device without audio, to be used as a display/control unit for other sendspin players in group with this device.
-
-### Features
-
-* Sendspin player
-* Playlist menu
-* Media player controls
-* Presence and light map
-* Light control
-* LVGL interface
-* Clocks
-
-<img width="600" src="https://github.com/user-attachments/assets/5323a26a-0a69-43e8-9152-d922d09a132b" />
 
