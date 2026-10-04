@@ -112,13 +112,13 @@ esp32:
 psram:
   mode: octal
   speed: 80MHz
-  ignore_not_found: true
+  ignore_not_found: false
 
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   min_version: 2026.9.1
-  name_add_mac_suffix: false
+  name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_guition
     version: "2026.9.1"
