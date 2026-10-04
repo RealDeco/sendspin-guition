@@ -117,11 +117,11 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.9.0
+  min_version: 2026.9.1
   name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_guition
-    version: "2026.9.0"
+    version: "2026.9.1"
   on_boot:
     priority: -100
     then:
@@ -1036,6 +1036,17 @@ display:
         width: ${screenwidth}
 
 switch:
+  - platform: template
+    id: sendspin_delay_adjustable
+    name: "Sendspin adjustable delay"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - sendspin.media_source.enable_static_delay_adjustment:
+    turn_off_action:
+      - sendspin.media_source.disable_static_delay_adjustment:
+
   - platform: gpio
     name: Speaker Enable
     icon: "mdi:speaker"
@@ -3411,28 +3422,35 @@ script:
       - delay: 1500ms
       - if:
           condition:
-            lambda: return id(manual_va_active);
+            lambda: 'return id(va_phase) == ${va_phase_replying};'
           then:
-            - lambda: id(manual_va_active) = false;
-            - script.execute:
-                id: set_va_phase
-                phase: ${va_phase_idle}
             - if:
                 condition:
-                  lambda: return id(manual_va_resume_media);
+                  lambda: return id(manual_va_active);
                 then:
-                  - lambda: id(manual_va_resume_media) = false;
-                  - media_player.toggle: sendspin_group_media_player
+                  - lambda: id(manual_va_active) = false;
+                  - script.execute:
+                      id: set_va_phase
+                      phase: ${va_phase_idle}
+                  - if:
+                      condition:
+                        lambda: return id(manual_va_resume_media);
+                      then:
+                        - lambda: id(manual_va_resume_media) = false;
+                        - media_player.toggle: sendspin_group_media_player
+                else:
+                  - script.execute:
+                      id: set_va_phase
+                      phase: ${va_phase_idle}
+            - if:
+                condition:
+                  lambda: return id(wake_word_engine_location).current_option() == "On device";
+                then:
+                  - lambda: id(va).set_use_wake_word(false);
+                  - script.execute: start_wake_word
           else:
-            - script.execute:
-                id: set_va_phase
-                phase: ${va_phase_idle}
-      - if:
-          condition:
-            lambda: return id(wake_word_engine_location).current_option() == "On device";
-          then:
-            - lambda: id(va).set_use_wake_word(false);
-            - script.execute: start_wake_word
+            - lambda: |-
+                ESP_LOGW("va", "finish_va_reply: conversation continued, skipping reset");
 
   - id: set_va_phase
     mode: restart
