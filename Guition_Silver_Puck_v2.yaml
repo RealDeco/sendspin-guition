@@ -90,11 +90,11 @@ packages:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.9.0
+  min_version: 2026.9.1
   name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_guition
-    version: "2026.9.0"
+    version: "2026.9.1"
   on_boot:
     priority: -100
     then:
@@ -512,6 +512,17 @@ audio_file:
 http_request:
 
 switch:
+  - platform: template
+    id: sendspin_delay_adjustable
+    name: "Sendspin adjustable delay"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - sendspin.media_source.enable_static_delay_adjustment:
+    turn_off_action:
+      - sendspin.media_source.disable_static_delay_adjustment:
+
   - platform: gpio
     name: Speaker Enable
     icon: "mdi:speaker"
