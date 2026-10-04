@@ -874,6 +874,17 @@ media_player:
           lv_label_set_text(id(controls_mute_icon), "\xF3\xB0\x95\xBE");
 
 switch:
+  - platform: template
+    id: sendspin_delay_adjustable
+    name: "Sendspin adjustable delay"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - sendspin.media_source.enable_static_delay_adjustment:
+    turn_off_action:
+      - sendspin.media_source.disable_static_delay_adjustment:
+
   - platform: gpio
     id: sys_en_hold
     internal: true
