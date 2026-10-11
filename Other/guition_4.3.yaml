@@ -84,10 +84,12 @@ packages: # github
     files:
       - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
 
+# TEST: full duplex from esphome/esphome PR #19959 (needs ESPHome 2026.10.0b2+ / dev)
+# microphone is pulled too: the PR's i2s_audio imports microphone.DOMAIN, not in 2026.10.0b2
+# Pinned to a69b92a52 (2026-10-09): later PR commits merged dev's status_momentary_error(uint32_t), not in 2026.10.0b2
 external_components:
-  - source: github://RealDeco/sendspin-guition@main
-    components: [audio, i2s_audio, micro_wake_word, resampler]
-    refresh: 0s
+  - source: github://esphome/esphome@a69b92a5215711538804c942d4ccc1717ce45db8
+    components: [i2s_audio, microphone]
 
 #packages: # local
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
@@ -135,7 +137,7 @@ esp32_hosted:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.9.0
+  min_version: 2026.10.0b2
   name_add_mac_suffix: false
   project:
     name: realdeco.sendspin_guition
@@ -216,6 +218,14 @@ button:
     name: "Restart"
     entity_category: config
     icon: "mdi:restart"
+  # Only needed after 20 wrong pairing codes; resets the counter
+  - platform: template
+    id: sendspin_confirm_pairing
+    name: "Sendspin Confirm Pairing"
+    entity_category: config
+    icon: "mdi:link-variant"
+    on_press:
+      - sendspin.confirm_pairing_window:
 
 ### REM THIS OUT IF USING ETHERNET *END* ***
 
@@ -366,6 +376,14 @@ globals:
     restore_value: no
     initial_value: "nullptr"
   - id: volume_ring_label
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: pairing_overlay
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: pairing_code_label
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
@@ -721,6 +739,22 @@ image:
 sendspin:
   id: sendspin_hub
   task_stack_in_psram: true
+  on_display_pairing_code:
+    - script.execute:
+        id: show_pairing_code
+        code: !lambda 'return code;'
+  on_clear_pairing_code:
+    - script.execute: hide_pairing_code
+  on_pairing_succeeded:
+    - logger.log:
+        format: "Sendspin paired with server %s"
+        args: ['server_id.c_str()']
+    - script.execute: hide_pairing_code
+  on_pairing_failed:
+    - logger.log:
+        format: "Sendspin pairing failed: %s"
+        args: ['reason.c_str()']
+    - script.execute: hide_pairing_code
 
 audio_file:
   - id: timer_finished_sound
@@ -775,7 +809,6 @@ microphone:
       microphone: raw_microphone
       channels: [0]
     sample_rate: 16000
-    buffer_duration: 500ms
     
 speaker:
   - platform: i2s_audio
@@ -859,8 +892,8 @@ media_player:
         - http_media_source
         - sendspin_media_source
     volume_increment: 0.05
-    volume_min: 0.5
-    volume_max: 0.7
+    volume_min: 0.35  # was 0.5; ES8311 ~-51 dB at 1%
+    volume_max: 0.62  # was 0.7; ~-16.5 dB at 100%
 
     on_play:
       then:
@@ -921,6 +954,12 @@ media_player:
 
 
 switch:
+  # Turn off after pairing so only paired servers can play
+  - platform: sendspin
+    id: sendspin_unpaired_access
+    name: "Sendspin Unpaired Access"
+    type: unpaired_access
+
   - platform: template
     id: sendspin_delay_adjustable
     name: "Sendspin adjustable delay"
@@ -1618,8 +1657,8 @@ text:
 micro_wake_word:
   id: mww
   microphone: voice_microphone
-  ring_buffer_duration: 500ms
-#  stop_after_detection: false
+  stop_after_detection: false
+  task_stack_in_psram: true  # P4 mww stack is 8 KB; keeps internal RAM free for the speaker task while mww runs
   models:
     - model: okay_nabu
       id: okay_nabu
@@ -1948,6 +1987,12 @@ sensor:
     accuracy_decimals: 0
 
 text_sensor:
+  # Dynamic pairing: shows the 6-digit code while a server is pairing
+  - platform: sendspin
+    id: sendspin_pairing_code
+    name: "Sendspin Pairing Code"
+    type: pairing_code
+
   - platform: template
     id: text_request
     name: Last Voice Request
@@ -5140,6 +5185,73 @@ script:
             lv_obj_add_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
           }
 
+  # Sendspin dynamic pairing code, shown until the hub clears it
+  - id: show_pairing_code
+    mode: restart
+    parameters:
+      code: string
+    then:
+      - script.stop: hide_pairing_code
+      - script.execute: standby_screen_activity
+      - lambda: |-
+          if (id(pairing_overlay) == nullptr) {
+            id(pairing_overlay) = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(id(pairing_overlay));
+            lv_obj_set_size(id(pairing_overlay), 294, 150);
+            lv_obj_center(id(pairing_overlay));
+            lv_obj_set_style_bg_color(id(pairing_overlay), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_opa(id(pairing_overlay), 235, 0);
+            lv_obj_set_style_border_width(id(pairing_overlay), 4, 0);
+            lv_obj_set_style_radius(id(pairing_overlay), 26, 0);
+            lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_SCROLLABLE);
+
+            lv_obj_t *title = lv_label_create(id(pairing_overlay));
+            lv_label_set_text(title, "Sendspin pairing");
+            lv_obj_set_style_text_font(title, id(font_display), 0);
+            lv_obj_set_style_text_color(title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 18);
+
+            id(pairing_code_label) = lv_label_create(id(pairing_overlay));
+            lv_obj_set_style_text_font(id(pairing_code_label), id(font_7seg), 0);
+            lv_obj_align(id(pairing_code_label), LV_ALIGN_BOTTOM_MID, 0, -16);
+          }
+
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
+          lv_obj_set_style_border_color(id(pairing_overlay), lv_color_hex(accent_u32), 0);
+          lv_obj_set_style_text_color(id(pairing_code_label), lv_color_hex(accent4_u32), 0);
+
+          // "123456" -> "123 456" for readability
+          std::string shown = code;
+          if (shown.size() == 6) shown.insert(3, " ");
+          lv_label_set_text(id(pairing_code_label), shown.c_str());
+          lv_obj_align(id(pairing_code_label), LV_ALIGN_BOTTOM_MID, 0, -16);
+          lv_obj_set_style_opa(id(pairing_overlay), LV_OPA_COVER, 0);
+          lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(pairing_overlay));
+
+  - id: hide_pairing_code
+    mode: restart
+    then:
+      - lambda: |-
+          if (id(pairing_overlay) == nullptr || lv_obj_has_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN)) return;
+          lv_anim_del(id(pairing_overlay), nullptr);
+          lv_anim_t fade;
+          lv_anim_init(&fade);
+          lv_anim_set_var(&fade, id(pairing_overlay));
+          lv_anim_set_values(&fade, LV_OPA_COVER, LV_OPA_TRANSP);
+          lv_anim_set_time(&fade, 260);
+          lv_anim_set_exec_cb(&fade, [](void *obj, int32_t opacity) {
+            lv_obj_set_style_opa((lv_obj_t *) obj, opacity, 0);
+          });
+          lv_anim_start(&fade);
+      - delay: 280ms
+      - lambda: |-
+          if (id(pairing_overlay) != nullptr) {
+            lv_obj_add_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN);
+          }
+
   - id: ring_timer
     then:
       - script.execute: enable_repeat_one
@@ -5444,7 +5556,8 @@ touchscreen:
             const int swipe_min_dist = std::max(16, min_dim / 8);
             const int tap_max_dist = std::max(14, min_dim / 12);
 
-            if (id(va_phase) != ${va_phase_idle}) {
+            // Only zone 1 (avatar) stops the VA; zone 2 controls keep working during a reply
+            if (id(va_phase) != ${va_phase_idle} && id(touch_start_y) < ${imagewidth}) {
               id(stop_active_va)->execute();
               return;
             }
