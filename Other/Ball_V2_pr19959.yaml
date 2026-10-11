@@ -85,10 +85,10 @@ packages:
 
 # TEST: full duplex from esphome/esphome PR #19959 (needs ESPHome 2026.10.0b2+ / dev)
 # microphone is pulled too: the PR's i2s_audio imports microphone.DOMAIN, not in 2026.10.0b2
+# Pinned to a69b92a52 (2026-10-09): later PR commits merged dev's status_momentary_error(uint32_t), not in 2026.10.0b2
 external_components:
-  - source: github://pr#19959
+  - source: github://esphome/esphome@a69b92a5215711538804c942d4ccc1717ce45db8
     components: [i2s_audio, microphone]
-    refresh: 1h
         
 #packages: # local
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
