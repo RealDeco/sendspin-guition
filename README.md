@@ -148,7 +148,7 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 <img width="400" src="https://github.com/user-attachments/assets/063362d3-3063-4a42-8740-1f7cea6c51af" />
 
 <br><br>
-In case your device is stuck in a boot loop and you can't flash it: press and hold the boot button while powering on/connecting power and let go again once it's on. the BOOT button is here:
+In case your device is stuck in a boot loop and you can't flash it: use a paperclip to press and hold the boot button insde the oval hole while powering on/connecting power and let go again once it's on. the BOOT button is located here:
 <br>
 
 <img width="400" src="https://github.com/user-attachments/assets/d74ff676-ac5e-448f-a432-dcb0ba33da59" />
