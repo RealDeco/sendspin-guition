@@ -88,7 +88,7 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.9.0
+  min_version: 2026.10.0b2
   name_add_mac_suffix: false
   project:
     name: realdeco.sendspin_guition
@@ -114,6 +114,7 @@ logger:
   level: WARN
 
 api:
+  reboot_timeout: 0s
   on_client_connected:
     - if:
         condition:
@@ -166,6 +167,13 @@ improv_serial:
 captive_portal:
 
 button:
+  - platform: template
+    id: sendspin_confirm_pairing
+    name: "Sendspin Confirm Pairing"
+    entity_category: config
+    icon: "mdi:link-variant"
+    on_press:
+      - sendspin.confirm_pairing_window:
   - platform: restart
     id: restart_button
     name: "Restart"
@@ -188,6 +196,14 @@ interval:
       - script.execute: mario_clock_tick
 
 globals:
+  - id: pairing_overlay
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: pairing_code_label
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
   - id: sendspin_album_art_valid
     type: bool
     restore_value: no
@@ -525,6 +541,22 @@ image:
 sendspin:
   id: sendspin_hub
   task_stack_in_psram: true
+  on_display_pairing_code:
+    - script.execute:
+        id: show_pairing_code
+        code: !lambda 'return code;'
+  on_clear_pairing_code:
+    - script.execute: hide_pairing_code
+  on_pairing_succeeded:
+    - logger.log:
+        format: "Sendspin paired with server %s"
+        args: ['server_id.c_str()']
+    - script.execute: hide_pairing_code
+  on_pairing_failed:
+    - logger.log:
+        format: "Sendspin pairing failed: %s"
+        args: ['reason.c_str()']
+    - script.execute: hide_pairing_code
 
 audio_file:
   - id: ready_sound
@@ -756,6 +788,11 @@ binary_sensor:
 
 
 switch:
+  - platform: sendspin
+    id: sendspin_unpaired_access
+    name: "Sendspin Unpaired Access"
+    type: unpaired_access
+
   - platform: template
     id: sendspin_delay_adjustable
     name: "Sendspin adjustable delay"
@@ -1199,6 +1236,11 @@ sensor:
           then:
             - script.execute: refresh_battery_display
 text_sensor:
+  - platform: sendspin
+    id: sendspin_pairing_code
+    name: "Sendspin Pairing Code"
+    type: pairing_code
+
   - platform: homeassistant
     id: ha_weather_condition
     entity_id: ${ha_weather_entity}
@@ -1805,6 +1847,71 @@ light:
     default_transition_length: 0s
 
 script:
+  - id: show_pairing_code
+    mode: restart
+    parameters:
+      code: string
+    then:
+      - script.stop: hide_pairing_code
+      - script.execute: standby_screen_activity
+      - lambda: |-
+          if (id(pairing_overlay) == nullptr) {
+            id(pairing_overlay) = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(id(pairing_overlay));
+            lv_obj_set_size(id(pairing_overlay), 216, 100);
+            lv_obj_center(id(pairing_overlay));
+            lv_obj_set_style_bg_color(id(pairing_overlay), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_opa(id(pairing_overlay), 235, 0);
+            lv_obj_set_style_border_width(id(pairing_overlay), 3, 0);
+            lv_obj_set_style_radius(id(pairing_overlay), 18, 0);
+            lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_SCROLLABLE);
+
+            lv_obj_t *title = lv_label_create(id(pairing_overlay));
+            lv_label_set_text(title, "Sendspin pairing");
+            lv_obj_set_style_text_font(title, id(font_display), 0);
+            lv_obj_set_style_text_color(title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
+
+            id(pairing_code_label) = lv_label_create(id(pairing_overlay));
+            lv_obj_set_style_text_font(id(pairing_code_label), id(font_7seg), 0);
+            lv_obj_align(id(pairing_code_label), LV_ALIGN_BOTTOM_MID, 0, -10);
+          }
+
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
+          lv_obj_set_style_border_color(id(pairing_overlay), lv_color_hex(accent_u32), 0);
+          lv_obj_set_style_text_color(id(pairing_code_label), lv_color_hex(accent4_u32), 0);
+
+          std::string shown = code;
+          if (shown.size() == 6) shown.insert(3, " ");
+          lv_label_set_text(id(pairing_code_label), shown.c_str());
+          lv_obj_align(id(pairing_code_label), LV_ALIGN_BOTTOM_MID, 0, -10);
+          lv_obj_set_style_opa(id(pairing_overlay), LV_OPA_COVER, 0);
+          lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(pairing_overlay));
+
+  - id: hide_pairing_code
+    mode: restart
+    then:
+      - lambda: |-
+          if (id(pairing_overlay) == nullptr || lv_obj_has_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN)) return;
+          lv_anim_del(id(pairing_overlay), nullptr);
+          lv_anim_t fade;
+          lv_anim_init(&fade);
+          lv_anim_set_var(&fade, id(pairing_overlay));
+          lv_anim_set_values(&fade, LV_OPA_COVER, LV_OPA_TRANSP);
+          lv_anim_set_time(&fade, 260);
+          lv_anim_set_exec_cb(&fade, [](void *obj, int32_t opacity) {
+            lv_obj_set_style_opa((lv_obj_t *) obj, opacity, 0);
+          });
+          lv_anim_start(&fade);
+      - delay: 280ms
+      - lambda: |-
+          if (id(pairing_overlay) != nullptr) {
+            lv_obj_add_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN);
+          }
+
   - id: refresh_battery_display
     then:
       - lambda: |-
