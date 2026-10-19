@@ -87,11 +87,11 @@ packages:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.9.0
+  min_version: 2026.9.1
   name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_guition
-    version: "2026.9.0"
+    version: "2026.9.1"
   on_boot:
     priority: -100
     then:
@@ -129,6 +129,7 @@ logger:
   level: WARN
 
 api:
+  reboot_timeout: 0s
   on_client_connected:
     - if:
         condition:
@@ -279,6 +280,10 @@ globals:
     restore_value: no
     initial_value: "false"
   - id: ui_phase
+    type: int
+    restore_value: no
+    initial_value: "${ui_phase_standby}"
+  - id: pulldown_return_phase
     type: int
     restore_value: no
     initial_value: "${ui_phase_standby}"
@@ -506,6 +511,9 @@ image:
           src: sendspin_album_art
       - lvgl.image.update:
           id: playlist_album_art_widget
+          src: sendspin_album_art
+      - lvgl.image.update:
+          id: pulldown_album_art_widget
           src: sendspin_album_art
     on_image_clear:
       - logger.log:
@@ -3308,7 +3316,18 @@ script:
       - script.stop: player_controls_timeout
       - script.stop: pulldown_timeout
       - lambda: |-
+          id(pulldown_return_phase) = id(ui_phase);
           id(ui_phase) = ${ui_phase_pulldown};
+          bool show_album_art = id(pulldown_return_phase) == ${ui_phase_now_playing};
+          if (show_album_art) {
+            lv_obj_add_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          }
       - script.execute: standby_screen_activity
       - lvgl.page.show:
           id: pulldown_page
@@ -3321,13 +3340,23 @@ script:
     then:
       - script.stop: pulldown_timeout
       - lambda: |-
-          id(ui_phase) = ${ui_phase_standby};
+          id(ui_phase) = id(pulldown_return_phase);
       - script.execute: standby_screen_activity
-      - lvgl.page.show:
-          id: idle_page
-          animation: MOVE_TOP
-          time: 220ms
-      - component.update: weather_line
+      - if:
+          condition:
+            lambda: 'return id(pulldown_return_phase) == ${ui_phase_now_playing};'
+          then:
+            - lvgl.page.show:
+                id: sendspin_page
+                animation: MOVE_TOP
+                time: 220ms
+            - script.execute: now_playing_show_album_art
+          else:
+            - lvgl.page.show:
+                id: idle_page
+                animation: MOVE_TOP
+                time: 220ms
+            - component.update: weather_line
 
   - id: pulldown_timeout
     mode: restart
@@ -3936,6 +3965,9 @@ script:
             - lvgl.image.update:
                 id: playlist_album_art_widget
                 src: fallback_playing_image
+            - lvgl.image.update:
+                id: pulldown_album_art_widget
+                src: fallback_playing_image
 
 output:
   - platform: ledc
@@ -4164,10 +4196,14 @@ touchscreen:
                 } else if (dy < 0) {
                   if (id(now_playing_art_mode)) {
                     id(now_playing_show_album_art)->execute();
+                  } else {
+                    id(set_ui_phase)->execute(${ui_phase_standby});
                   }
                 } else {
                   if (id(artist_art_valid) && !id(now_playing_art_mode)) {
                     id(now_playing_show_artist_art)->execute();
+                  } else {
+                    id(open_pulldown_menu)->execute();
                   }
                 }
               } else if (id(ui_phase) == ${ui_phase_player_controls}) {
@@ -5850,6 +5886,30 @@ lvgl:
             height: ${imageheight}
             antialias: false
             clickable: false
+            hidden: true
+
+        - image:
+            id: pulldown_album_art_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: fallback_playing_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: pulldown_album_art_dim
+            align: CENTER
+            width: 480
+            height: 480
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
             hidden: true
 
         - label:
