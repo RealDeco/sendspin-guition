@@ -119,9 +119,7 @@ This is a Player only device. no Voice Assistant (on request), to be used as not
 ### Features
 
 * Sendspin player
-* Playlist menu
 * Media player controls
 * Presence and light map
-* Light control
 * LVGL interface
 * Clocks
