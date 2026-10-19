@@ -150,6 +150,7 @@ logger:
   level: WARN
 
 api:
+  reboot_timeout: 0s
   on_client_connected:
     - if:
         condition:
@@ -3422,7 +3423,7 @@ script:
       - delay: 1500ms
       - if:
           condition:
-            lambda: 'return id(va_phase) == ${va_phase_replying};'
+            lambda: 'return id(va_phase) == ${va_phase_replying} || id(va_phase) == ${va_phase_thinking};'
           then:
             - if:
                 condition:
@@ -3582,8 +3583,21 @@ script:
                   not:
                     media_player.is_playing: external_media_player
                 timeout: 1s
-      - script.execute: stop_wake_word
-      - delay: 100ms
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).current_option() == "In Home Assistant";
+          then:
+            - script.execute: stop_wake_word
+            - delay: 100ms
+          else:
+            - if:
+                condition:
+                  and:
+                    - switch.is_off: mute
+                    - not:
+                        micro_wake_word.is_running:
+                then:
+                  - micro_wake_word.start:
       - lambda: |-
           id(active_image_set) = image_set;
       - script.execute:
@@ -6434,6 +6448,8 @@ lvgl:
             shadow_color: 0xFFFF00
             shadow_width: 18
             shadow_opa: 45%
+            pressed:
+              recolor_opa: TRANSP
             on_click:
               - script.execute:
                   id: start_manual_va
@@ -6465,6 +6481,8 @@ lvgl:
             shadow_color: 0xFFFF00
             shadow_width: 18
             shadow_opa: 45%
+            pressed:
+              recolor_opa: TRANSP
             on_click:
               - script.execute:
                   id: start_manual_va
