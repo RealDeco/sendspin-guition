@@ -2,15 +2,12 @@
 
 This directory contains configurations for devices that do not have a dedicated line-out connection.
 
-Instead, these devices use their built-in speaker together with an experimental full-duplex audio component.
+Instead, these devices use their built-in speaker together with new full-duplex audio component.
 
 Full-duplex audio eliminates the clicking normally heard when switching between the microphone and speaker. It also makes it possible to use a **stop word** to interrupt the Voice Assistant while it is speaking or to stop a ringing timer.
 
-> [!WARNING]
-> Full-duplex audio support is still experimental and may change during development.
-
-> [!NOTE]
-> Stop-word detection is not currently working, but support is expected when the full-duplex component is finalized.
+> [!NOTICE]
+> Full-duplex audio support is still in beta so require esphome beta version until 2026.10 is release
 
 ---
 
@@ -28,8 +25,6 @@ Full-duplex audio eliminates the clicking normally heard when switching between 
 * Clocks
 
 <img width="600" alt="Ball v2 with built-in speaker" src="https://github.com/user-attachments/assets/3d6a9d27-57fb-43e0-bad7-55e59d0b380c" />
-
-Flappy Ball is variant of the Ball but includes a flappy bird game (hold boot button), and a flight radar (doubleclick boot button)
 
 ---
 
@@ -117,4 +112,16 @@ Example: https://www.aliexpress.com/item/1005007635720202.html
 
 ---
 
+## Ball v3 (Low)
 
+This is a Player only device. no Voice Assistant (on request), to be used as notifier device.
+
+### Features
+
+* Sendspin player
+* Playlist menu
+* Media player controls
+* Presence and light map
+* Light control
+* LVGL interface
+* Clocks
