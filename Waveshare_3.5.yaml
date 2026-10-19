@@ -127,6 +127,7 @@ logger:
   level: WARN
 
 api:
+  reboot_timeout: 0s
   on_client_connected:
     - if:
         condition:
@@ -2364,7 +2365,7 @@ script:
       - delay: 1500ms
       - if:
           condition:
-            lambda: 'return id(va_phase) == ${va_phase_replying};'
+            lambda: 'return id(va_phase) == ${va_phase_replying} || id(va_phase) == ${va_phase_thinking};'
           then:
             - if:
                 condition:
@@ -2408,6 +2409,17 @@ script:
             case ${va_phase_timer_ringing}: name = "timer_ringing"; break;
           }
           ESP_LOGW("va", "phase: %s", name);
+      - if:
+          condition:
+            lambda: return phase != ${va_phase_idle} && id(ui_phase) == ${ui_phase_pullup};
+          then:
+            - script.stop: pullup_timeout
+            - lambda: |-
+                if (id(pullup_return_phase) == ${ui_phase_player_controls}) {
+                  id(pullup_return_phase) = id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_IDLE
+                      ? ${ui_phase_standby} : ${ui_phase_now_playing};
+                }
+            - script.execute: close_pullup_menu
       - if:
           condition:
             lambda: return phase == ${va_phase_idle};
@@ -2543,8 +2555,21 @@ script:
                   not:
                     media_player.is_playing: external_media_player
                 timeout: 1s
-      - script.execute: stop_wake_word
-      - delay: 100ms
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).current_option() == "In Home Assistant";
+          then:
+            - script.execute: stop_wake_word
+            - delay: 100ms
+          else:
+            - if:
+                condition:
+                  and:
+                    - switch.is_off: mute
+                    - not:
+                        micro_wake_word.is_running:
+                then:
+                  - micro_wake_word.start:
       - lambda: |-
           id(active_image_set) = image_set;
       - script.execute:
@@ -5341,7 +5366,7 @@ touchscreen:
             const int swipe_min_dist = std::max(16, min_dim / 8);
             const int tap_max_dist = std::max(14, min_dim / 12);
 
-            if (id(va_phase) != ${va_phase_idle}) {
+            if (id(va_phase) != ${va_phase_idle} && id(touch_start_x) < ${imagewidth}) {
               id(stop_active_va)->execute();
               return;
             }
@@ -6887,6 +6912,8 @@ lvgl:
                               shadow_color: 0xFFFF00
                               shadow_width: 14
                               shadow_opa: 45%
+                              pressed:
+                                recolor_opa: TRANSP
                               on_click:
                                 - script.execute:
                                     id: start_manual_va
@@ -6918,6 +6945,8 @@ lvgl:
                               shadow_color: 0xFFFF00
                               shadow_width: 14
                               shadow_opa: 45%
+                              pressed:
+                                recolor_opa: TRANSP
                               on_click:
                                 - script.execute:
                                     id: start_manual_va
