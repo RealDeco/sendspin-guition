@@ -84,12 +84,9 @@ packages: # github
     files:
       - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
 
-# TEST: full duplex from esphome/esphome PR #19959 (needs ESPHome 2026.10.0b2+ / dev)
-# microphone is pulled too: the PR's i2s_audio imports microphone.DOMAIN, not in 2026.10.0b2
-# Pinned to a69b92a52 (2026-10-09): later PR commits merged dev's status_momentary_error(uint32_t), not in 2026.10.0b2
 external_components:
-  - source: github://esphome/esphome@a69b92a5215711538804c942d4ccc1717ce45db8
-    components: [i2s_audio, microphone]
+  - source: github://esphome/esphome@04d475970e1835ba79ace1e5303749aac833e191
+    components: [i2s_audio]
 
 #packages: # local
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
@@ -102,9 +99,11 @@ esp32:
     type: esp-idf
     advanced:
       execute_from_psram: true
+      loop_task_stack_size: 12288
     sdkconfig_options:
       CONFIG_SPIRAM_USE_MALLOC: y
       CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "65536"
+      CONFIG_LWIP_TCP_WND_DEFAULT: "65534"
 
 psram:
   speed: 200MHz
@@ -169,6 +168,7 @@ logger:
   level: WARN
 
 api:
+  reboot_timeout: 0s
   on_client_connected:
     - if:
         condition:
@@ -218,7 +218,6 @@ button:
     name: "Restart"
     entity_category: config
     icon: "mdi:restart"
-  # Only needed after 20 wrong pairing codes; resets the counter
   - platform: template
     id: sendspin_confirm_pairing
     name: "Sendspin Confirm Pairing"
@@ -892,8 +891,8 @@ media_player:
         - http_media_source
         - sendspin_media_source
     volume_increment: 0.05
-    volume_min: 0.35  # was 0.5; ES8311 ~-51 dB at 1%
-    volume_max: 0.62  # was 0.7; ~-16.5 dB at 100%
+    volume_min: 0.35  # ES8311 ~-51 dB at 1%
+    volume_max: 0.62  # ~-16.5 dB at 100%
 
     on_play:
       then:
@@ -954,7 +953,6 @@ media_player:
 
 
 switch:
-  # Turn off after pairing so only paired servers can play
   - platform: sendspin
     id: sendspin_unpaired_access
     name: "Sendspin Unpaired Access"
@@ -1658,7 +1656,7 @@ micro_wake_word:
   id: mww
   microphone: voice_microphone
   stop_after_detection: false
-  task_stack_in_psram: true  # P4 mww stack is 8 KB; keeps internal RAM free for the speaker task while mww runs
+  task_stack_in_psram: true
   models:
     - model: okay_nabu
       id: okay_nabu
@@ -1987,7 +1985,6 @@ sensor:
     accuracy_decimals: 0
 
 text_sensor:
-  # Dynamic pairing: shows the 6-digit code while a server is pairing
   - platform: sendspin
     id: sendspin_pairing_code
     name: "Sendspin Pairing Code"
@@ -2488,7 +2485,7 @@ script:
       - delay: 1500ms
       - if:
           condition:
-            lambda: 'return id(va_phase) == ${va_phase_replying};'
+            lambda: 'return id(va_phase) == ${va_phase_replying} || id(va_phase) == ${va_phase_thinking};'
           then:
             - if:
                 condition:
@@ -2535,6 +2532,17 @@ script:
             case ${va_phase_timer_ringing}: name = "timer_ringing"; break;
           }
           ESP_LOGW("va", "phase: %s", name);
+      - if:
+          condition:
+            lambda: return phase != ${va_phase_idle} && id(ui_phase) == ${ui_phase_pullup};
+          then:
+            - script.stop: pullup_timeout
+            - lambda: |-
+                if (id(pullup_return_phase) == ${ui_phase_player_controls}) {
+                  id(pullup_return_phase) = id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_IDLE
+                      ? ${ui_phase_standby} : ${ui_phase_now_playing};
+                }
+            - script.execute: close_pullup_menu
       - if:
           condition:
             lambda: return phase == ${va_phase_idle};
@@ -2670,8 +2678,21 @@ script:
                   not:
                     media_player.is_playing: external_media_player
                 timeout: 1s
-      - script.execute: stop_wake_word
-      - delay: 100ms
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).current_option() == "In Home Assistant";
+          then:
+            - script.execute: stop_wake_word
+            - delay: 100ms
+          else:
+            - if:
+                condition:
+                  and:
+                    - switch.is_off: mute
+                    - not:
+                        micro_wake_word.is_running:
+                then:
+                  - micro_wake_word.start:
       - lambda: |-
           id(active_image_set) = image_set;
       - script.execute:
@@ -5185,7 +5206,6 @@ script:
             lv_obj_add_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
           }
 
-  # Sendspin dynamic pairing code, shown until the hub clears it
   - id: show_pairing_code
     mode: restart
     parameters:
@@ -5222,7 +5242,6 @@ script:
           lv_obj_set_style_border_color(id(pairing_overlay), lv_color_hex(accent_u32), 0);
           lv_obj_set_style_text_color(id(pairing_code_label), lv_color_hex(accent4_u32), 0);
 
-          // "123456" -> "123 456" for readability
           std::string shown = code;
           if (shown.size() == 6) shown.insert(3, " ");
           lv_label_set_text(id(pairing_code_label), shown.c_str());
@@ -5556,7 +5575,6 @@ touchscreen:
             const int swipe_min_dist = std::max(16, min_dim / 8);
             const int tap_max_dist = std::max(14, min_dim / 12);
 
-            // Only zone 1 (avatar) stops the VA; zone 2 controls keep working during a reply
             if (id(va_phase) != ${va_phase_idle} && id(touch_start_y) < ${imagewidth}) {
               id(stop_active_va)->execute();
               return;
@@ -7107,6 +7125,8 @@ lvgl:
                               shadow_color: 0xFFFF00
                               shadow_width: 14
                               shadow_opa: 45%
+                              pressed:
+                                recolor_opa: TRANSP
                               on_click:
                                 - script.execute:
                                     id: start_manual_va
@@ -7138,6 +7158,8 @@ lvgl:
                               shadow_color: 0xFFFF00
                               shadow_width: 14
                               shadow_opa: 45%
+                              pressed:
+                                recolor_opa: TRANSP
                               on_click:
                                 - script.execute:
                                     id: start_manual_va
