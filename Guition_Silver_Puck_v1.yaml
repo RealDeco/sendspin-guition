@@ -130,6 +130,7 @@ logger:
   level: WARN
 
 api:
+  reboot_timeout: 0s
   on_client_connected:
     - lambda: |-
         if (!id(boot_sound_played)) {
