@@ -57,17 +57,6 @@ substitutions:
   clock_style_retro: "3"
   clock_style_mario: "4"
 
-packages:
-  extcomp:
-    url: https://github.com/RealDeco/xiaozhi-esphome.git
-    ref: main
-    refresh: 0s
-    files:
-      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
-
-#packages: # local
-#  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
-  
 esp32:
   variant: esp32s3
   flash_size: 16MB
@@ -88,11 +77,11 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.10.0b2
+  min_version: 2026.10.0
   name_add_mac_suffix: false
   project:
     name: realdeco.sendspin_guition
-    version: "2026.9.0"
+    version: "2026.10.0"
   on_boot:
     priority: -100
     then:
@@ -1799,7 +1788,9 @@ light:
     icon: mdi:television
     entity_category: config
     output: backlight_output
-    restore_mode: ALWAYS_ON
+    restore_state: none
+    initial_state:
+      state: true
     default_transition_length: 250ms
 
   - platform: rgb
@@ -1810,7 +1801,9 @@ light:
     red: accent_color_r
     green: accent_color_g
     blue: accent_color_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -1821,7 +1814,9 @@ light:
     red: accent_color2_r
     green: accent_color2_g
     blue: accent_color2_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -1832,7 +1827,9 @@ light:
     red: accent_color3_r
     green: accent_color3_g
     blue: accent_color3_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -1843,7 +1840,9 @@ light:
     red: accent_color4_r
     green: accent_color4_g
     blue: accent_color4_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
 script:
