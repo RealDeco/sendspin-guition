@@ -81,14 +81,10 @@ packages:
     ref: main
     refresh: 0s
     files:
-      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
+      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.10.0.yaml
 
-external_components:
-  - source: github://esphome/esphome@04d475970e1835ba79ace1e5303749aac833e191
-    components: [i2s_audio]
-        
 #packages: # local
-#  extcomp: !include localtest/HW/sendspin-external_components_2026.8.0.yaml
+#  extcomp: !include localtest/HW/sendspin-external_components_2026.10.0.yaml
   
 esp32:
   variant: esp32s3
@@ -110,11 +106,11 @@ psram:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.10.0b2
+  min_version: 2026.10.0
   name_add_mac_suffix: false
   project:
     name: realdeco.sendspin_guition
-    version: "2026.9.0"
+    version: "2026.10.0"
   on_boot:
     priority: -100
     then:
@@ -2527,7 +2523,9 @@ light:
     icon: mdi:television
     entity_category: config
     output: backlight_output
-    restore_mode: ALWAYS_ON
+    restore_state: none
+    initial_state:
+      state: true
     default_transition_length: 250ms
 
   - platform: esp32_rmt_led_strip
@@ -2536,6 +2534,7 @@ light:
     disabled_by_default: false
     entity_category: config
     pin: GPIO48
+    restore_state: none
     default_transition_length: 0s
     chipset: WS2812
     num_leds: 1
@@ -2562,7 +2561,9 @@ light:
     red: accent_color_r
     green: accent_color_g
     blue: accent_color_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -2573,7 +2574,9 @@ light:
     red: accent_color2_r
     green: accent_color2_g
     blue: accent_color2_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -2584,7 +2587,9 @@ light:
     red: accent_color3_r
     green: accent_color3_g
     blue: accent_color3_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -2595,7 +2600,9 @@ light:
     red: accent_color4_r
     green: accent_color4_g
     blue: accent_color4_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
 script:
