@@ -7,7 +7,7 @@ Instead, these devices use their built-in speaker together with new full-duplex 
 Full-duplex audio eliminates the clicking normally heard when switching between the microphone and speaker. It also makes it possible to use a **stop word** to interrupt the Voice Assistant while it is speaking or to stop a ringing timer.
 
 > [!NOTICE]
-> Full-duplex audio support is still in development so require esphome beta version until 2026.10 is released
+> Full-duplex audio support is still in development using external component but compiles with latest release version
 
 ---
 
