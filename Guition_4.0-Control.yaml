@@ -697,11 +697,11 @@ switch:
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.widget.show: date_label
-      - lvgl.widget.show: photo_date_label
+      - script.execute: photo_pill_layout
       - script.execute: analog_clock_redraw
     on_turn_off:
       - lvgl.widget.hide: date_label
-      - lvgl.widget.hide: photo_date_label
+      - script.execute: photo_pill_layout
       - script.execute: analog_clock_redraw
 
   - platform: template
@@ -1500,6 +1500,7 @@ text_sensor:
             - lvgl.label.update:
                 id: photo_clock_label
                 text: !lambda return x;
+            - script.execute: photo_ampm_update
 
   - platform: template
     id: clock_date
@@ -1983,6 +1984,8 @@ script:
 
           lv_obj_set_style_text_color(id(clock_label), accent, 0);
           lv_obj_set_style_text_color(id(clock_ampm_label), accent, 0);
+          lv_obj_set_style_text_color(id(photo_clock_label), accent, 0);
+          lv_obj_set_style_text_color(id(photo_ampm_label), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
           lv_obj_set_style_text_color(id(analog_weather_temp), accent, 0);
@@ -2006,6 +2009,7 @@ script:
           lv_obj_set_style_border_color(id(home_room5_box), accent, 0);
           lv_obj_set_style_border_color(id(home_room6_box), accent, 0);
           lv_obj_set_style_text_color(id(date_label), accent2, 0);
+          lv_obj_set_style_text_color(id(photo_date_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(analog_weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(home_light1_button_label), accent2, 0);
@@ -2283,13 +2287,9 @@ script:
                                                     lv_obj_add_flag(w, LV_OBJ_FLAG_HIDDEN);
                                                   }
                                                   lv_obj_clear_flag(id(photo_clock_block), LV_OBJ_FLAG_HIDDEN);
-                                                  if (id(clock_show_date).state) {
-                                                    lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
-                                                  } else {
-                                                    lv_obj_add_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
-                                                  }
                                                   lv_label_set_text(id(photo_clock_label), id(clock_hms).state.c_str());
                                                   lv_label_set_text(id(photo_date_label), id(clock_date).state.c_str());
+                                          - script.execute: photo_pill_layout
                                           - if:
                                               condition:
                                                 lambda: 'return id(family_photo_image)->is_loaded();'
@@ -3587,6 +3587,33 @@ script:
                   media_url: !lambda |-
                     return uri;
 
+  - id: photo_pill_layout
+    then:
+      - lambda: |-
+          if (id(clock_show_date).state) {
+            lv_obj_set_height(id(photo_clock_pill), 115);
+            lv_obj_align(id(photo_clock_label), LV_ALIGN_TOP_MID, 0, 10);
+            lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_set_height(id(photo_clock_pill), 70);
+            lv_obj_align(id(photo_clock_label), LV_ALIGN_CENTER, 0, 0);
+            lv_obj_add_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+          }
+      - script.execute: photo_ampm_update
+
+  - id: photo_ampm_update
+    then:
+      - lambda: |-
+          if (!id(clock_12h_format).state) {
+            lv_obj_add_flag(id(photo_ampm_label), LV_OBJ_FLAG_HIDDEN);
+            return;
+          }
+          auto t = id(homeassistant_time).now();
+          lv_label_set_text(id(photo_ampm_label), (t.is_valid() && t.hour >= 12) ? "P" : "A");
+          lv_obj_update_layout(id(photo_clock_label));
+          lv_obj_align_to(id(photo_ampm_label), id(photo_clock_label), LV_ALIGN_OUT_RIGHT_BOTTOM, 5, -4);
+          lv_obj_clear_flag(id(photo_ampm_label), LV_OBJ_FLAG_HIDDEN);
+
   - id: load_family_photo
     mode: restart
     then:
@@ -4603,6 +4630,13 @@ lvgl:
                         text_color: 0xFFFFFF
                         text_font: font_7seg_small
                         text_align: CENTER
+
+                    - label:
+                        id: photo_ampm_label
+                        text: ""
+                        text_color: 0xFFFFFF
+                        text_font: font_ampm
+                        hidden: true
 
                     - label:
                         id: photo_date_label
