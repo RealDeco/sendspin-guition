@@ -80,22 +80,14 @@ external_components:
     components: [drv2605]
     refresh: 1h
 
-packages:
-  extcomp:
-    url: https://github.com/RealDeco/xiaozhi-esphome.git
-    ref: main
-    refresh: 0s
-    files:
-      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.8.0.yaml
-
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  min_version: 2026.9.1
+  min_version: 2026.10.0
   name_add_mac_suffix: true
   project:
     name: realdeco.sendspin_guition
-    version: "2026.9.1"
+    version: "2026.10.0"
   on_boot:
     priority: -100
     then:
@@ -170,6 +162,13 @@ psram:
 captive_portal:
 
 button:
+  - platform: template
+    id: sendspin_confirm_pairing
+    name: "Sendspin Confirm Pairing"
+    entity_category: config
+    icon: "mdi:link-variant"
+    on_press:
+      - sendspin.confirm_pairing_window:
   - platform: restart
     id: restart_button
     name: "Restart"
@@ -191,6 +190,14 @@ interval:
       - script.execute: mario_clock_tick
 
 globals:
+  - id: pairing_overlay
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: pairing_code_label
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
   - id: sendspin_album_art_valid
     type: bool
     restore_value: no
@@ -514,6 +521,22 @@ image:
 sendspin:
   id: sendspin_hub
   task_stack_in_psram: true
+  on_display_pairing_code:
+    - script.execute:
+        id: show_pairing_code
+        code: !lambda 'return code;'
+  on_clear_pairing_code:
+    - script.execute: hide_pairing_code
+  on_pairing_succeeded:
+    - logger.log:
+        format: "Sendspin paired with server %s"
+        args: ['server_id.c_str()']
+    - script.execute: hide_pairing_code
+  on_pairing_failed:
+    - logger.log:
+        format: "Sendspin pairing failed: %s"
+        args: ['reason.c_str()']
+    - script.execute: hide_pairing_code
 
 drv2605:
   id: haptic_driver
@@ -529,6 +552,11 @@ audio_file:
 http_request:
 
 switch:
+  - platform: sendspin
+    id: sendspin_unpaired_access
+    name: "Sendspin Unpaired Access"
+    type: unpaired_access
+
   - platform: template
     id: sendspin_delay_adjustable
     name: "Sendspin adjustable delay"
@@ -1344,6 +1372,11 @@ sensor:
       - component.update: weather_line
 
 text_sensor:
+  - platform: sendspin
+    id: sendspin_pairing_code
+    name: "Sendspin Pairing Code"
+    type: pairing_code
+
   - platform: homeassistant
     id: ha_weather_condition
     entity_id: ${ha_weather_entity}
@@ -1798,6 +1831,71 @@ font:
     glyphs: "0123456789"
 
 script:
+  - id: show_pairing_code
+    mode: restart
+    parameters:
+      code: string
+    then:
+      - script.stop: hide_pairing_code
+      - script.execute: standby_screen_activity
+      - lambda: |-
+          if (id(pairing_overlay) == nullptr) {
+            id(pairing_overlay) = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(id(pairing_overlay));
+            lv_obj_set_size(id(pairing_overlay), 290, 135);
+            lv_obj_center(id(pairing_overlay));
+            lv_obj_set_style_bg_color(id(pairing_overlay), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_opa(id(pairing_overlay), 235, 0);
+            lv_obj_set_style_border_width(id(pairing_overlay), 4, 0);
+            lv_obj_set_style_radius(id(pairing_overlay), 24, 0);
+            lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_SCROLLABLE);
+
+            lv_obj_t *title = lv_label_create(id(pairing_overlay));
+            lv_label_set_text(title, "Sendspin pairing");
+            lv_obj_set_style_text_font(title, id(font_display), 0);
+            lv_obj_set_style_text_color(title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+
+            id(pairing_code_label) = lv_label_create(id(pairing_overlay));
+            lv_obj_set_style_text_font(id(pairing_code_label), id(font_7seg), 0);
+            lv_obj_align(id(pairing_code_label), LV_ALIGN_BOTTOM_MID, 0, -14);
+          }
+
+          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
+          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
+          lv_obj_set_style_border_color(id(pairing_overlay), lv_color_hex(accent_u32), 0);
+          lv_obj_set_style_text_color(id(pairing_code_label), lv_color_hex(accent4_u32), 0);
+
+          std::string shown = code;
+          if (shown.size() == 6) shown.insert(3, " ");
+          lv_label_set_text(id(pairing_code_label), shown.c_str());
+          lv_obj_align(id(pairing_code_label), LV_ALIGN_BOTTOM_MID, 0, -14);
+          lv_obj_set_style_opa(id(pairing_overlay), LV_OPA_COVER, 0);
+          lv_obj_clear_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(pairing_overlay));
+
+  - id: hide_pairing_code
+    mode: restart
+    then:
+      - lambda: |-
+          if (id(pairing_overlay) == nullptr || lv_obj_has_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN)) return;
+          lv_anim_del(id(pairing_overlay), nullptr);
+          lv_anim_t fade;
+          lv_anim_init(&fade);
+          lv_anim_set_var(&fade, id(pairing_overlay));
+          lv_anim_set_values(&fade, LV_OPA_COVER, LV_OPA_TRANSP);
+          lv_anim_set_time(&fade, 260);
+          lv_anim_set_exec_cb(&fade, [](void *obj, int32_t opacity) {
+            lv_obj_set_style_opa((lv_obj_t *) obj, opacity, 0);
+          });
+          lv_anim_start(&fade);
+      - delay: 280ms
+      - lambda: |-
+          if (id(pairing_overlay) != nullptr) {
+            lv_obj_add_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN);
+          }
+
   - id: led_ring_apply_state
     mode: restart
     then:
@@ -3687,7 +3785,9 @@ light:
     red: accent_color_r
     green: accent_color_g
     blue: accent_color_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -3698,7 +3798,9 @@ light:
     red: accent_color2_r
     green: accent_color2_g
     blue: accent_color2_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -3709,7 +3811,9 @@ light:
     red: accent_color3_r
     green: accent_color3_g
     blue: accent_color3_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: rgb
@@ -3720,7 +3824,9 @@ light:
     red: accent_color4_r
     green: accent_color4_g
     blue: accent_color4_b
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_state: all
+    initial_state:
+      state: true
     default_transition_length: 0s
 
   - platform: monochromatic
@@ -3729,7 +3835,9 @@ light:
     icon: mdi:television
     entity_category: config
     output: backlight_output
-    restore_mode: ALWAYS_ON
+    restore_state: none
+    initial_state:
+      state: true
     default_transition_length: 250ms
 
   - platform: esp32_rmt_led_strip
@@ -3742,7 +3850,7 @@ light:
     num_leds: 13
     chipset: WS2812
     channel_colors: GRB
-    restore_mode: ALWAYS_OFF
+    restore_state: none
     default_transition_length: 250ms
 
 touchscreen:
