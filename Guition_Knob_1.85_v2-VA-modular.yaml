@@ -86,6 +86,7 @@ substitutions:
   clock_style_rooms: "2"
   clock_style_retro: "3"
   clock_style_mario: "4"
+  clock_style_photo: "5"
 
 external_components:
   - source: github://RAR/esphome-drv2605
@@ -138,6 +139,7 @@ esphome:
             if (opt == "Rooms") return ${clock_style_rooms};
             if (opt == "Retro") return ${clock_style_retro};
             if (opt == "Mario") return ${clock_style_mario};
+            if (opt == "Family Photo") return ${clock_style_photo};
             return ${clock_style_digital};
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
@@ -602,6 +604,26 @@ image:
                 lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
+
+  - platform: online_image
+    id: family_photo_image
+    url: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/family_photo1.png
+    format: PNG
+    type: RGB565
+    resize: ${imagewidth}x${imageheight}
+    update_interval: never
+    on_download_finished:
+      - if:
+          condition:
+            lambda: 'return id(clock_style_mode) == ${clock_style_photo};'
+          then:
+            - lvgl.image.update:
+                id: photo_clock_image_widget
+                src: family_photo_image
+            - lvgl.widget.show: photo_clock_image_widget
+    on_error:
+      - lambda: |-
+          ESP_LOGW("family_photo", "failed to load photo");
 
 ### sendspin album art
 
@@ -1379,9 +1401,11 @@ switch:
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.widget.show: date_label
+      - script.execute: photo_pill_layout
       - script.execute: analog_clock_redraw
     on_turn_off:
       - lvgl.widget.hide: date_label
+      - script.execute: photo_pill_layout
       - script.execute: analog_clock_redraw
 
   - platform: template
@@ -1488,6 +1512,7 @@ select:
       - Rooms
       - Retro
       - Mario
+      - Family Photo
     set_action:
       - script.execute:
           id: apply_clock_style
@@ -1496,6 +1521,7 @@ select:
             if (x == "Rooms") return ${clock_style_rooms};
             if (x == "Retro") return ${clock_style_retro};
             if (x == "Mario") return ${clock_style_mario};
+            if (x == "Family Photo") return ${clock_style_photo};
             return ${clock_style_digital};
 
   - platform: template
@@ -1647,6 +1673,16 @@ select:
                 blue: 100%
 
 text:
+  - platform: template
+    id: family_photo_url
+    name: Family photo URL
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    mode: text
+    on_value:
+      - script.execute: load_family_photo
   - platform: template
     id: wake_word_1_label
     name: Wake word 1 label
@@ -2272,6 +2308,16 @@ text_sensor:
             - lvgl.label.update:
                 id: rooms_clock_label
                 text: !lambda return x;
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_mode) == ${clock_style_photo};'
+          then:
+            - lvgl.label.update:
+                id: photo_clock_label
+                text: !lambda return x;
+            - script.execute: photo_ampm_update
 
   - platform: template
     id: clock_date
@@ -2305,6 +2351,15 @@ text_sensor:
           then:
             - lvgl.label.update:
                 id: rooms_date_label
+                text: !lambda return x;
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_mode) == ${clock_style_photo};'
+          then:
+            - lvgl.label.update:
+                id: photo_date_label
                 text: !lambda return x;
 
   - platform: template
@@ -3098,6 +3153,8 @@ script:
 
           lv_obj_set_style_text_color(id(clock_label), accent, 0);
           lv_obj_set_style_text_color(id(clock_ampm_label), accent, 0);
+          lv_obj_set_style_text_color(id(photo_clock_label), accent, 0);
+          lv_obj_set_style_text_color(id(photo_ampm_label), accent, 0);
           lv_obj_set_style_text_color(id(idle_timer_countdown), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp), accent, 0);
           lv_obj_set_style_text_color(id(weather_big_temp_unit), accent, 0);
@@ -3106,6 +3163,7 @@ script:
           lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
           lv_obj_set_style_bg_color(id(now_playing_progress_bar), accent, LV_PART_INDICATOR);
           lv_obj_set_style_text_color(id(date_label), accent2, 0);
+          lv_obj_set_style_text_color(id(photo_date_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(analog_weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(weather_label), accent3, 0);
@@ -3179,6 +3237,14 @@ script:
     then:
       - lambda: |-
           id(clock_style_mode) = style_mode;
+      - if:
+          condition:
+            lambda: 'return style_mode != ${clock_style_photo};'
+          then:
+            - lambda: |-
+                lv_obj_add_flag(id(photo_clock_block), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(photo_clock_image_widget), LV_OBJ_FLAG_HIDDEN);
+            - online_image.release: family_photo_image
       - if:
           condition:
             lambda: 'return style_mode == ${clock_style_analog};'
@@ -3288,27 +3354,64 @@ script:
                               - component.update: weather_temp_big
                               - component.update: weather_line
                             else:
-                              - lambda: |-
-                                  lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
-                                  if (id(clock_show_date).state) {
-                                    lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                  } else {
-                                    lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                  }
-                                  if (id(analog_clock_canvas_widget) != nullptr) {
-                                    lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
-                                  }
-                                  lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
-                                  for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
-                                    lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
-                                  }
-                              - component.update: clock_hms
-                              - component.update: clock_date
-                              - component.update: weather_temp_big
-                              - component.update: weather_line
+                              - if:
+                                  condition:
+                                    lambda: 'return style_mode == ${clock_style_photo};'
+                                  then:
+                                    - lambda: |-
+                                        lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                        if (id(analog_clock_canvas_widget) != nullptr) {
+                                          lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                          lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_clear_flag(id(photo_clock_block), LV_OBJ_FLAG_HIDDEN);
+                                        lv_label_set_text(id(photo_clock_label), id(clock_hms).state.c_str());
+                                        lv_label_set_text(id(photo_date_label), id(clock_date).state.c_str());
+                                    - script.execute: photo_pill_layout
+                                    - if:
+                                        condition:
+                                          lambda: 'return id(family_photo_image)->is_loaded();'
+                                        then:
+                                          - lvgl.image.update:
+                                              id: photo_clock_image_widget
+                                              src: family_photo_image
+                                          - lvgl.widget.show: photo_clock_image_widget
+                                        else:
+                                          - script.execute: load_family_photo
+                                    - component.update: clock_hms
+                                    - component.update: clock_date
+                                  else:
+                                    - lambda: |-
+                                        lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        if (id(clock_show_date).state) {
+                                          lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        } else {
+                                          lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        if (id(analog_clock_canvas_widget) != nullptr) {
+                                          lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                          lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                    - component.update: clock_hms
+                                    - component.update: clock_date
+                                    - component.update: weather_temp_big
+                                    - component.update: weather_line
 
   - id: rooms_grid_apply
     then:
@@ -4426,6 +4529,48 @@ script:
                     return id(playlist_media_player_entity).state;
                   media_url: !lambda |-
                     return uri;
+
+  - id: photo_pill_layout
+    then:
+      - lambda: |-
+          if (id(clock_show_date).state) {
+            lv_obj_set_height(id(photo_clock_pill), 86);
+            lv_obj_align(id(photo_clock_label), LV_ALIGN_TOP_MID, 0, 8);
+            lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_set_height(id(photo_clock_pill), 52);
+            lv_obj_align(id(photo_clock_label), LV_ALIGN_CENTER, 0, 0);
+            lv_obj_add_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+          }
+      - script.execute: photo_ampm_update
+
+  - id: photo_ampm_update
+    then:
+      - lambda: |-
+          if (!id(clock_12h_format).state) {
+            lv_obj_add_flag(id(photo_ampm_label), LV_OBJ_FLAG_HIDDEN);
+            return;
+          }
+          auto t = id(homeassistant_time).now();
+          lv_label_set_text(id(photo_ampm_label), (t.is_valid() && t.hour >= 12) ? "P" : "A");
+          lv_obj_update_layout(id(photo_clock_label));
+          lv_obj_align_to(id(photo_ampm_label), id(photo_clock_label), LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -3);
+          lv_obj_clear_flag(id(photo_ampm_label), LV_OBJ_FLAG_HIDDEN);
+
+  - id: load_family_photo
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(clock_style_mode) == ${clock_style_photo};'
+          then:
+            - lambda: |-
+                std::string url = id(family_photo_url).state;
+                if (url.empty()) {
+                  url = "https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/family_photo1.png";
+                }
+                id(family_photo_image)->set_url(url);
+                id(family_photo_image)->update();
 
   - id: load_standby_background
     mode: restart
@@ -5679,6 +5824,67 @@ lvgl:
             antialias: false
             clickable: false
             hidden: true
+
+        - obj:
+            id: photo_clock_block
+            align: TOP_MID
+            x: 0
+            y: 0
+            width: ${imagewidth}
+            height: ${imageheight}
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - image:
+                  id: photo_clock_image_widget
+                  align: CENTER
+                  src: family_photo_image
+                  antialias: false
+                  clickable: false
+                  hidden: true
+
+              - obj:
+                  id: photo_clock_pill
+                  align: BOTTOM_MID
+                  y: -45
+                  width: 250
+                  height: 86
+                  bg_color: 0x000000
+                  bg_opa: 55%
+                  border_opa: TRANSP
+                  radius: 18
+                  pad_all: 0
+                  scrollable: false
+                  clickable: false
+                  widgets:
+                    - label:
+                        id: photo_clock_label
+                        align: TOP_MID
+                        y: 8
+                        text: "--:--"
+                        text_color: 0xFFFFFF
+                        text_font: font_7seg_small
+                        text_align: CENTER
+
+                    - label:
+                        id: photo_ampm_label
+                        text: ""
+                        text_color: 0xFFFFFF
+                        text_font: font_ampm
+                        hidden: true
+
+                    - label:
+                        id: photo_date_label
+                        align: BOTTOM_MID
+                        y: -8
+                        text: "------"
+                        text_color: 0xFFFFFF
+                        text_font: font_display
+                        text_align: CENTER
 
         - obj:
             id: idle_center_block
