@@ -1,0 +1,25 @@
+# How to add photos (File Editor add-on):
+# 1. Open File Editor, go to /config/www/family_photos/ (create it if missing)
+# 2. Upload the photo there (480x480 PNG, auto-resized by the devices)
+# 3. Add its filename to the "photos" list below
+
+alias: Cycle family photo
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
+actions:
+  - variables:
+      photos:
+        - Photo1.png
+        - Photo2.png
+        - Photo3.png
+        - Photo4.png
+      chosen: "{{ photos | random }}"
+  - action: text.set_value
+    target:
+      entity_id: #devices to change photo on
+        - text.guition_4_0_control_c896cc_family_photo_url
+        - text.thomas_room_xiaozhi_taichi_pi_v1_family_photo_url
+    data:
+      value: "http://homeassistant.local:8123/local/family_photos/{{ chosen }}"
+mode: single
