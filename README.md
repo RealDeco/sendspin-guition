@@ -5,7 +5,7 @@
 
 # sendspin-guition
 
-Sendspin player firmware for Guition devices with Line Out.
+Sendspin player firmware for Guition devices with Line Out. (and others)
 
 (and other devices where you can easily ADD a Line Out)
 
@@ -13,19 +13,13 @@ Turn any amplifier, active speaker, or existing hi-fi setup into part of a perfe
 
 Not many esp32 devices include Line Out, but Guition has made two: the 1.80" silver puck and a new version of the 1.85" rotary dial knob. These devices are perfect for Sendspin players because they support Line Out through the 3.5 mm mini-jack connector.
 
-There are two versions available in this project:
-
-**Simple Player** – A basic player example that others can use as a reference or as a starting point for their own projects.
-
-**Modular** – A more advanced version featuring two voice assistants and a Sendspin player.
-
-Both versions can be flashed directly from the project webpage for users who simply want everything to work without having to compile the firmware themselves.
-
 ---
 
 NEW!: Added the bigger 7" display from guition (JC1060P470C-I-W-Y) to the project because it's "almost" DIY free like the others, the DAC module does require soldering but thats it. 
 
 NEW: Added Waveshare's 3.5" with Line Out DAC
+
+NEW; Added Guitions older 4" (esp32-s3-4848s040), a Display/Control device only, no sound.
 
 ### More devices [here](Other/)
 
@@ -83,13 +77,6 @@ Then compile in Esphome Builder.
 
 For your convenience, you can flash the device directly from this webpage. Click your version below to get started.
 
-<a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v1/index.html">
-  <strong>Guition Silver Puck v1</strong>
-</a>
-<br>
-<a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v2/index.html">
-  <strong>Guition Silver Puck v2</strong>
-</a>
 <br>
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Silver_Puck_v1-modular/index.html">
   <strong>Guition Silver Puck v1 Dual VA Modular</strong>
@@ -135,9 +122,6 @@ Beware there is two versions of this, the older more expensive JC3636K518C with 
 
 ### Flash Firmware
 
-<a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_v2/index.html">
-  <strong>Guition Knob v2</strong>
-</a>
 <br>
 <a href="https://realdeco.github.io/sendspin-guition/Guition_Knob_1.85_v2-VA-modular/index.html">
   <strong>Guition Knob v2 Dual VA Modular</strong>
