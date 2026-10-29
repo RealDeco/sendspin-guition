@@ -107,8 +107,27 @@ Example: https://www.aliexpress.com/item/1005007635720202.html
 * Light control
 * LVGL interface
 * Clocks
+---
 
 <img width="600" src="https://github.com/user-attachments/assets/7bb6aaa9-0497-4078-8e50-51af22e66556" />
+
+---
+
+## Freenove 2.8"
+
+### Features
+
+* Dual Voice Assistant
+* Sendspin Player with local/group control
+* Presence & light detection for 6 rooms
+* Light & Scene control
+* Family photo
+* Favorite playlist/Radio selector
+* LVGL interface
+* 6 clocks: (digital, analog, Presence, Retro (analog), Mario, Photo Frame)
+---
+
+<img width="600" src="https://github.com/user-attachments/assets/3f3803f0-be53-4f09-88f8-0d3a921be53f" />
 
 ---
 
