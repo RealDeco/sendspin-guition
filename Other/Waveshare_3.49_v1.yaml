@@ -40,6 +40,11 @@ substitutions:
   pulldown3_entity: "light.hue_p45_7_light"
   pulldown4_entity: "light.color_light"
 
+  scene1_entity: "scene.bright_day"
+  scene2_entity: "scene.normal_day"
+  scene3_entity: "scene.red_night"
+  scene4_entity: "scene.off"
+
   imagewidth:  "172"
   imageheight: "172"
 
@@ -120,6 +125,7 @@ esphome:
             phase: ${va_phase_idle}
         - script.execute: refresh_playlist_labels
         - script.execute: refresh_pulldown_labels
+        - script.execute: refresh_scene_labels
         - script.execute: apply_accent_color_debounced
         - script.execute:
             id: apply_clock_style
@@ -275,6 +281,10 @@ globals:
     type: int
     restore_value: no
     initial_value: "${ui_phase_standby}"
+  - id: pulldown_menu_index
+    type: int
+    restore_value: no
+    initial_value: "0"
   - id: pullup_player_target
     type: int
     restore_value: yes
@@ -1579,6 +1589,46 @@ text:
     mode: text
     on_value:
       - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: scene1_label
+    name: Scene 1 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Bright Day
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
+  - platform: template
+    id: scene2_label
+    name: Scene 2 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Normal Day
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
+  - platform: template
+    id: scene3_label
+    name: Scene 3 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Red Night
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
+  - platform: template
+    id: scene4_label
+    name: Scene 4 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Off
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
   - platform: template
     id: news_feed_url
     name: News feed URL
@@ -2963,6 +3013,20 @@ script:
           }
           lv_obj_set_style_text_color(id(rooms_clock_label), accent3, 0);
           lv_obj_set_style_text_color(id(rooms_date_label), accent2, 0);
+
+          lv_obj_t *scene_buttons[] = {
+            id(scene1_button), id(scene2_button), id(scene3_button), id(scene4_button)
+          };
+          for (auto *btn : scene_buttons) {
+            lv_obj_set_style_border_color(btn, accent, 0);
+            lv_obj_set_style_shadow_color(btn, accent, 0);
+          }
+          lv_obj_t *scene_labels[] = {
+            id(scene1_button_label), id(scene2_button_label), id(scene3_button_label), id(scene4_button_label)
+          };
+          for (auto *label : scene_labels) {
+            lv_obj_set_style_text_color(label, accent2, 0);
+          }
       - script.execute: refresh_shuffle_repeat_buttons
       - script.execute: rooms_grid_apply
       - script.execute: refresh_pulldown_states
@@ -3050,7 +3114,11 @@ script:
                   lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
                 }
                 lv_obj_clear_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                if (id(clock_show_date).state) {
+                  lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                } else {
+                  lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                }
                 lv_obj_clear_flag(id(room1_box), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(room2_box), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_clear_flag(id(room3_box), LV_OBJ_FLAG_HIDDEN);
@@ -3183,6 +3251,48 @@ script:
       - lvgl.label.update:
           id: pulldown4_button_label
           text: !lambda return id(pulldown4_label).state;
+
+  - id: refresh_scene_labels
+    mode: restart
+    then:
+      - lvgl.label.update:
+          id: scene1_button_label
+          text: !lambda return id(scene1_label).state;
+      - lvgl.label.update:
+          id: scene2_button_label
+          text: !lambda return id(scene2_label).state;
+      - lvgl.label.update:
+          id: scene3_button_label
+          text: !lambda return id(scene3_label).state;
+      - lvgl.label.update:
+          id: scene4_button_label
+          text: !lambda return id(scene4_label).state;
+
+  - id: pulldown_show_page
+    parameters:
+      page_index: int
+    then:
+      - lambda: |-
+          if (id(pulldown_menu_index) == page_index) return;
+          id(pulldown_menu_index) = page_index;
+          if (page_index == 0) {
+            lv_obj_clear_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+          }
+
+  - id: scene_activate
+    mode: restart
+    parameters:
+      entity_id: string
+    then:
+      - homeassistant.action:
+          action: scene.turn_on
+          data:
+            entity_id: !lambda 'return entity_id;'
+      - script.execute: pulldown_timeout
 
   - id: refresh_pulldown_states
     mode: restart
@@ -5064,7 +5174,11 @@ script:
             if (id(clock_style_mode) == ${clock_style_rooms}) {
               lv_obj_add_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-              lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+              if (id(clock_show_date).state) {
+                lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+              } else {
+                lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+              }
               lv_obj_clear_flag(id(room1_box), LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(id(room2_box), LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(id(room3_box), LV_OBJ_FLAG_HIDDEN);
@@ -5647,7 +5761,13 @@ touchscreen:
                     else { id(standby_frame_content).make_call().select_previous(true).perform(); }
                   }
                 } else if (id(touch_start_x) < bar_start) {
-                  if (id(ui_phase) != ${ui_phase_pulldown}) {
+                  if (id(ui_phase) == ${ui_phase_pulldown}) {
+                    const int pulldown_page_count = 2;
+                    int next_page = dx < 0
+                      ? (id(pulldown_menu_index) + 1) % pulldown_page_count
+                      : (id(pulldown_menu_index) - 1 + pulldown_page_count) % pulldown_page_count;
+                    id(pulldown_show_page)->execute(next_page);
+                  } else {
                     if (dx < 0) { id(clock_style_choice).make_call().select_next(true).perform(); }
                     else { id(clock_style_choice).make_call().select_previous(true).perform(); }
                   }
@@ -5697,6 +5817,9 @@ touchscreen:
                   } else if (id(ui_phase) == ${ui_phase_pullup}) {
                     if (dy > 0) {
                       id(close_pullup_menu)->execute();
+                    } else if (dy < 0) {
+                      id(pullup_return_phase) = ${ui_phase_standby};
+                      id(close_pullup_menu)->execute();
                     }
                   } else if (dy > 0) {
                     id(set_ui_phase)->execute(${ui_phase_pulldown});
@@ -5730,12 +5853,22 @@ touchscreen:
               const int tx = id(touch_start_x);
               const int ty = id(touch_start_y);
               if (id(ui_phase) == ${ui_phase_pulldown} && tx < bar_start) {
-                if (ty >= 24 && ty <= 94) {
-                  if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown1_entity}")); }
-                  else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown2_entity}")); }
-                } else if (ty >= 98 && ty <= 168) {
-                  if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown3_entity}")); }
-                  else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown4_entity}")); }
+                if (id(pulldown_menu_index) == 0) {
+                  if (ty >= 24 && ty <= 94) {
+                    if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown1_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown2_entity}")); }
+                  } else if (ty >= 98 && ty <= 168) {
+                    if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown3_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown4_entity}")); }
+                  }
+                } else {
+                  if (ty >= 24 && ty <= 94) {
+                    if (tx >= 192 && tx <= 268) { id(scene_activate)->execute(std::string("${scene1_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(scene_activate)->execute(std::string("${scene2_entity}")); }
+                  } else if (ty >= 98 && ty <= 168) {
+                    if (tx >= 192 && tx <= 268) { id(scene_activate)->execute(std::string("${scene3_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(scene_activate)->execute(std::string("${scene4_entity}")); }
+                  }
                 }
                 return;
               }
@@ -6618,6 +6751,122 @@ lvgl:
                                     align: CENTER
                                     width: 64
                                     text: "Light 4"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                    - obj:
+                        id: pulldown_scenes_group
+                        align: TOP_MID
+                        y: 8
+                        width: 172
+                        height: 144
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        hidden: true
+                        widgets:
+                          - button:
+                              id: scene1_button
+                              align: TOP_MID
+                              x: -40
+                              y: 0
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: scene1_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Bright Day"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: scene2_button
+                              align: TOP_MID
+                              x: 40
+                              y: 0
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: scene2_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Normal Day"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: scene3_button
+                              align: TOP_MID
+                              x: -40
+                              y: 74
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: scene3_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Red Night"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: scene4_button
+                              align: TOP_MID
+                              x: 40
+                              y: 74
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: scene4_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Off"
                                     text_color: 0xFFFFFF
                                     text_font: font_playlist
                                     text_align: CENTER
