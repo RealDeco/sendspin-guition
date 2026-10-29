@@ -67,6 +67,11 @@ substitutions:
   pulldown3_entity: "light.hue_p45_7_light"
   pulldown4_entity: "light.color_light"
 
+  scene1_entity: "scene.bright_day"
+  scene2_entity: "scene.normal_day"
+  scene3_entity: "scene.red_night"
+  scene4_entity: "scene.off"
+
 esp32:
   board: esp32-s3-devkitc-1
   flash_size: 16MB
@@ -103,6 +108,7 @@ esphome:
           phase: ${va_phase_idle}
       - script.execute: refresh_playlist_labels
       - script.execute: refresh_pulldown_labels
+      - script.execute: refresh_scene_labels
       - script.execute: apply_accent_color_debounced
       - script.execute:
           id: apply_clock_style
@@ -309,14 +315,6 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: "0"
-  - id: volume_ring_overlay
-    type: lv_obj_t*
-    restore_value: no
-    initial_value: "nullptr"
-  - id: volume_ring_label
-    type: lv_obj_t*
-    restore_value: no
-    initial_value: "nullptr"
   - id: accent_red
     type: int
     restore_value: yes
@@ -474,6 +472,38 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: pulldown_menu_index
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: brightness_slider_light_index
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: long_press_fired
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: volume_slider_open
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: pulldown1_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
+  - id: pulldown2_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
+  - id: pulldown3_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
+  - id: pulldown4_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
 
 image:
   - platform: file
@@ -1081,8 +1111,8 @@ switch:
 
 number:
   - platform: template
-    id: player_controls_timeout_seconds
-    name: Player controls timeout delay
+    id: menu_timeout_seconds
+    name: Menu timeout
     unit_of_measurement: "s"
     icon: "mdi:timer-outline"
     entity_category: config
@@ -1584,6 +1614,46 @@ text:
     mode: text
     on_value:
       - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: scene1_label
+    name: Scene 1 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "Bright Day"
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
+  - platform: template
+    id: scene2_label
+    name: Scene 2 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "Normal Day"
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
+  - platform: template
+    id: scene3_label
+    name: Scene 3 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "Red Night"
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
+  - platform: template
+    id: scene4_label
+    name: Scene 4 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "Off"
+    mode: text
+    on_value:
+      - script.execute: refresh_scene_labels
 
 micro_wake_word:
   id: mww
@@ -1875,6 +1945,30 @@ sensor:
     on_value:
       - component.update: weather_temp_big
       - component.update: weather_line
+  - platform: homeassistant
+    id: pulldown1_brightness
+    entity_id: ${pulldown1_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown1_last_brightness) = x;'
+  - platform: homeassistant
+    id: pulldown2_brightness
+    entity_id: ${pulldown2_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown2_last_brightness) = x;'
+  - platform: homeassistant
+    id: pulldown3_brightness
+    entity_id: ${pulldown3_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown3_last_brightness) = x;'
+  - platform: homeassistant
+    id: pulldown4_brightness
+    entity_id: ${pulldown4_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown4_last_brightness) = x;'
   - platform: sendspin
     id: sendspin_track_progress
     type: track_progress
@@ -2833,8 +2927,6 @@ script:
           lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_mute_icon), accent4, 0);
-          lv_obj_set_style_text_color(id(controls_volume_down_icon), accent4, 0);
-          lv_obj_set_style_text_color(id(controls_volume_up_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_group_label), accent4, 0);
           lv_obj_set_style_text_color(id(controls_previous_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_next_icon), accent4, 0);
@@ -2861,6 +2953,20 @@ script:
           lv_obj_set_style_text_color(id(rooms_clock_label), accent3, 0);
           lv_obj_set_style_text_color(id(rooms_date_label), accent2, 0);
           lv_obj_set_style_text_color(id(pulldown_title_label), accent3, 0);
+          lv_obj_set_style_text_color(id(pulldown_scenes_title_label), accent3, 0);
+          lv_obj_t *scene_buttons[] = {
+            id(scene1_button), id(scene2_button), id(scene3_button), id(scene4_button)
+          };
+          for (auto *btn : scene_buttons) {
+            lv_obj_set_style_border_color(btn, accent, 0);
+            lv_obj_set_style_shadow_color(btn, accent, 0);
+          }
+          lv_obj_t *scene_labels[] = {
+            id(scene1_button_label), id(scene2_button_label), id(scene3_button_label), id(scene4_button_label)
+          };
+          for (auto *label : scene_labels) {
+            lv_obj_set_style_text_color(label, accent2, 0);
+          }
           lv_obj_t *room_boxes[] = {
             id(room1_box), id(room2_box), id(room3_box),
             id(room4_box), id(room5_box), id(room6_box)
@@ -2930,7 +3036,11 @@ script:
                         lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
                       }
                       lv_obj_clear_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-                      lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                      if (id(clock_show_date).state) {
+                        lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                      } else {
+                        lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                      }
                       for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                         lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
                       }
@@ -3051,6 +3161,22 @@ script:
           id: pulldown4_button_label
           text: !lambda return id(pulldown4_label).state;
 
+  - id: refresh_scene_labels
+    mode: restart
+    then:
+      - lvgl.label.update:
+          id: scene1_button_label
+          text: !lambda return id(scene1_label).state;
+      - lvgl.label.update:
+          id: scene2_button_label
+          text: !lambda return id(scene2_label).state;
+      - lvgl.label.update:
+          id: scene3_button_label
+          text: !lambda return id(scene3_label).state;
+      - lvgl.label.update:
+          id: scene4_button_label
+          text: !lambda return id(scene4_label).state;
+
   - id: refresh_pulldown_states
     mode: restart
     then:
@@ -3087,7 +3213,7 @@ script:
   - id: pulldown_timeout
     mode: restart
     then:
-      - delay: 6s
+      - delay: !lambda return (uint32_t)(id(menu_timeout_seconds).state * 1000.0f);
       - if:
           condition:
             media_player.is_idle: external_media_player
@@ -3099,6 +3225,74 @@ script:
             - script.execute:
                 id: set_ui_phase
                 phase: ${ui_phase_now_playing}
+
+  - id: pulldown_show_page
+    parameters:
+      page_index: int
+    then:
+      - lambda: |-
+          if (id(pulldown_menu_index) == page_index) return;
+          id(pulldown_menu_index) = page_index;
+          if (page_index == 0) {
+            lv_obj_clear_flag(id(pulldown_title_label), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_scenes_title_label), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(pulldown_title_label), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_scenes_title_label), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+          }
+          lv_obj_set_style_bg_opa(id(pulldown_dot1), page_index == 0 ? LV_OPA_COVER : LV_OPA_30, 0);
+          lv_obj_set_style_bg_opa(id(pulldown_dot2), page_index == 1 ? LV_OPA_COVER : LV_OPA_30, 0);
+      - script.execute: pulldown_timeout
+
+  - id: open_brightness_slider
+    mode: restart
+    parameters:
+      light_index: int
+    then:
+      - script.stop: brightness_slider_timeout
+      - lambda: |-
+          id(brightness_slider_light_index) = light_index;
+          lv_obj_t *src_label = id(pulldown4_button_label);
+          bool is_on = id(pulldown4_state).state;
+          float raw = id(pulldown4_brightness).state;
+          float last = id(pulldown4_last_brightness);
+          switch (light_index) {
+            case 1: src_label = id(pulldown1_button_label); is_on = id(pulldown1_state).state; raw = id(pulldown1_brightness).state; last = id(pulldown1_last_brightness); break;
+            case 2: src_label = id(pulldown2_button_label); is_on = id(pulldown2_state).state; raw = id(pulldown2_brightness).state; last = id(pulldown2_last_brightness); break;
+            case 3: src_label = id(pulldown3_button_label); is_on = id(pulldown3_state).state; raw = id(pulldown3_brightness).state; last = id(pulldown3_last_brightness); break;
+            default: break;
+          }
+          int pct;
+          if (!is_on) {
+            pct = 0;
+          } else {
+            if (std::isnan(raw) || raw <= 0) raw = last;
+            pct = (int) std::round(raw / 255.0f * 100.0f);
+            pct = std::max(1, std::min(100, pct));
+          }
+          lv_label_set_text(id(brightness_slider_title_label), lv_label_get_text(src_label));
+          lv_slider_set_value(id(pulldown_brightness_slider), pct, LV_ANIM_OFF);
+          lv_label_set_text_fmt(id(brightness_slider_pct_label), "%d%%", pct);
+          lv_obj_clear_flag(id(pulldown_brightness_overlay), LV_OBJ_FLAG_HIDDEN);
+      - script.execute: pulldown_timeout
+      - script.execute: brightness_slider_timeout
+
+  - id: close_brightness_slider
+    then:
+      - script.stop: brightness_slider_timeout
+      - lambda: |-
+          id(brightness_slider_light_index) = 0;
+          lv_obj_add_flag(id(pulldown_brightness_overlay), LV_OBJ_FLAG_HIDDEN);
+
+  - id: brightness_slider_timeout
+    mode: restart
+    then:
+      - delay: 3s
+      - script.execute: close_brightness_slider
 
   - id: open_pullup_menu
     then:
@@ -3117,8 +3311,35 @@ script:
   - id: pullup_timeout
     mode: restart
     then:
-      - delay: 6s
+      - delay: !lambda return (uint32_t)(id(menu_timeout_seconds).state * 1000.0f);
       - script.execute: close_pullup_menu
+
+  - id: open_volume_slider
+    mode: restart
+    then:
+      - script.stop: volume_slider_timeout
+      - lambda: |-
+          id(volume_slider_open) = true;
+          float raw = (id(pullup_player_target) == 1) ? id(sendspin_group_media_player).volume : id(external_media_player).volume;
+          int pct = (int) std::round(std::max(0.0f, std::min(1.0f, raw)) * 100.0f);
+          lv_slider_set_value(id(player_volume_slider), pct, LV_ANIM_OFF);
+          lv_label_set_text_fmt(id(player_volume_pct_label), "%d%%", pct);
+          lv_obj_clear_flag(id(player_volume_overlay), LV_OBJ_FLAG_HIDDEN);
+      - script.execute: player_controls_timeout
+      - script.execute: volume_slider_timeout
+
+  - id: close_volume_slider
+    then:
+      - script.stop: volume_slider_timeout
+      - lambda: |-
+          id(volume_slider_open) = false;
+          lv_obj_add_flag(id(player_volume_overlay), LV_OBJ_FLAG_HIDDEN);
+
+  - id: volume_slider_timeout
+    mode: restart
+    then:
+      - delay: 3s
+      - script.execute: close_volume_slider
 
   - id: refresh_pullup_state
     then:
@@ -4096,7 +4317,7 @@ script:
     mode: restart
     then:
       - delay: !lambda |-
-          return (uint32_t) (id(player_controls_timeout_seconds).state * 1000.0f);
+          return (uint32_t) (id(menu_timeout_seconds).state * 1000.0f);
       - if:
           condition:
             lambda: 'return id(va_phase) == ${va_phase_idle};'
@@ -4683,38 +4904,6 @@ script:
               break;
           }
 
-  - id: player_controls_volume_down
-    then:
-      - delay: 75ms
-      - if:
-          condition:
-            lambda: 'return !id(touch_swipe_detected);'
-          then:
-            - lambda: |-
-                if (id(pullup_player_target) == 1) {
-                  id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
-                } else {
-                  id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_DOWN).perform();
-                }
-            - script.execute: show_volume_ring
-            - script.execute: player_controls_keep_open
-
-  - id: player_controls_volume_up
-    then:
-      - delay: 75ms
-      - if:
-          condition:
-            lambda: 'return !id(touch_swipe_detected);'
-          then:
-            - lambda: |-
-                if (id(pullup_player_target) == 1) {
-                  id(sendspin_group_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
-                } else {
-                  id(external_media_player).make_call().set_command(media_player::MEDIA_PLAYER_COMMAND_VOLUME_UP).perform();
-                }
-            - script.execute: show_volume_ring
-            - script.execute: player_controls_keep_open
-
   - id: player_controls_mute
     then:
       - delay: 75ms
@@ -4937,7 +5126,11 @@ script:
             }
             if (id(clock_style_mode) == ${clock_style_rooms}) {
               lv_obj_clear_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-              lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+              if (id(clock_show_date).state) {
+                lv_obj_clear_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+              } else {
+                lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+              }
               for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                 lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
               }
@@ -5100,69 +5293,6 @@ script:
             lv_obj_move_foreground(id(idle_timer_block));
           } else {
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
-          }
-
-  - id: show_volume_ring
-    mode: restart
-    then:
-      - script.stop: hide_volume_ring
-      - lambda: |-
-          if (id(volume_ring_overlay) == nullptr) {
-            id(volume_ring_overlay) = lv_obj_create(lv_layer_top());
-            lv_obj_remove_style_all(id(volume_ring_overlay));
-            lv_obj_set_size(id(volume_ring_overlay), 100, 100);
-            lv_obj_center(id(volume_ring_overlay));
-            lv_obj_set_style_bg_color(id(volume_ring_overlay), lv_color_hex(0x000000), 0);
-            lv_obj_set_style_bg_opa(id(volume_ring_overlay), 230, 0);
-            lv_obj_set_style_border_width(id(volume_ring_overlay), 3, 0);
-            lv_obj_set_style_radius(id(volume_ring_overlay), LV_RADIUS_CIRCLE, 0);
-            lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_SCROLLABLE);
-
-            id(volume_ring_label) = lv_label_create(id(volume_ring_overlay));
-            lv_obj_set_width(id(volume_ring_label), 80);
-            lv_obj_center(id(volume_ring_label));
-            lv_obj_set_style_text_align(id(volume_ring_label), LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_set_style_text_font(id(volume_ring_label), id(font_7seg), 0);
-          }
-
-          const float raw_volume = id(pullup_player_target) == 1 ? id(sendspin_group_media_player).volume : id(external_media_player).volume;
-          const float volume = std::max(0.0f, std::min(1.0f, raw_volume));
-          const int pct = (int) lroundf(volume * 100.0f);
-          const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
-          const lv_color_t accent = lv_color_hex(accent_u32);
-          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
-          const lv_color_t accent4 = lv_color_hex(accent4_u32);
-          lv_obj_set_style_border_color(id(volume_ring_overlay), accent, 0);
-          lv_obj_set_style_text_color(id(volume_ring_label), accent4, 0);
-          char text[8];
-          snprintf(text, sizeof(text), "%d", pct);
-          lv_label_set_text(id(volume_ring_label), text);
-          lv_obj_set_style_opa(id(volume_ring_overlay), LV_OPA_COVER, 0);
-          lv_obj_clear_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
-          lv_obj_move_foreground(id(volume_ring_overlay));
-      - script.execute: hide_volume_ring
-
-  - id: hide_volume_ring
-    mode: restart
-    then:
-      - delay: 900ms
-      - lambda: |-
-          if (id(volume_ring_overlay) == nullptr) return;
-          lv_anim_del(id(volume_ring_overlay), nullptr);
-          lv_anim_t fade;
-          lv_anim_init(&fade);
-          lv_anim_set_var(&fade, id(volume_ring_overlay));
-          lv_anim_set_values(&fade, LV_OPA_COVER, LV_OPA_TRANSP);
-          lv_anim_set_time(&fade, 260);
-          lv_anim_set_exec_cb(&fade, [](void *obj, int32_t opacity) {
-            lv_obj_set_style_opa((lv_obj_t *) obj, opacity, 0);
-          });
-          lv_anim_start(&fade);
-      - delay: 280ms
-      - lambda: |-
-          if (id(volume_ring_overlay) != nullptr) {
-            lv_obj_add_flag(id(volume_ring_overlay), LV_OBJ_FLAG_HIDDEN);
           }
 
   - id: ring_timer
@@ -5451,8 +5581,18 @@ touchscreen:
                   lv_obj_remove_state(id(controls_repeat_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(controls_toggle_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(controls_shuffle_button), LV_STATE_PRESSED);
-                  lv_obj_remove_state(id(controls_volume_down_button), LV_STATE_PRESSED);
-                  lv_obj_remove_state(id(controls_volume_up_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown1_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown2_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown3_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown4_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pullup_va1_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pullup_va2_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pullup_mute_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pullup_target_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(scene1_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(scene2_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(scene3_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(scene4_button), LV_STATE_PRESSED);
                 }
                 break;
               }
@@ -5507,7 +5647,7 @@ touchscreen:
                     }
                   }
                 }
-              } else if (id(ui_phase) == ${ui_phase_player_controls}) {
+              } else if (id(ui_phase) == ${ui_phase_player_controls} && !id(volume_slider_open)) {
                 if (abs_x >= abs_y) {
                   if (id(touch_start_x) < id(main_display).get_width() / 2) {
                     if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN)) {
@@ -5565,17 +5705,25 @@ touchscreen:
                     id(set_ui_phase)->execute(${ui_phase_pulldown});
                   }
                 }
-              } else if (id(ui_phase) == ${ui_phase_pulldown}) {
+              } else if (id(ui_phase) == ${ui_phase_pulldown} && id(brightness_slider_light_index) == 0) {
                 if (abs_x < abs_y && dy < 0 && id(touch_start_x) >= id(main_display).get_width() / 2) {
                   if (id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_IDLE) {
                     id(set_ui_phase)->execute(${ui_phase_standby});
                   } else {
                     id(set_ui_phase)->execute(${ui_phase_now_playing});
                   }
+                } else if (abs_x >= abs_y && id(touch_start_x) >= id(main_display).get_width() / 2) {
+                  const int pulldown_page_count = 2;
+                  int next_page = dx < 0
+                    ? (id(pulldown_menu_index) + 1) % pulldown_page_count
+                    : (id(pulldown_menu_index) - 1 + pulldown_page_count) % pulldown_page_count;
+                  id(pulldown_show_page)->execute(next_page);
                 }
               } else if (id(ui_phase) == ${ui_phase_pullup}) {
                 if (abs_x < abs_y && dy > 0 && id(touch_start_x) >= id(main_display).get_width() / 2) {
                   id(close_pullup_menu)->execute();
+                } else if (abs_x < abs_y && dy < 0 && id(touch_start_x) >= id(main_display).get_width() / 2) {
+                  id(set_ui_phase)->execute(${ui_phase_standby});
                 }
               }
               return;
@@ -5616,7 +5764,7 @@ lvgl:
   displays:
     - main_display
   rotation: 90
-  buffer_size: 12%
+  buffer_size: 100%
   color_depth: 16
   bg_color: 0x000000
   default_font: font_display
@@ -6465,41 +6613,13 @@ lvgl:
                                     text_font: font_mdi_controls
 
                           - button:
-                              id: controls_volume_down_button
-                              align: TOP_MID
-                              x: -78
-                              y: 170
-                              width: 52
-                              height: 44
-                              radius: 22
-                              bg_color: 0x202020
-                              bg_opa: 85%
-                              border_color: 0x505050
-                              border_width: 1
-                              pressed:
-                                bg_color: 0x66CCFF
-                                bg_opa: COVER
-                                border_color: 0xFFFFFF
-                                border_width: 3
-                              on_click:
-                                - script.execute: player_controls_volume_down
-                              on_long_press_repeat:
-                                - script.execute: player_controls_volume_down
-                              widgets:
-                                - label:
-                                    id: controls_volume_down_icon
-                                    align: CENTER
-                                    text: "\U000F075E"
-                                    text_color: 0xFFFFFF
-                                    text_font: font_mdi_controls
-
-                          - button:
                               id: controls_mute_button
                               align: TOP_MID
+                              x: -46
                               y: 170
-                              width: 52
-                              height: 44
-                              radius: 22
+                              width: 84
+                              height: 48
+                              radius: 12
                               bg_color: 0x202020
                               bg_opa: 85%
                               border_color: 0x505050
@@ -6510,7 +6630,18 @@ lvgl:
                                 border_color: 0xFFFFFF
                                 border_width: 3
                               on_click:
-                                - script.execute: player_controls_mute
+                                - if:
+                                    condition:
+                                      lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                                    then:
+                                      - script.execute: player_controls_mute
+                              on_long_press:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - lambda: 'id(long_press_fired) = true;'
+                                      - script.execute: open_volume_slider
                               widgets:
                                 - label:
                                     id: controls_mute_icon
@@ -6520,41 +6651,12 @@ lvgl:
                                     text_font: font_mdi_controls
 
                           - button:
-                              id: controls_volume_up_button
-                              align: TOP_MID
-                              x: 78
-                              y: 170
-                              width: 52
-                              height: 44
-                              radius: 22
-                              bg_color: 0x202020
-                              bg_opa: 85%
-                              border_color: 0x505050
-                              border_width: 1
-                              pressed:
-                                bg_color: 0x66CCFF
-                                bg_opa: COVER
-                                border_color: 0xFFFFFF
-                                border_width: 3
-                              on_click:
-                                - script.execute: player_controls_volume_up
-                              on_long_press_repeat:
-                                - script.execute: player_controls_volume_up
-                              widgets:
-                                - label:
-                                    id: controls_volume_up_icon
-                                    align: CENTER
-                                    text: "\U000F075D"
-                                    text_color: 0xFFFFFF
-                                    text_font: font_mdi_controls
-
-                          - button:
                               id: controls_group_button
                               align: TOP_MID
-                              x: 0
-                              y: 238
-                              width: 180
-                              height: 44
+                              x: 46
+                              y: 170
+                              width: 84
+                              height: 48
                               radius: 12
                               bg_color: 0x202020
                               bg_opa: 85%
@@ -6574,6 +6676,72 @@ lvgl:
                                     text: "GROUP"
                                     text_color: 0xFFFFFF
                                     text_font: font_display
+
+                    - obj:
+                        id: player_volume_overlay
+                        align: CENTER
+                        x: 0
+                        y: 0
+                        width: 204
+                        height: 90
+                        bg_color: 0x101010
+                        bg_opa: 92%
+                        border_color: 0xFFFF00
+                        border_width: 3
+                        radius: 18
+                        pad_all: 0
+                        scrollable: false
+                        clickable: false
+                        hidden: true
+                        widgets:
+                          - label:
+                              id: player_volume_title_label
+                              align: TOP_MID
+                              y: 8
+                              width: 180
+                              text: "Volume"
+                              text_color: 0x66CCFF
+                              text_font: font_display_medium
+                              text_align: CENTER
+
+                          - slider:
+                              id: player_volume_slider
+                              align: CENTER
+                              y: 0
+                              width: 164
+                              height: 20
+                              min_value: 0
+                              max_value: 100
+                              value: 50
+                              bg_color: 0x202020
+                              radius: 10
+                              indicator:
+                                bg_color: 0xFFFF00
+                              knob:
+                                bg_color: 0xFFFFFF
+                              on_value:
+                                - lambda: |-
+                                    lv_label_set_text_fmt(id(player_volume_pct_label), "%d%%", (int) x);
+                                - script.execute: volume_slider_timeout
+                                - script.execute: player_controls_timeout
+                              on_release:
+                                - lambda: |-
+                                    float vol = std::max(0.0f, std::min(1.0f, ((int) x) / 100.0f));
+                                    if (id(pullup_player_target) == 1) {
+                                      id(sendspin_group_media_player).make_call().set_volume(vol).perform();
+                                    } else {
+                                      id(external_media_player).make_call().set_volume(vol).perform();
+                                    }
+
+                          - label:
+                              id: player_volume_pct_label
+                              align: BOTTOM_MID
+                              y: -8
+                              width: 180
+                              text: "50%"
+                              text_color: 0xFFFFFF
+                              text_font: font_playlist
+                              text_align: CENTER
 
               - obj:
                   id: playlist_panel
@@ -6866,11 +7034,24 @@ lvgl:
                               shadow_width: 14
                               shadow_opa: 45%
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown1_entity}
-                                - script.execute: pulldown_timeout
+                                - if:
+                                    condition:
+                                      lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown1_entity}
+                                      - script.execute: pulldown_timeout
+                              on_long_press:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - lambda: 'id(long_press_fired) = true;'
+                                      - script.execute:
+                                          id: open_brightness_slider
+                                          light_index: 1
                               widgets:
                                 - label:
                                     id: pulldown1_button_label
@@ -6896,11 +7077,24 @@ lvgl:
                               shadow_width: 14
                               shadow_opa: 45%
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown2_entity}
-                                - script.execute: pulldown_timeout
+                                - if:
+                                    condition:
+                                      lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown2_entity}
+                                      - script.execute: pulldown_timeout
+                              on_long_press:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - lambda: 'id(long_press_fired) = true;'
+                                      - script.execute:
+                                          id: open_brightness_slider
+                                          light_index: 2
                               widgets:
                                 - label:
                                     id: pulldown2_button_label
@@ -6926,11 +7120,24 @@ lvgl:
                               shadow_width: 14
                               shadow_opa: 45%
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown3_entity}
-                                - script.execute: pulldown_timeout
+                                - if:
+                                    condition:
+                                      lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown3_entity}
+                                      - script.execute: pulldown_timeout
+                              on_long_press:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - lambda: 'id(long_press_fired) = true;'
+                                      - script.execute:
+                                          id: open_brightness_slider
+                                          light_index: 3
                               widgets:
                                 - label:
                                     id: pulldown3_button_label
@@ -6956,11 +7163,24 @@ lvgl:
                               shadow_width: 14
                               shadow_opa: 45%
                               on_click:
-                                - homeassistant.action:
-                                    action: homeassistant.toggle
-                                    data:
-                                      entity_id: ${pulldown4_entity}
-                                - script.execute: pulldown_timeout
+                                - if:
+                                    condition:
+                                      lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                                    then:
+                                      - homeassistant.action:
+                                          action: homeassistant.toggle
+                                          data:
+                                            entity_id: ${pulldown4_entity}
+                                      - script.execute: pulldown_timeout
+                              on_long_press:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - lambda: 'id(long_press_fired) = true;'
+                                      - script.execute:
+                                          id: open_brightness_slider
+                                          light_index: 4
                               widgets:
                                 - label:
                                     id: pulldown4_button_label
@@ -6970,6 +7190,289 @@ lvgl:
                                     text_color: 0xFFFFFF
                                     text_font: font_playlist
                                     text_align: CENTER
+
+                    - label:
+                        id: pulldown_scenes_title_label
+                        align: TOP_MID
+                        y: 8
+                        width: 220
+                        text: "Scenes"
+                        text_color: 0x66CCFF
+                        text_font: font_display_medium_bold
+                        text_align: CENTER
+                        hidden: true
+
+                    - obj:
+                        id: pulldown_scenes_group
+                        align: TOP_MID
+                        y: 52
+                        width: 228
+                        height: 196
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        clickable: false
+                        hidden: true
+                        widgets:
+                          - button:
+                              id: scene1_button
+                              align: TOP_MID
+                              x: 0
+                              y: 0
+                              width: 196
+                              height: 40
+                              radius: 14
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 14
+                              shadow_opa: 45%
+                              on_click:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: scene.turn_on
+                                          data:
+                                            entity_id: ${scene1_entity}
+                                      - script.execute: pulldown_timeout
+                              widgets:
+                                - label:
+                                    id: scene1_button_label
+                                    align: CENTER
+                                    width: 170
+                                    text: "Bright Day"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: scene2_button
+                              align: TOP_MID
+                              x: 0
+                              y: 52
+                              width: 196
+                              height: 40
+                              radius: 14
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 14
+                              shadow_opa: 45%
+                              on_click:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: scene.turn_on
+                                          data:
+                                            entity_id: ${scene2_entity}
+                                      - script.execute: pulldown_timeout
+                              widgets:
+                                - label:
+                                    id: scene2_button_label
+                                    align: CENTER
+                                    width: 170
+                                    text: "Normal Day"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: scene3_button
+                              align: TOP_MID
+                              x: 0
+                              y: 104
+                              width: 196
+                              height: 40
+                              radius: 14
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 14
+                              shadow_opa: 45%
+                              on_click:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: scene.turn_on
+                                          data:
+                                            entity_id: ${scene3_entity}
+                                      - script.execute: pulldown_timeout
+                              widgets:
+                                - label:
+                                    id: scene3_button_label
+                                    align: CENTER
+                                    width: 170
+                                    text: "Red Night"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: scene4_button
+                              align: TOP_MID
+                              x: 0
+                              y: 156
+                              width: 196
+                              height: 40
+                              radius: 14
+                              bg_color: 0x000000
+                              bg_opa: 58%
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 14
+                              shadow_opa: 45%
+                              on_click:
+                                - if:
+                                    condition:
+                                      lambda: 'return !id(touch_swipe_detected);'
+                                    then:
+                                      - homeassistant.action:
+                                          action: scene.turn_on
+                                          data:
+                                            entity_id: ${scene4_entity}
+                                      - script.execute: pulldown_timeout
+                              widgets:
+                                - label:
+                                    id: scene4_button_label
+                                    align: CENTER
+                                    width: 170
+                                    text: "Off"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                    - obj:
+                        id: pulldown_dot1
+                        align: TOP_MID
+                        x: -12
+                        y: 258
+                        width: 10
+                        height: 10
+                        radius: 5
+                        bg_color: 0xFFFF00
+                        bg_opa: COVER
+                        border_opa: TRANSP
+                        scrollable: false
+                        clickable: false
+
+                    - obj:
+                        id: pulldown_dot2
+                        align: TOP_MID
+                        x: 12
+                        y: 258
+                        width: 10
+                        height: 10
+                        radius: 5
+                        bg_color: 0xFFFF00
+                        bg_opa: 30%
+                        border_opa: TRANSP
+                        scrollable: false
+                        clickable: false
+
+                    - obj:
+                        id: pulldown_brightness_overlay
+                        align: CENTER
+                        x: 0
+                        y: 0
+                        width: 204
+                        height: 90
+                        bg_color: 0x101010
+                        bg_opa: 92%
+                        border_color: 0xFFFF00
+                        border_width: 3
+                        radius: 18
+                        pad_all: 0
+                        scrollable: false
+                        clickable: false
+                        hidden: true
+                        widgets:
+                          - label:
+                              id: brightness_slider_title_label
+                              align: TOP_MID
+                              y: 8
+                              width: 180
+                              text: "Light"
+                              text_color: 0x66CCFF
+                              text_font: font_display_medium
+                              text_align: CENTER
+
+                          - slider:
+                              id: pulldown_brightness_slider
+                              align: CENTER
+                              y: 0
+                              width: 164
+                              height: 20
+                              min_value: 0
+                              max_value: 100
+                              value: 50
+                              bg_color: 0x202020
+                              radius: 10
+                              indicator:
+                                bg_color: 0xFFFF00
+                              knob:
+                                bg_color: 0xFFFFFF
+                              on_value:
+                                - lambda: |-
+                                    lv_label_set_text_fmt(id(brightness_slider_pct_label), "%d%%", (int) x);
+                                - script.execute: brightness_slider_timeout
+                                - script.execute: pulldown_timeout
+                              on_release:
+                                - if:
+                                    condition:
+                                      lambda: 'return (int) x <= 0;'
+                                    then:
+                                      - homeassistant.action:
+                                          action: light.turn_off
+                                          data_template:
+                                            entity_id: "{{ light_entity }}"
+                                          variables:
+                                            light_entity: !lambda |-
+                                              switch (id(brightness_slider_light_index)) {
+                                                case 1: return std::string("${pulldown1_entity}");
+                                                case 2: return std::string("${pulldown2_entity}");
+                                                case 3: return std::string("${pulldown3_entity}");
+                                                default: return std::string("${pulldown4_entity}");
+                                              }
+                                    else:
+                                      - homeassistant.action:
+                                          action: light.turn_on
+                                          data_template:
+                                            entity_id: "{{ light_entity }}"
+                                            brightness_pct: "{{ pct }}"
+                                          variables:
+                                            light_entity: !lambda |-
+                                              switch (id(brightness_slider_light_index)) {
+                                                case 1: return std::string("${pulldown1_entity}");
+                                                case 2: return std::string("${pulldown2_entity}");
+                                                case 3: return std::string("${pulldown3_entity}");
+                                                default: return std::string("${pulldown4_entity}");
+                                              }
+                                            pct: !lambda |-
+                                              return (int) x;
+
+                          - label:
+                              id: brightness_slider_pct_label
+                              align: BOTTOM_MID
+                              y: -8
+                              width: 180
+                              text: "50%"
+                              text_color: 0xFFFFFF
+                              text_font: font_playlist
+                              text_align: CENTER
 
               - obj:
                   id: pullup_panel
