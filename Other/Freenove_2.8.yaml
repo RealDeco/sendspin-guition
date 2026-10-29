@@ -2229,7 +2229,7 @@ text_sensor:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms} || id(clock_style_mode) == ${clock_style_mario} || id(clock_style_mode) == ${clock_style_photo};'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms} || id(clock_style_mode) == ${clock_style_photo};'
           then:
             - lvgl.label.update:
                 id: photo_clock_label
@@ -2422,7 +2422,7 @@ font:
       family: Figtree
       weight: 700
     id: font_temp_big
-    size: 36
+    size: 42
     glyphs: "0123456789+-"
 
   - file:
@@ -2430,7 +2430,7 @@ font:
       family: Figtree
       weight: 700
     id: font_temp_unit
-    size: 14
+    size: 16
     glyphs: "\u00B0CF"
 
   - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
@@ -2450,7 +2450,7 @@ font:
 
   - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_weather
-    size: 42
+    size: 48
     glyphs:
       - "\U000F0590"
       - "\U000F0592"
@@ -3301,7 +3301,7 @@ script:
     then:
       - lambda: |-
           id(clock_style_mode) = style_mode;
-          if (style_mode == ${clock_style_retro} || style_mode == ${clock_style_mario}) {
+          if (style_mode == ${clock_style_retro} || style_mode == ${clock_style_mario} || style_mode == ${clock_style_photo}) {
             lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
           } else if (id(standby_background_enabled).state) {
             lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
@@ -3412,7 +3412,6 @@ script:
                                   lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
                                   lv_obj_align(id(photo_clock_pill), LV_ALIGN_TOP_MID, 0, 9);
                                   lv_obj_clear_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
-                                  lv_label_set_text(id(photo_clock_label), id(clock_hms).state.c_str());
                                   lv_label_set_text(id(photo_date_label), id(clock_date).state.c_str());
                                   for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                                     lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
@@ -3429,10 +3428,7 @@ script:
                               - script.execute:
                                   id: mario_draw_scene
                                   full_redraw: true
-                              - component.update: clock_hms
                               - component.update: clock_date
-                              - component.update: weather_temp_big
-                              - component.update: weather_line
                             else:
                               - if:
                                   condition:
@@ -4701,17 +4697,36 @@ script:
 
   - id: photo_pill_layout
     then:
-      - lambda: |-
-          if (id(clock_show_date).state) {
-            lv_obj_set_height(id(photo_clock_pill), 62);
-            lv_obj_align(id(photo_clock_label), LV_ALIGN_TOP_MID, 0, 6);
-            lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
-          } else {
-            lv_obj_set_height(id(photo_clock_pill), 38);
-            lv_obj_align(id(photo_clock_label), LV_ALIGN_CENTER, 0, 0);
-            lv_obj_add_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
-          }
-      - script.execute: photo_ampm_update
+      - if:
+          condition:
+            lambda: 'return id(clock_style_mode) == ${clock_style_mario};'
+          then:
+            - lambda: |-
+                lv_obj_add_flag(id(photo_clock_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(photo_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_height(id(photo_clock_pill), 38);
+                lv_obj_align(id(photo_date_label), LV_ALIGN_CENTER, 0, 0);
+                if (id(clock_show_date).state) {
+                  lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_clear_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
+                } else {
+                  lv_obj_add_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_add_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
+                }
+          else:
+            - lambda: |-
+                lv_obj_clear_flag(id(photo_clock_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_align(id(photo_date_label), LV_ALIGN_BOTTOM_MID, 0, -6);
+                if (id(clock_show_date).state) {
+                  lv_obj_set_height(id(photo_clock_pill), 62);
+                  lv_obj_align(id(photo_clock_label), LV_ALIGN_TOP_MID, 0, 6);
+                  lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+                } else {
+                  lv_obj_set_height(id(photo_clock_pill), 38);
+                  lv_obj_align(id(photo_clock_label), LV_ALIGN_CENTER, 0, 0);
+                  lv_obj_add_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
+                }
+            - script.execute: photo_ampm_update
 
   - id: photo_ampm_update
     then:
@@ -5676,7 +5691,8 @@ touchscreen:
                     id(player_controls_swipe_previous)->execute();
                   }
                 } else if (dy < 0) {
-                  id(open_pullup_menu)->execute();
+                  bool media_idle = id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_IDLE;
+                  id(set_ui_phase)->execute(media_idle ? ${ui_phase_standby} : ${ui_phase_now_playing});
                 } else {
                   id(open_playlist_menu)->execute();
                 }
@@ -5868,7 +5884,11 @@ lvgl:
             width: ${imagewidth}
             height: ${imageheight}
             bg_opa: TRANSP
-            border_opa: TRANSP
+            border_opa: 60%
+            border_color: 0xFFFFFF
+            border_width: 3
+            radius: 16
+            clip_corner: true
             pad_all: 0
             scrollable: false
             clickable: false
@@ -5880,6 +5900,8 @@ lvgl:
                   src: family_photo_image
                   antialias: false
                   clickable: false
+                  radius: 16
+                  clip_corner: true
                   hidden: true
 
         - obj:
@@ -5959,7 +5981,7 @@ lvgl:
                   align: TOP_MID
                   y: 145
                   width: 207
-                  height: 67
+                  height: 72
                   bg_opa: TRANSP
                   border_opa: TRANSP
                   pad_all: 0
@@ -5968,7 +5990,7 @@ lvgl:
                     - label:
                         id: weather_icon_glow
                         align: CENTER
-                        x: -36
+                        x: -39
                         y: 1
                         text: "\U000F0590"
                         text_color: 0x404040
@@ -5977,7 +5999,7 @@ lvgl:
                     - label:
                         id: weather_icon
                         align: CENTER
-                        x: -37
+                        x: -40
                         y: 0
                         text: "\U000F0590"
                         text_color: 0xFFFFFF
@@ -5986,7 +6008,7 @@ lvgl:
                     - label:
                         id: weather_big_temp
                         align: CENTER
-                        x: 32
+                        x: 34
                         y: 2
                         text: "--"
                         text_color: 0xFFFF00
@@ -5995,8 +6017,8 @@ lvgl:
                     - label:
                         id: weather_big_temp_unit
                         align: CENTER
-                        x: 57
-                        y: -9
+                        x: 61
+                        y: -11
                         text: "\u00B0C"
                         text_color: 0xFFFF00
                         text_font: font_temp_unit
