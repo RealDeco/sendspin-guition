@@ -1,0 +1,42 @@
+external_components:
+  - source:
+      type: git
+      url: https://github.com/ApolloAutomation/CAST_PRO-1
+      ref: 743af5bd27ed4281eebe9bdfbab7150aaa43e199
+      path: Integrations/ESPHome/components
+    components: [sendspin_source]
+
+sendspin_source:
+  id: mic_source
+  sendspin_id: sendspin_hub
+  microphone:
+    microphone: raw_microphone
+    channels: [0]
+    bits_per_sample: 16
+    gain_factor: 1
+  codec: pcm
+  chunk_duration: 20ms
+  capture_buffer: 500ms
+  on_streaming_started:
+    - binary_sensor.template.publish:
+        id: line_in_streaming
+        state: ON
+  on_streaming_stopped:
+    - binary_sensor.template.publish:
+        id: line_in_streaming
+        state: OFF
+
+binary_sensor:
+  - platform: template
+    id: line_in_streaming
+    name: "Mic Source Streaming"
+    icon: mdi:microphone-message
+    entity_category: diagnostic
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - binary_sensor.template.publish:
+          id: line_in_streaming
+          state: OFF
