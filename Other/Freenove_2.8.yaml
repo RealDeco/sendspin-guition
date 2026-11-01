@@ -81,6 +81,7 @@ substitutions:
   clock_style_retro: "3"
   clock_style_mario: "4"
   clock_style_photo: "5"
+  clock_style_cyber: "6"
 
 packages:
   extcomp:
@@ -141,6 +142,7 @@ esphome:
             if (opt == "Retro") return ${clock_style_retro};
             if (opt == "Mario") return ${clock_style_mario};
             if (opt == "Family Photo") return ${clock_style_photo};
+            if (opt == "Cyberclock") return ${clock_style_cyber};
             return ${clock_style_digital};
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
@@ -940,7 +942,7 @@ media_player:
             then:
               - if:
                   condition:
-                    lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+                    lambda: 'return id(ui_phase) != ${ui_phase_player_controls} && !id(timer_is_active);'
                   then:
                     - script.execute:
                         id: set_ui_phase
@@ -1176,7 +1178,7 @@ switch:
     icon: "mdi:monitor-off"
     entity_category: config
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:
       - script.execute: standby_screen_activity
     on_turn_off:
@@ -1233,10 +1235,22 @@ switch:
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.widget.show: date_label
+      - if:
+          condition:
+            and:
+              - lvgl.page.is_showing: idle_page
+              - lambda: 'return id(clock_style_mode) == ${clock_style_cyber};'
+          then:
+            - lvgl.widget.show: cyber_weekday_label
+            - lvgl.widget.show: cyber_rule
+            - lvgl.widget.show: cyber_date_label
       - script.execute: photo_pill_layout
       - script.execute: analog_clock_redraw
     on_turn_off:
       - lvgl.widget.hide: date_label
+      - lvgl.widget.hide: cyber_weekday_label
+      - lvgl.widget.hide: cyber_rule
+      - lvgl.widget.hide: cyber_date_label
       - script.execute: photo_pill_layout
       - script.execute: analog_clock_redraw
 
@@ -1345,6 +1359,7 @@ select:
       - Retro
       - Mario
       - Family Photo
+      - Cyberclock
     set_action:
       - script.execute:
           id: apply_clock_style
@@ -1354,6 +1369,7 @@ select:
             if (x == "Retro") return ${clock_style_retro};
             if (x == "Mario") return ${clock_style_mario};
             if (x == "Family Photo") return ${clock_style_photo};
+            if (x == "Cyberclock") return ${clock_style_cyber};
             return ${clock_style_digital};
 
   - platform: template
@@ -1385,11 +1401,17 @@ select:
     restore_value: true
     initial_option: clock
     options:
+      - blackvelvet
       - chip
+      - chip2
       - clock
+      - cyanvelvet
+      - darkrose
       - hacker
+      - leaves
       - mission
       - neonwaves
+      - purplevelvet
       - redmarble
       - starrysky
       - tron
@@ -1895,6 +1917,13 @@ voice_assistant:
     - delay: 250ms
     - script.execute: refresh_timer_display
     - script.execute: standby_screen_activity
+    - if:
+        condition:
+          lambda: 'return (id(ui_phase) == ${ui_phase_pullup} || id(ui_phase) == ${ui_phase_pulldown}) && id(va_phase) == ${va_phase_idle};'
+        then:
+          - script.execute:
+              id: set_ui_phase
+              phase: ${ui_phase_standby}
   on_timer_updated:
     - script.execute: refresh_timer_display
     - script.execute: standby_screen_activity
@@ -2199,37 +2228,38 @@ text_sensor:
         if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d", hour_disp, t.minute);
         else snprintf(buf, sizeof(buf), "%02d:%02d", hour_disp, t.minute);
       }
+      int h12 = t.hour % 12;
+      if (h12 == 0) h12 = 12;
+      int next_h12 = (h12 % 12) + 1;
+      static const char* cyber_num_words[] = {
+        "", "ONE","TWO","THREE","FOUR","FIVE","SIX","SEVEN","EIGHT","NINE","TEN",
+        "ELEVEN","TWELVE","THIRTEEN","FOURTEEN","FIFTEEN","SIXTEEN","SEVENTEEN","EIGHTEEN","NINETEEN","TWENTY"
+      };
+      auto cyber_minute_words = [&](int m) -> std::string {
+        if (m >= 13 && m <= 19) {
+          static const char* cyber_teen_stems[] = {"THIR","FOUR","FIF","SIX","SEVEN","EIGHT","NINE"};
+          return std::string(cyber_teen_stems[m - 13]) + "\nTEEN";
+        }
+        if (m <= 20) return std::string(cyber_num_words[m]);
+        if (m == 30) return std::string("THIRTY");
+        return std::string("TWENTY\n") + cyber_num_words[m - 20];
+      };
+      std::string cyber_phrase;
+      if (t.minute == 0) {
+        cyber_phrase = std::string(cyber_num_words[h12]) + "\nO\nCLOCK";
+      } else if (t.minute <= 30) {
+        cyber_phrase = cyber_minute_words(t.minute) + "\nPAST\n" + cyber_num_words[h12];
+      } else {
+        cyber_phrase = cyber_minute_words(60 - t.minute) + "\nTO\n" + cyber_num_words[next_h12];
+      }
+      lv_label_set_text(id(cyber_time_label), cyber_phrase.c_str());
       return std::string(buf);
     on_value:
       - if:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
-          then:
-            - lvgl.label.update:
-                id: clock_label
-                text: !lambda return x;
-            - lambda: |-
-                if (!id(clock_12h_format).state) {
-                  lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
-                  return;
-                }
-                auto t = id(homeassistant_time).now();
-                lv_label_set_text(id(clock_ampm_label), (t.is_valid() && t.hour >= 12) ? "P" : "A");
-                lv_point_t txt_size;
-                lv_text_get_size(&txt_size, x.c_str(), id(font_7seg)->get_lv_font(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
-                lv_area_t clock_area;
-                lv_obj_get_coords(id(clock_label), &clock_area);
-                int32_t label_cx = (clock_area.x1 + clock_area.x2) / 2;
-                int32_t label_bottom = clock_area.y2;
-                lv_obj_set_pos(id(clock_ampm_label), label_cx + txt_size.x / 2 + 1, label_bottom - 14);
-                lv_obj_clear_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
-      - if:
-          condition:
-            and:
-              - lvgl.page.is_showing: idle_page
-              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms} || id(clock_style_mode) == ${clock_style_photo};'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms} || id(clock_style_mode) == ${clock_style_photo} || id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.label.update:
                 id: photo_clock_label
@@ -2249,22 +2279,35 @@ text_sensor:
       const char* mon = (t.month >= 1 && t.month <= 12) ? months[t.month - 1] : "???";
       char buf[32];
       snprintf(buf, sizeof(buf), "%d %s", t.day_of_month, mon);
+      static const char* cyber_weekdays[] = {
+        "", "SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"
+      };
+      const char* cyber_wd = (t.day_of_week >= 1 && t.day_of_week <= 7) ? cyber_weekdays[t.day_of_week] : "";
+      lv_label_set_text(id(cyber_weekday_label), cyber_wd);
+      static const char* cyber_months[] = {
+        "JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE",
+        "JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"
+      };
+      static const char* cyber_ordinal_ones[] = {
+        "", "FIRST","SECOND","THIRD","FOURTH","FIFTH","SIXTH","SEVENTH","EIGHTH","NINTH","TENTH",
+        "ELEVENTH","TWELFTH","THIRTEENTH","FOURTEENTH","FIFTEENTH","SIXTEENTH","SEVENTEENTH","EIGHTEENTH","NINETEENTH","TWENTIETH"
+      };
+      std::string cyber_day_word;
+      int cd = t.day_of_month;
+      if (cd <= 20) cyber_day_word = cyber_ordinal_ones[cd];
+      else if (cd == 30) cyber_day_word = "THIRTIETH";
+      else if (cd == 31) cyber_day_word = "THIRTY FIRST";
+      else cyber_day_word = std::string("TWENTY ") + cyber_ordinal_ones[cd - 20];
+      const char* cyber_mon = (t.month >= 1 && t.month <= 12) ? cyber_months[t.month - 1] : "";
+      std::string cyber_date_str = cyber_day_word + "\n" + cyber_mon;
+      lv_label_set_text(id(cyber_date_label), cyber_date_str.c_str());
       return std::string(buf);
     on_value:
       - if:
           condition:
             and:
               - lvgl.page.is_showing: idle_page
-              - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
-          then:
-            - lvgl.label.update:
-                id: date_label
-                text: !lambda return x;
-      - if:
-          condition:
-            and:
-              - lvgl.page.is_showing: idle_page
-              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms} || id(clock_style_mode) == ${clock_style_mario} || id(clock_style_mode) == ${clock_style_photo};'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_rooms} || id(clock_style_mode) == ${clock_style_mario} || id(clock_style_mode) == ${clock_style_photo} || id(clock_style_mode) == ${clock_style_digital} || id(clock_style_mode) == ${clock_style_analog} || id(clock_style_mode) == ${clock_style_retro};'
           then:
             - lvgl.label.update:
                 id: photo_date_label
@@ -2291,6 +2334,7 @@ text_sensor:
             and:
               - lvgl.page.is_showing: idle_page
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
+              - lambda: 'return !id(timer_is_active);'
           then:
             - lvgl.label.update:
                 id: weather_big_temp
@@ -2329,6 +2373,7 @@ text_sensor:
             and:
               - lvgl.page.is_showing: idle_page
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
+              - lambda: 'return !id(timer_is_active);'
           then:
             - if:
                 condition:
@@ -2359,6 +2404,7 @@ text_sensor:
             and:
               - lvgl.page.is_showing: idle_page
               - lambda: 'return id(clock_style_mode) == ${clock_style_analog};'
+              - lambda: 'return !id(timer_is_active);'
               - lambda: return id(weather_available);
               - lambda: return id(clock_show_weather).state;
           then:
@@ -2537,6 +2583,16 @@ font:
     id: font_mario_digits
     size: 24
     glyphs: "0123456789"
+
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/Anurati-Regular.otf
+    id: font_cyber_big
+    size: 42
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/Anurati-Regular.otf
+    id: font_cyber_small
+    size: 14
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
 
 output:
   - platform: ledc
@@ -2881,6 +2937,10 @@ script:
                   lambda: return id(manual_va_active);
                 then:
                   - lambda: id(manual_va_active) = false;
+                  - lambda: |-
+                      if (id(ui_phase) == ${ui_phase_pullup} || id(ui_phase) == ${ui_phase_pulldown}) {
+                        id(ui_phase) = ${ui_phase_standby};
+                      }
                   - script.execute:
                       id: set_va_phase
                       phase: ${va_phase_idle}
@@ -2891,6 +2951,10 @@ script:
                         - lambda: id(manual_va_resume_media) = false;
                         - media_player.toggle: sendspin_group_media_player
                 else:
+                  - lambda: |-
+                      if (id(ui_phase) == ${ui_phase_pullup} || id(ui_phase) == ${ui_phase_pulldown}) {
+                        id(ui_phase) = ${ui_phase_standby};
+                      }
                   - script.execute:
                       id: set_va_phase
                       phase: ${va_phase_idle}
@@ -2928,6 +2992,11 @@ script:
             - script.execute:
                 id: set_ui_phase
                 phase: !lambda return id(ui_phase);
+            - if:
+                condition:
+                  lambda: return id(timer_is_active);
+                then:
+                  - script.execute: refresh_timer_display
       - if:
           condition:
             lambda: return phase == ${va_phase_waiting_for_command};
@@ -3216,12 +3285,13 @@ script:
           lv_obj_set_style_text_color(id(photo_date_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_icon), accent2, 0);
           lv_obj_set_style_text_color(id(analog_weather_icon), accent2, 0);
+          lv_obj_set_style_text_color(id(cyber_weekday_label), accent2, 0);
+          lv_obj_set_style_text_color(id(cyber_date_label), accent2, 0);
           lv_obj_set_style_text_color(id(weather_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_album_label), accent3, 0);
-          lv_obj_set_style_text_color(id(controls_mute_icon), accent4, 0);
-          lv_obj_set_style_text_color(id(controls_group_label), accent4, 0);
+          lv_obj_set_style_text_color(id(cyber_time_label), accent4, 0);
 
           lv_obj_t *playlist_buttons[] = {
             id(playlist_1_button), id(playlist_2_button), id(playlist_3_button),
@@ -3301,7 +3371,7 @@ script:
     then:
       - lambda: |-
           id(clock_style_mode) = style_mode;
-          if (style_mode == ${clock_style_retro} || style_mode == ${clock_style_mario} || style_mode == ${clock_style_photo}) {
+          if (style_mode == ${clock_style_mario} || style_mode == ${clock_style_photo}) {
             lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
           } else if (id(standby_background_enabled).state) {
             lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
@@ -3327,15 +3397,25 @@ script:
             - script.execute: analog_clock_ensure_created
             - lambda: |-
                 lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(clock_label_frame), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_center(id(analog_clock_canvas_widget));
+                lv_obj_align(id(analog_clock_canvas_widget), LV_ALIGN_TOP_MID, 0, 0);
                 lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_align(id(photo_clock_pill), LV_ALIGN_TOP_MID, 0, 258);
+                lv_obj_clear_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(id(photo_date_label), id(clock_date).state.c_str());
                 for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                   lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                 }
+                lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+            - script.execute: photo_pill_layout
             - script.execute: analog_clock_redraw
             - component.update: clock_hms
             - component.update: clock_date
@@ -3348,6 +3428,7 @@ script:
                 then:
                   - lambda: |-
                       lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(clock_label_frame), LV_OBJ_FLAG_HIDDEN);
                       lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
                       lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
                       lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
@@ -3357,13 +3438,18 @@ script:
                       if (id(analog_clock_canvas_widget) != nullptr) {
                         lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
                       }
-                      lv_obj_align(id(photo_clock_pill), LV_ALIGN_TOP_MID, 0, 249);
+                      lv_obj_align(id(photo_clock_pill), LV_ALIGN_TOP_MID, 0, 9);
                       lv_obj_clear_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
                       lv_label_set_text(id(photo_clock_label), id(clock_hms).state.c_str());
                       lv_label_set_text(id(photo_date_label), id(clock_date).state.c_str());
                       for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                         lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
                       }
+                      lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
                   - script.execute: photo_pill_layout
                   - script.execute: rooms_grid_apply
                   - component.update: clock_hms
@@ -3378,17 +3464,27 @@ script:
                         - script.execute: analog_clock_ensure_created
                         - lambda: |-
                             lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(clock_label_frame), LV_OBJ_FLAG_HIDDEN);
                             lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
                             lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
                             lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
                             lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
                             lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
                             lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
-                            lv_obj_center(id(analog_clock_canvas_widget));
+                            lv_obj_align(id(analog_clock_canvas_widget), LV_ALIGN_TOP_MID, 0, 0);
                             lv_obj_clear_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_align(id(photo_clock_pill), LV_ALIGN_TOP_MID, 0, 258);
+                            lv_obj_clear_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
+                            lv_label_set_text(id(photo_date_label), id(clock_date).state.c_str());
                             for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                               lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                             }
+                            lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+                        - script.execute: photo_pill_layout
                         - script.execute: retro_clock_redraw
                         - component.update: clock_hms
                         - component.update: clock_date
@@ -3402,6 +3498,7 @@ script:
                               - script.execute: analog_clock_ensure_created
                               - lambda: |-
                                   lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(clock_label_frame), LV_OBJ_FLAG_HIDDEN);
                                   lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
                                   lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
                                   lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
@@ -3416,6 +3513,11 @@ script:
                                   for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                                     lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                                   }
+                                  lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
                                   id(mario_anim_active) = false;
                                   id(mario_y_offset) = 0;
                                   id(hourblock_offset) = 0;
@@ -3436,6 +3538,7 @@ script:
                                   then:
                                     - lambda: |-
                                         lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(clock_label_frame), LV_OBJ_FLAG_HIDDEN);
                                         lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
                                         lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
                                         lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
@@ -3448,6 +3551,11 @@ script:
                                         for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                                           lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                                         }
+                                        lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
                                         lv_obj_clear_flag(id(photo_clock_block), LV_OBJ_FLAG_HIDDEN);
                                         lv_obj_align(id(photo_clock_pill), LV_ALIGN_TOP_MID, 0, 249);
                                         lv_obj_clear_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
@@ -3467,25 +3575,157 @@ script:
                                     - component.update: clock_hms
                                     - component.update: clock_date
                                   else:
-                                    - lambda: |-
-                                        lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
-                                        if (id(clock_show_date).state) {
-                                          lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                        } else {
-                                          lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                        }
-                                        if (id(analog_clock_canvas_widget) != nullptr) {
-                                          lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
-                                        }
-                                        lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
-                                        lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
-                                        for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
-                                          lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
-                                        }
-                                    - component.update: clock_hms
-                                    - component.update: clock_date
-                                    - component.update: weather_temp_big
-                                    - component.update: weather_line
+                                    - if:
+                                        condition:
+                                          lambda: 'return style_mode == ${clock_style_cyber};'
+                                        then:
+                                          - lambda: |-
+                                              lv_obj_add_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
+                                              lv_obj_add_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
+                                              if (id(analog_clock_canvas_widget) != nullptr) {
+                                                lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                              }
+                                              lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                              lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                              for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                                lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                              }
+                                              lv_obj_clear_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                                              if (id(clock_show_date).state) {
+                                                lv_obj_clear_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                                lv_obj_clear_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                                lv_obj_clear_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+                                              } else {
+                                                lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                                lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                                lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+                                              }
+                                          - component.update: clock_hms
+                                          - component.update: clock_date
+                                        else:
+                                          - lambda: |-
+                                              lv_obj_align(id(photo_clock_pill), LV_ALIGN_TOP_MID, 0, 9);
+                                              lv_obj_clear_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
+                                              lv_label_set_text(id(photo_clock_label), id(clock_hms).state.c_str());
+                                              lv_label_set_text(id(photo_date_label), id(clock_date).state.c_str());
+                                              lv_obj_clear_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
+                                              if (id(analog_clock_canvas_widget) != nullptr) {
+                                                lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                              }
+                                              lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                              lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                              for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                                lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                              }
+                                              lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                              lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                              lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                                              lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+                                          - script.execute: photo_pill_layout
+                                          - script.execute: fetch_daily_forecast
+                                          - component.update: clock_hms
+                                          - component.update: clock_date
+                                          - component.update: weather_temp_big
+                                          - component.update: weather_line
+
+  - id: fetch_daily_forecast
+    mode: restart
+    then:
+      - homeassistant.action:
+          action: weather.get_forecasts
+          data:
+            entity_id: ${ha_weather_entity}
+            type: daily
+          capture_response: true
+          on_success:
+            - lambda: |-
+                auto icon_for_condition = [](const std::string &condition) -> const char* {
+                  if (condition == "sunny" || condition == "clear") return "\U000F0599";
+                  if (condition == "partlycloudy") return "\U000F0595";
+                  if (condition == "cloudy") return "\U000F0590";
+                  if (condition == "rainy") return "\U000F0597";
+                  if (condition == "pouring") return "\U000F0596";
+                  if (condition == "snowy") return "\U000F0598";
+                  if (condition == "lightning") return "\U000F0593";
+                  if (condition == "hail") return "\U000F0592";
+                  return "\U000F0590";
+                };
+
+                auto weekday_from_iso = [](const char *iso_value, int fallback_offset) -> const char* {
+                  static const char* names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+                  if (iso_value == nullptr || iso_value[0] == '\0') {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  int year = 0;
+                  int month = 0;
+                  int day = 0;
+                  if (sscanf(iso_value, "%d-%d-%d", &year, &month, &day) != 3) {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  if (month < 1 || month > 12) {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  static const int offsets[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+                  if (month < 3) year -= 1;
+                  int day_index = (year + year / 4 - year / 100 + year / 400 + offsets[month - 1] + day) % 7;
+                  if (day_index < 0 || day_index > 6) {
+                    return names[(fallback_offset + 1) % 7];
+                  }
+                  return names[day_index];
+                };
+
+                JsonArrayConst forecast = response["response"]["${ha_weather_entity}"]["forecast"].as<JsonArrayConst>();
+                if (forecast.isNull() || forecast.size() == 0) {
+                  lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                  ESP_LOGW("forecast", "No daily forecast data returned");
+                  return;
+                }
+
+                lv_obj_t *day_labels[3] = {id(digital_forecast_day_1), id(digital_forecast_day_2), id(digital_forecast_day_3)};
+                lv_obj_t *icon_labels[3] = {id(digital_forecast_icon_1), id(digital_forecast_icon_2), id(digital_forecast_icon_3)};
+                lv_obj_t *temp_labels[3] = {id(digital_forecast_temp_1), id(digital_forecast_temp_2), id(digital_forecast_temp_3)};
+
+                size_t start_index = forecast.size() >= 4 ? 1 : 0;
+                std::string tunit = id(ha_weather_temperature_unit).state.c_str();
+                if (tunit.empty()) tunit = "属C";
+
+                bool rendered_any = false;
+                for (size_t i = 0; i < 3; i++) {
+                  size_t src_index = start_index + i;
+                  if (src_index >= forecast.size()) {
+                    lv_label_set_text(day_labels[i], "--");
+                    lv_label_set_text(icon_labels[i], "\U000F0590");
+                    lv_label_set_text(temp_labels[i], "--");
+                    continue;
+                  }
+                  JsonObjectConst day = forecast[src_index].as<JsonObjectConst>();
+                  const char *datetime_value = day["datetime"] | "";
+                  const char *condition_value = day["condition"] | "cloudy";
+                  float high_temp = day["temperature"] | NAN;
+                  float low_temp = day["templow"] | high_temp;
+
+                  lv_label_set_text(day_labels[i], weekday_from_iso(datetime_value, i));
+                  lv_label_set_text(icon_labels[i], icon_for_condition(std::string(condition_value)));
+
+                  if (std::isnan(high_temp) || std::isnan(low_temp)) {
+                    lv_label_set_text(temp_labels[i], "--");
+                  } else {
+                    char temp_buf[24];
+                    snprintf(temp_buf, sizeof(temp_buf), "%.0f/%.0f%s", high_temp, low_temp, tunit.c_str());
+                    lv_label_set_text(temp_labels[i], temp_buf);
+                    rendered_any = true;
+                  }
+                }
+
+                if (rendered_any && id(clock_style_mode) == ${clock_style_digital}) {
+                  lv_obj_clear_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                } else {
+                  lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                }
+          on_error:
+            - lambda: |-
+                lv_obj_add_flag(id(digital_forecast_strip), LV_OBJ_FLAG_HIDDEN);
+                ESP_LOGW("forecast", "weather.get_forecasts failed");
 
   - id: rooms_grid_apply
     then:
@@ -3562,19 +3802,6 @@ script:
                   }
                 }
 
-                if (id(clock_show_date).state) {
-                  std::string date_str = id(clock_date).state;
-                  lv_draw_label_dsc_t label_dsc;
-                  lv_draw_label_dsc_init(&label_dsc);
-                  label_dsc.color = fg2;
-                  label_dsc.font = id(font_date)->get_lv_font();
-                  label_dsc.align = LV_TEXT_ALIGN_CENTER;
-                  label_dsc.text = date_str.c_str();
-                  label_dsc.text_local = true;
-                  const int32_t date_y = CY + (int32_t) (R * 0.55f);
-                  lv_area_t label_area = {CX - R, date_y, CX + R, date_y + 40};
-                  lv_draw_label(&layer, &label_dsc, &label_area);
-                }
 
                 auto t = id(homeassistant_time).now();
                 int hh = t.is_valid() ? (t.hour % 12) : 0;
@@ -3653,7 +3880,7 @@ script:
                 // cache a raw snapshot of the canvas buffer, and on every later call just
                 // memcpy it back (near-instant) before drawing only the moving parts.
                 if (id(retro_static_buf) == nullptr) {
-                  lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_COVER);
+                  lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_TRANSP);
 
                   lv_layer_t static_layer;
                   lv_canvas_init_layer(canvas, &static_layer);
@@ -4484,10 +4711,17 @@ script:
           id(pulldown_return_phase) = id(ui_phase);
           id(ui_phase) = ${ui_phase_pulldown};
           bool show_album_art = id(pulldown_return_phase) == ${ui_phase_now_playing};
+          bool compact_layout = show_album_art || id(timer_is_active);
           if (show_album_art) {
             lv_obj_add_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          }
+          if (compact_layout) {
             lv_obj_set_height(id(pulldown_lights_group), ${imageheight});
             lv_obj_align(id(pulldown_title_label), LV_ALIGN_TOP_MID, 0, 5);
             lv_obj_align(id(pulldown1_button), LV_ALIGN_TOP_MID, -48, 37);
@@ -4501,21 +4735,18 @@ script:
             lv_obj_align(id(scene3_button), LV_ALIGN_TOP_MID, 0, 123);
             lv_obj_align(id(scene4_button), LV_ALIGN_TOP_MID, 0, 167);
           } else {
-            lv_obj_clear_flag(id(pulldown_background_widget), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(pulldown_album_art_widget), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(pulldown_album_art_dim), LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_height(id(pulldown_lights_group), ${screenheight});
-            lv_obj_align(id(pulldown_title_label), LV_ALIGN_TOP_MID, 0, 11);
-            lv_obj_align(id(pulldown1_button), LV_ALIGN_TOP_MID, -48, 90);
-            lv_obj_align(id(pulldown2_button), LV_ALIGN_TOP_MID, 48, 90);
-            lv_obj_align(id(pulldown3_button), LV_ALIGN_TOP_MID, -48, 178);
-            lv_obj_align(id(pulldown4_button), LV_ALIGN_TOP_MID, 48, 178);
+            lv_obj_align(id(pulldown_title_label), LV_ALIGN_TOP_MID, 0, 51);
+            lv_obj_align(id(pulldown1_button), LV_ALIGN_TOP_MID, -48, 77);
+            lv_obj_align(id(pulldown2_button), LV_ALIGN_TOP_MID, 48, 77);
+            lv_obj_align(id(pulldown3_button), LV_ALIGN_TOP_MID, -48, 165);
+            lv_obj_align(id(pulldown4_button), LV_ALIGN_TOP_MID, 48, 165);
             lv_obj_set_height(id(pulldown_scenes_group), ${screenheight});
-            lv_obj_align(id(pulldown_scenes_title_label), LV_ALIGN_TOP_MID, 0, 11);
-            lv_obj_align(id(scene1_button), LV_ALIGN_TOP_MID, 0, 87);
-            lv_obj_align(id(scene2_button), LV_ALIGN_TOP_MID, 0, 131);
-            lv_obj_align(id(scene3_button), LV_ALIGN_TOP_MID, 0, 175);
-            lv_obj_align(id(scene4_button), LV_ALIGN_TOP_MID, 0, 219);
+            lv_obj_align(id(pulldown_scenes_title_label), LV_ALIGN_TOP_MID, 0, 51);
+            lv_obj_align(id(scene1_button), LV_ALIGN_TOP_MID, 0, 75);
+            lv_obj_align(id(scene2_button), LV_ALIGN_TOP_MID, 0, 119);
+            lv_obj_align(id(scene3_button), LV_ALIGN_TOP_MID, 0, 163);
+            lv_obj_align(id(scene4_button), LV_ALIGN_TOP_MID, 0, 207);
           }
       - script.execute: standby_screen_activity
       - lvgl.page.show:
@@ -4602,24 +4833,28 @@ script:
           id(pullup_return_phase) = id(ui_phase);
           id(ui_phase) = ${ui_phase_pullup};
           bool show_album_art = id(pullup_return_phase) == ${ui_phase_player_controls} || id(pullup_return_phase) == ${ui_phase_now_playing};
+          bool compact_layout = show_album_art || id(timer_is_active);
           if (show_album_art) {
             lv_obj_add_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(pullup_album_art_widget), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(pullup_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pullup_album_art_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pullup_album_art_dim), LV_OBJ_FLAG_HIDDEN);
+          }
+          if (compact_layout) {
             lv_obj_align(id(pullup_title_label), LV_ALIGN_TOP_MID, 0, 5);
             lv_obj_align(id(pullup_va1_button), LV_ALIGN_TOP_MID, -48, 37);
             lv_obj_align(id(pullup_va2_button), LV_ALIGN_TOP_MID, 48, 37);
             lv_obj_align(id(pullup_mute_button), LV_ALIGN_TOP_MID, -48, 125);
             lv_obj_align(id(pullup_target_button), LV_ALIGN_TOP_MID, 48, 125);
           } else {
-            lv_obj_clear_flag(id(pullup_background_widget), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(pullup_album_art_widget), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(pullup_album_art_dim), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_align(id(pullup_title_label), LV_ALIGN_TOP_MID, 0, 11);
-            lv_obj_align(id(pullup_va1_button), LV_ALIGN_TOP_MID, -48, 90);
-            lv_obj_align(id(pullup_va2_button), LV_ALIGN_TOP_MID, 48, 90);
-            lv_obj_align(id(pullup_mute_button), LV_ALIGN_TOP_MID, -48, 178);
-            lv_obj_align(id(pullup_target_button), LV_ALIGN_TOP_MID, 48, 178);
+            lv_obj_align(id(pullup_title_label), LV_ALIGN_TOP_MID, 0, 51);
+            lv_obj_align(id(pullup_va1_button), LV_ALIGN_TOP_MID, -48, 77);
+            lv_obj_align(id(pullup_va2_button), LV_ALIGN_TOP_MID, 48, 77);
+            lv_obj_align(id(pullup_mute_button), LV_ALIGN_TOP_MID, -48, 165);
+            lv_obj_align(id(pullup_target_button), LV_ALIGN_TOP_MID, 48, 165);
           }
       - script.execute: standby_screen_activity
       - lvgl.page.show:
@@ -4699,12 +4934,13 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(clock_style_mode) == ${clock_style_mario};'
+            lambda: 'return id(clock_style_mode) == ${clock_style_mario} || id(clock_style_mode) == ${clock_style_analog} || id(clock_style_mode) == ${clock_style_retro};'
           then:
             - lambda: |-
                 lv_obj_add_flag(id(photo_clock_label), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(id(photo_ampm_label), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_height(id(photo_clock_pill), 38);
+                lv_obj_set_height(id(photo_clock_pill), 30);
+                lv_obj_set_style_bg_opa(id(photo_clock_pill), 140, 0);
                 lv_obj_align(id(photo_date_label), LV_ALIGN_CENTER, 0, 0);
                 if (id(clock_show_date).state) {
                   lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
@@ -4715,14 +4951,19 @@ script:
                 }
           else:
             - lambda: |-
+                bool rooms = (id(clock_style_mode) == ${clock_style_rooms} || id(clock_style_mode) == ${clock_style_digital});
+                bool is_digital = (id(clock_style_mode) == ${clock_style_digital});
                 lv_obj_clear_flag(id(photo_clock_label), LV_OBJ_FLAG_HIDDEN);
-                lv_obj_align(id(photo_date_label), LV_ALIGN_BOTTOM_MID, 0, -6);
+                lv_obj_set_width(id(photo_clock_pill), rooms ? 210 : 170);
+                lv_obj_set_style_text_font(id(photo_clock_label), rooms ? id(font_7seg) : id(font_7seg_small), 0);
+                lv_obj_set_style_bg_opa(id(photo_clock_pill), is_digital ? LV_OPA_TRANSP : 140, 0);
+                lv_obj_align(id(photo_date_label), LV_ALIGN_BOTTOM_MID, 0, -2);
                 if (id(clock_show_date).state) {
-                  lv_obj_set_height(id(photo_clock_pill), 62);
-                  lv_obj_align(id(photo_clock_label), LV_ALIGN_TOP_MID, 0, 6);
+                  lv_obj_set_height(id(photo_clock_pill), rooms ? 76 : 62);
+                  lv_obj_align(id(photo_clock_label), LV_ALIGN_TOP_MID, 0, rooms ? 10 : 6);
                   lv_obj_clear_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
                 } else {
-                  lv_obj_set_height(id(photo_clock_pill), 38);
+                  lv_obj_set_height(id(photo_clock_pill), rooms ? 46 : 38);
                   lv_obj_align(id(photo_clock_label), LV_ALIGN_CENTER, 0, 0);
                   lv_obj_add_flag(id(photo_date_label), LV_OBJ_FLAG_HIDDEN);
                 }
@@ -4971,8 +5212,7 @@ script:
       - lambda: |-
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
-          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
-          const lv_color_t inactive_color = lv_color_hex(accent4_u32);
+          const lv_color_t inactive_color = lv_color_hex(0xFFFFFF);
 
           if (id(shuffle_state)) {
             lv_label_set_text(id(controls_shuffle_label), "\U000F049D");
@@ -5309,8 +5549,8 @@ script:
             lv_obj_center(id(timer_progress_arc));
             lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_CLICKABLE);
             lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_SCROLLABLE);
-            const float cx = ${screenwidth} / 2.0f;
-            const float cy = ${screenheight} / 2.0f;
+            const float cx = ${imagewidth} / 2.0f;
+            const float cy = ${imageheight} / 2.0f;
             const float radius = 113.0f;
             for (int i = 0; i < TIMER_SEGMENTS; i++) {
               const float angle = (-90.0f + (360.0f * i / TIMER_SEGMENTS)) * (float) M_PI / 180.0f;
@@ -5330,11 +5570,6 @@ script:
             lv_obj_add_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
-            if (id(standby_background_enabled).state) {
-              lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
-              lv_obj_move_background(id(standby_background_widget));
-            }
             return;
           }
 
@@ -5391,8 +5626,8 @@ script:
           const lv_color_t sand_dim_c = lv_color_hex(0xB88812);
 
           const int hourglass_w = 67, hourglass_h = 127;
-          const int hg_x = 43;
-          const int hg_y = (240 - hourglass_h) / 2;
+          const int hg_x = (${imagewidth} - hourglass_w) / 2;
+          const int hg_y = (${imageheight} - hourglass_h) / 2;
           const int hg_cx = hg_x + hourglass_w / 2;
           const int hg_top = hg_y;
           const int hg_mid = hg_y + hourglass_h / 2;
@@ -5472,11 +5707,33 @@ script:
           if (id(va_phase) == ${va_phase_idle}) {
             lv_obj_add_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(photo_clock_pill), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(photo_clock_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(photo_clock_image_widget), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+            if (id(analog_clock_canvas_widget) != nullptr) {
+              lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+            }
+            for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+              lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+            }
+            lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(id(idle_timer_block));
           } else {
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
           }
+      - if:
+          condition:
+            lambda: 'return !id(timer_is_active);'
+          then:
+            - script.execute:
+                id: apply_clock_style
+                style_mode: !lambda 'return id(clock_style_mode);'
 
   - id: album_art_show_fallback
     mode: restart
@@ -5683,6 +5940,10 @@ touchscreen:
                     id(open_pulldown_menu)->execute();
                   }
                 }
+              } else if (id(ui_phase) == ${ui_phase_player_controls} && id(volume_slider_open)) {
+                if (abs_x < abs_y && dy < 0) {
+                  id(close_volume_slider)->execute();
+                }
               } else if (id(ui_phase) == ${ui_phase_player_controls} && !id(volume_slider_open)) {
                 if (abs_x >= abs_y) {
                   if (dx < 0) {
@@ -5717,6 +5978,10 @@ touchscreen:
                   id(open_pullup_menu)->execute();
                 } else {
                   id(open_pulldown_menu)->execute();
+                }
+              } else if (id(ui_phase) == ${ui_phase_pulldown} && id(brightness_slider_light_index) != 0) {
+                if (abs_x < abs_y && dy < 0) {
+                  id(close_brightness_slider)->execute();
                 }
               } else if (id(ui_phase) == ${ui_phase_pulldown} && id(brightness_slider_light_index) == 0) {
                 if (abs_x < abs_y && (dy < 0 || dy > 0)) {
@@ -5945,20 +6210,24 @@ lvgl:
                   text_align: CENTER
 
         - obj:
-            id: idle_center_block
-            align: CENTER
-            y: 0
-            width: 207
-            height: 280
-            bg_opa: TRANSP
+            id: clock_label_frame
+            align: TOP_MID
+            y: 9
+            width: 215
+            height: 92
+            bg_color: 0x000000
+            bg_opa: 55%
             border_opa: TRANSP
+            radius: 12
             pad_all: 0
             scrollable: false
+            clickable: false
+            hidden: true
             widgets:
               - label:
                   id: clock_label
                   align: TOP_MID
-                  y: 28
+                  y: 8
                   width: 207
                   text: "--:--:--"
                   text_color: 0xFFFF00
@@ -5968,18 +6237,29 @@ lvgl:
 
               - label:
                   id: date_label
-                  align: TOP_MID
-                  y: 98
+                  align: BOTTOM_MID
+                  y: -10
                   width: 207
                   text: "------"
                   text_color: 0xFFFFFF
                   text_font: font_date
                   text_align: CENTER
 
+        - obj:
+            id: idle_center_block
+            align: CENTER
+            y: 0
+            width: 220
+            height: 284
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            widgets:
               - obj:
                   id: weather_header
                   align: TOP_MID
-                  y: 145
+                  y: 71
                   width: 207
                   height: 72
                   bg_opa: TRANSP
@@ -6027,7 +6307,7 @@ lvgl:
                   id: weather_label
                   align: TOP_MID
                   x: 0
-                  y: 228
+                  y: 147
                   width: 190
                   height: 40
                   text: "Weather..."
@@ -6035,6 +6315,128 @@ lvgl:
                   text_font: font_display
                   long_mode: WRAP
                   text_align: CENTER
+
+              - obj:
+                  id: digital_forecast_strip
+                  align: TOP_MID
+                  y: 205
+                  width: 210
+                  height: 72
+                  bg_color: 0x000000
+                  bg_opa: 35%
+                  border_opa: 15%
+                  border_color: 0xFFFFFF
+                  border_width: 1
+                  radius: 12
+                  pad_top: 1
+                  pad_bottom: 4
+                  pad_left: 4
+                  pad_right: 4
+                  scrollable: false
+                  clickable: false
+                  hidden: true
+                  widgets:
+                    - obj:
+                        align: LEFT_MID
+                        width: 66
+                        height: 62
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        widgets:
+                          - label:
+                              id: digital_forecast_day_1
+                              align: TOP_MID
+                              y: 0
+                              text: "--"
+                              text_color: 0xFFFF00
+                              text_font: font_display
+                              text_align: CENTER
+                          - label:
+                              id: digital_forecast_icon_1
+                              align: CENTER
+                              y: 2
+                              text: "\U000F0590"
+                              text_color: 0xFFFFFF
+                              text_font: font_mdi_weather_small
+                              text_align: CENTER
+                          - label:
+                              id: digital_forecast_temp_1
+                              align: BOTTOM_MID
+                              y: -2
+                              text: "--"
+                              text_color: 0x8EDBFF
+                              text_font: font_playlist
+                              text_align: CENTER
+
+                    - obj:
+                        align: CENTER
+                        width: 66
+                        height: 62
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        widgets:
+                          - label:
+                              id: digital_forecast_day_2
+                              align: TOP_MID
+                              y: 0
+                              text: "--"
+                              text_color: 0xFFFF00
+                              text_font: font_display
+                              text_align: CENTER
+                          - label:
+                              id: digital_forecast_icon_2
+                              align: CENTER
+                              y: 2
+                              text: "\U000F0590"
+                              text_color: 0xFFFFFF
+                              text_font: font_mdi_weather_small
+                              text_align: CENTER
+                          - label:
+                              id: digital_forecast_temp_2
+                              align: BOTTOM_MID
+                              y: -2
+                              text: "--"
+                              text_color: 0x8EDBFF
+                              text_font: font_playlist
+                              text_align: CENTER
+
+                    - obj:
+                        align: RIGHT_MID
+                        width: 66
+                        height: 62
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        widgets:
+                          - label:
+                              id: digital_forecast_day_3
+                              align: TOP_MID
+                              y: 0
+                              text: "--"
+                              text_color: 0xFFFF00
+                              text_font: font_display
+                              text_align: CENTER
+                          - label:
+                              id: digital_forecast_icon_3
+                              align: CENTER
+                              y: 2
+                              text: "\U000F0590"
+                              text_color: 0xFFFFFF
+                              text_font: font_mdi_weather_small
+                              text_align: CENTER
+                          - label:
+                              id: digital_forecast_temp_3
+                              align: BOTTOM_MID
+                              y: -2
+                              text: "--"
+                              text_color: 0x8EDBFF
+                              text_font: font_playlist
+                              text_align: CENTER
 
         - label:
             id: clock_ampm_label
@@ -6049,7 +6451,7 @@ lvgl:
             id: analog_weather_icon
             align: CENTER
             x: -68
-            y: 0
+            y: -40
             text: ""
             text_color: 0xFFFFFF
             text_font: font_mdi_weather_small
@@ -6059,10 +6461,70 @@ lvgl:
             id: analog_weather_temp
             align: CENTER
             x: 68
-            y: 0
+            y: -40
             text: ""
             text_color: 0xFFFF00
             text_font: font_display_medium
+            text_align: CENTER
+            hidden: true
+
+        - label:
+            id: cyber_weekday_label
+            align: TOP_MID
+            y: 16
+            text: ""
+            text_color: 0xFFFFFF
+            text_font: font_cyber_small
+            text_letter_space: 3
+            text_align: CENTER
+            hidden: true
+
+        - obj:
+            id: cyber_rule
+            align: TOP_MID
+            y: 39
+            width: 120
+            height: 1
+            bg_color: 0x444444
+            bg_opa: COVER
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: cyber_time_container
+            align: TOP_MID
+            y: 40
+            width: 240
+            height: 220
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            widgets:
+              - label:
+                  id: cyber_time_label
+                  align: CENTER
+                  width: 224
+                  text: ""
+                  text_color: 0xFFFFFF
+                  text_font: font_cyber_big
+                  text_letter_space: 2
+                  text_align: CENTER
+                  long_mode: WRAP
+                  hidden: true
+
+        - label:
+            id: cyber_date_label
+            align: BOTTOM_MID
+            y: -26
+            text: ""
+            text_color: 0xFFFFFF
+            text_font: font_cyber_small
+            text_letter_space: 3
             text_align: CENTER
             hidden: true
 
@@ -6070,9 +6532,9 @@ lvgl:
             id: room1_box
             align: TOP_LEFT
             x: 20
-            y: 15
+            y: 107
             width: 77
-            height: 102
+            height: 92
             radius: 8
             border_width: 2
             border_color: 0xFFFF00
@@ -6095,9 +6557,9 @@ lvgl:
             id: room2_box
             align: TOP_LEFT
             x: 20
-            y: 123
+            y: 205
             width: 77
-            height: 102
+            height: 92
             radius: 8
             border_width: 2
             border_color: 0xFFFF00
@@ -6120,9 +6582,9 @@ lvgl:
             id: room3_box
             align: TOP_LEFT
             x: 102
-            y: 15
+            y: 107
             width: 45
-            height: 210
+            height: 190
             radius: 8
             border_width: 2
             border_color: 0xFFFF00
@@ -6145,9 +6607,9 @@ lvgl:
             id: room4_box
             align: TOP_LEFT
             x: 151
-            y: 15
+            y: 107
             width: 69
-            height: 67
+            height: 60
             radius: 8
             border_width: 2
             border_color: 0xFFFF00
@@ -6170,9 +6632,9 @@ lvgl:
             id: room5_box
             align: TOP_LEFT
             x: 151
-            y: 87
+            y: 172
             width: 69
-            height: 67
+            height: 60
             radius: 8
             border_width: 2
             border_color: 0xFFFF00
@@ -6195,9 +6657,9 @@ lvgl:
             id: room6_box
             align: TOP_LEFT
             x: 151
-            y: 158
+            y: 237
             width: 69
-            height: 67
+            height: 60
             radius: 8
             border_width: 2
             border_color: 0xFFFF00
@@ -6230,9 +6692,9 @@ lvgl:
 
         - obj:
             id: idle_timer_block
-            align: CENTER
-            x: 47
-            y: 0
+            align: TOP_MID
+            x: 0
+            y: 260
             width: 107
             height: 40
             bg_opa: TRANSP
@@ -6920,7 +7382,7 @@ lvgl:
               - label:
                   id: pulldown_title_label
                   align: TOP_MID
-                  y: 64
+                  y: 51
                   width: 207
                   text: "Lights"
                   text_color: 0x66CCFF
@@ -6931,7 +7393,7 @@ lvgl:
                   id: pulldown1_button
                   align: TOP_MID
                   x: -48
-                  y: 90
+                  y: 77
                   width: 79
                   height: 79
                   radius: 12
@@ -6974,7 +7436,7 @@ lvgl:
                   id: pulldown2_button
                   align: TOP_MID
                   x: 48
-                  y: 90
+                  y: 77
                   width: 79
                   height: 79
                   radius: 12
@@ -7017,7 +7479,7 @@ lvgl:
                   id: pulldown3_button
                   align: TOP_MID
                   x: -48
-                  y: 178
+                  y: 165
                   width: 79
                   height: 79
                   radius: 12
@@ -7060,7 +7522,7 @@ lvgl:
                   id: pulldown4_button
                   align: TOP_MID
                   x: 48
-                  y: 178
+                  y: 165
                   width: 79
                   height: 79
                   radius: 12
@@ -7144,7 +7606,7 @@ lvgl:
               - label:
                   id: pulldown_scenes_title_label
                   align: TOP_MID
-                  y: 63
+                  y: 51
                   width: 207
                   text: "Scenes"
                   text_color: 0x66CCFF
@@ -7155,7 +7617,7 @@ lvgl:
                   id: scene1_button
                   align: TOP_MID
                   x: 0
-                  y: 87
+                  y: 75
                   width: 180
                   height: 39
                   radius: 11
@@ -7190,7 +7652,7 @@ lvgl:
                   id: scene2_button
                   align: TOP_MID
                   x: 0
-                  y: 131
+                  y: 119
                   width: 180
                   height: 39
                   radius: 11
@@ -7225,7 +7687,7 @@ lvgl:
                   id: scene3_button
                   align: TOP_MID
                   x: 0
-                  y: 175
+                  y: 163
                   width: 180
                   height: 39
                   radius: 11
@@ -7260,7 +7722,7 @@ lvgl:
                   id: scene4_button
                   align: TOP_MID
                   x: 0
-                  y: 219
+                  y: 207
                   width: 180
                   height: 39
                   radius: 11
@@ -7427,7 +7889,7 @@ lvgl:
         - label:
             id: pullup_title_label
             align: TOP_MID
-            y: 64
+            y: 51
             width: 207
             text: "Control"
             text_color: 0x66CCFF
@@ -7438,7 +7900,7 @@ lvgl:
             id: pullup_va1_button
             align: TOP_MID
             x: -48
-            y: 90
+            y: 77
             width: 79
             height: 79
             radius: 12
@@ -7475,7 +7937,7 @@ lvgl:
             id: pullup_va2_button
             align: TOP_MID
             x: 48
-            y: 90
+            y: 77
             width: 79
             height: 79
             radius: 12
@@ -7512,7 +7974,7 @@ lvgl:
             id: pullup_mute_button
             align: TOP_MID
             x: -48
-            y: 178
+            y: 165
             width: 79
             height: 79
             radius: 12
@@ -7543,7 +8005,7 @@ lvgl:
             id: pullup_target_button
             align: TOP_MID
             x: 48
-            y: 178
+            y: 165
             width: 79
             height: 79
             radius: 12
