@@ -91,6 +91,14 @@ packages:
     files:
       - devices/Under_Development/Modular/HW/sendspin-external_components_2026.10.0.yaml
 
+##### only enable this if you want to stream the mic to MA
+#  micsource:
+#    url: https://github.com/RealDeco/sendspin-guition.git
+#    ref: main
+#    refresh: 0s
+#    files:
+#      - Other/micsource.yaml
+
 #packages: # local
 #  extcomp: !include localtest/HW/sendspin-external_components_2026.10.0.yaml
   
