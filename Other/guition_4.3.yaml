@@ -74,6 +74,7 @@ substitutions:
   clock_style_rooms: "2"
   clock_style_retro: "3"
   clock_style_mario: "4"
+  clock_style_cyber: "5"
   va_phase_idle: "0"
   va_phase_waiting_for_command: "1"
   va_phase_listening: "2"
@@ -164,6 +165,7 @@ esphome:
             if (opt == "Rooms") return ${clock_style_rooms};
             if (opt == "Retro") return ${clock_style_retro};
             if (opt == "Mario") return ${clock_style_mario};
+            if (opt == "Cyberclock") return ${clock_style_cyber};
             return ${clock_style_digital};
       - lambda: 'id(timer_seconds_remaining).publish_state(0);'
 
@@ -318,6 +320,10 @@ globals:
     restore_value: no
     initial_value: "${ui_phase_standby}"
   - id: pullup_return_phase
+    type: int
+    restore_value: no
+    initial_value: "${ui_phase_standby}"
+  - id: pulldown_return_phase
     type: int
     restore_value: no
     initial_value: "${ui_phase_standby}"
@@ -1069,7 +1075,7 @@ switch:
     icon: "mdi:monitor-off"
     entity_category: config
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_mode: RESTORE_DEFAULT_OFF
     on_turn_on:
       - script.execute: standby_screen_activity
     on_turn_off:
@@ -1122,6 +1128,15 @@ switch:
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
           then:
             - lvgl.widget.show: date_label
+      - if:
+          condition:
+            and:
+              - lambda: 'return !lv_obj_has_flag(id(standby_panel), LV_OBJ_FLAG_HIDDEN);'
+              - lambda: 'return id(clock_style_mode) == ${clock_style_cyber};'
+          then:
+            - lvgl.widget.show: cyber_weekday_label
+            - lvgl.widget.show: cyber_rule
+            - lvgl.widget.show: cyber_date_label
       - script.execute: analog_clock_redraw
       - script.execute: retro_clock_redraw
       - script.execute:
@@ -1129,6 +1144,9 @@ switch:
           full_redraw: true
     on_turn_off:
       - lvgl.widget.hide: date_label
+      - lvgl.widget.hide: cyber_weekday_label
+      - lvgl.widget.hide: cyber_rule
+      - lvgl.widget.hide: cyber_date_label
       - script.execute: analog_clock_redraw
       - script.execute: retro_clock_redraw
       - script.execute:
@@ -1256,6 +1274,7 @@ select:
       - Rooms
       - Retro
       - Mario
+      - Cyberclock
     set_action:
       - script.execute:
           id: apply_clock_style
@@ -1264,6 +1283,7 @@ select:
             if (x == "Rooms") return ${clock_style_rooms};
             if (x == "Retro") return ${clock_style_retro};
             if (x == "Mario") return ${clock_style_mario};
+            if (x == "Cyberclock") return ${clock_style_cyber};
             return ${clock_style_digital};
 
   - platform: template
@@ -1393,11 +1413,17 @@ select:
     restore_value: true
     initial_option: clock
     options:
+      - blackvelvet
       - chip
+      - chip2
       - clock
+      - cyanvelvet
+      - darkrose
       - hacker
+      - leaves
       - mission
       - neonwaves
+      - purplevelvet
       - redmarble
       - starrysky
       - tron
@@ -1450,7 +1476,7 @@ select:
             } else {
               lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
               lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-              if (content == "None") {
+              if (content == "None" && !id(timer_is_active)) {
                 lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
               } else {
                 lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -1910,6 +1936,13 @@ voice_assistant:
     - delay: 250ms
     - script.execute: refresh_timer_display
     - script.execute: standby_screen_activity
+    - if:
+        condition:
+          lambda: 'return (id(ui_phase) == ${ui_phase_pullup} || id(ui_phase) == ${ui_phase_pulldown}) && id(va_phase) == ${va_phase_idle};'
+        then:
+          - script.execute:
+              id: set_ui_phase
+              phase: ${ui_phase_standby}
   on_timer_updated:
     - script.execute: refresh_timer_display
     - script.execute: standby_screen_activity
@@ -2227,6 +2260,32 @@ text_sensor:
         if (hide_colons) snprintf(buf, sizeof(buf), "%02d %02d", hour_disp, t.minute);
         else snprintf(buf, sizeof(buf), "%02d:%02d", hour_disp, t.minute);
       }
+      static const char* cyber_num_words[] = {
+        "", "ONE","TWO","THREE","FOUR","FIVE","SIX","SEVEN","EIGHT","NINE","TEN",
+        "ELEVEN","TWELVE","THIRTEEN","FOURTEEN","FIFTEEN","SIXTEEN","SEVENTEEN","EIGHTEEN","NINETEEN","TWENTY"
+      };
+      int h12 = t.hour % 12;
+      if (h12 == 0) h12 = 12;
+      int next_h12 = (t.hour + 1) % 12;
+      if (next_h12 == 0) next_h12 = 12;
+      auto cyber_minute_words = [&](int m) -> std::string {
+        if (m >= 13 && m <= 19) {
+          static const char* cyber_teen_stems[] = {"THIR","FOUR","FIF","SIX","SEVEN","EIGHT","NINE"};
+          return std::string(cyber_teen_stems[m - 13]) + "\nTEEN";
+        }
+        if (m <= 20) return std::string(cyber_num_words[m]);
+        if (m == 30) return std::string("THIRTY");
+        return std::string("TWENTY\n") + cyber_num_words[m - 20];
+      };
+      std::string cyber_phrase;
+      if (t.minute == 0) {
+        cyber_phrase = std::string(cyber_num_words[h12]) + "\nO\nCLOCK";
+      } else if (t.minute <= 30) {
+        cyber_phrase = cyber_minute_words(t.minute) + "\nPAST\n" + cyber_num_words[h12];
+      } else {
+        cyber_phrase = cyber_minute_words(60 - t.minute) + "\nTO\n" + cyber_num_words[next_h12];
+      }
+      lv_label_set_text(id(cyber_time_label), cyber_phrase.c_str());
       return std::string(buf);
     on_value:
       - if:
@@ -2276,6 +2335,28 @@ text_sensor:
       const char* mon = (t.month >= 1 && t.month <= 12) ? months[t.month - 1] : "???";
       char buf[32];
       snprintf(buf, sizeof(buf), "%d %s", t.day_of_month, mon);
+      static const char* cyber_weekdays[] = {
+        "", "SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"
+      };
+      const char* cyber_wd = (t.day_of_week >= 1 && t.day_of_week <= 7) ? cyber_weekdays[t.day_of_week] : "";
+      lv_label_set_text(id(cyber_weekday_label), cyber_wd);
+      static const char* cyber_months[] = {
+        "JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE",
+        "JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"
+      };
+      static const char* cyber_ordinal_ones[] = {
+        "", "FIRST","SECOND","THIRD","FOURTH","FIFTH","SIXTH","SEVENTH","EIGHTH","NINTH","TENTH",
+        "ELEVENTH","TWELFTH","THIRTEENTH","FOURTEENTH","FIFTEENTH","SIXTEENTH","SEVENTEENTH","EIGHTEENTH","NINETEENTH","TWENTIETH"
+      };
+      std::string cyber_day_word;
+      int cd = t.day_of_month;
+      if (cd <= 20) cyber_day_word = cyber_ordinal_ones[cd];
+      else if (cd == 30) cyber_day_word = "THIRTIETH";
+      else if (cd == 31) cyber_day_word = "THIRTY FIRST";
+      else cyber_day_word = std::string("TWENTY ") + cyber_ordinal_ones[cd - 20];
+      const char* cyber_mon = (t.month >= 1 && t.month <= 12) ? cyber_months[t.month - 1] : "";
+      std::string cyber_date_str = cyber_day_word + "\n" + cyber_mon;
+      lv_label_set_text(id(cyber_date_label), cyber_date_str.c_str());
       return std::string(buf);
     on_value:
       - if:
@@ -2318,6 +2399,7 @@ text_sensor:
             and:
               - lambda: 'return !lv_obj_has_flag(id(standby_panel), LV_OBJ_FLAG_HIDDEN);'
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
+              - lambda: 'return !id(timer_is_active);'
           then:
             - lvgl.label.update:
                 id: weather_big_temp
@@ -2356,6 +2438,7 @@ text_sensor:
             and:
               - lambda: 'return !lv_obj_has_flag(id(standby_panel), LV_OBJ_FLAG_HIDDEN);'
               - lambda: 'return id(clock_style_mode) == ${clock_style_digital};'
+              - lambda: 'return !id(timer_is_active);'
           then:
             - if:
                 condition:
@@ -2388,6 +2471,7 @@ text_sensor:
               - lambda: 'return id(clock_style_mode) == ${clock_style_analog};'
               - lambda: return id(weather_available);
               - lambda: return id(clock_show_weather).state;
+              - lambda: 'return !id(timer_is_active);'
           then:
             - lvgl.widget.show: analog_weather_icon
             - lvgl.widget.show: analog_weather_temp
@@ -2470,17 +2554,17 @@ font:
     size: 26
     glyphs: "\u00B0CF"
 
-  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/DSEG7ClassicMini-Bold.ttf
     id: font_7seg
     size: 52
     glyphs: "0123456789:- "
 
-  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/DSEG7ClassicMini-Bold.ttf
     id: font_ampm
     size: 23
     glyphs: "AP"
 
-  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_weather
     size: 64
     glyphs:
@@ -2493,7 +2577,7 @@ font:
       - "\U000F0598"
       - "\U000F0599"
 
-  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_weather_small
     size: 32
     glyphs:
@@ -2506,7 +2590,7 @@ font:
       - "\U000F0598"
       - "\U000F0599"
 
-  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_controls
     size: 44
     glyphs:
@@ -2524,7 +2608,7 @@ font:
       - "\U000F049D"
       - "\U000F049E"
 
-  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_pullup
     size: 72
     glyphs:
@@ -2533,14 +2617,14 @@ font:
       - "\U000F0004"
       - "\U000F0849"
 
-  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_status
     size: 140
     glyphs:
       - "\U000F0026"
       - "\U000F0020"
 
-  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/materialdesignicons-webfont.ttf
     id: font_mdi_rooms
     size: 26
     glyphs:
@@ -2570,6 +2654,16 @@ font:
     size: 28
     glyphs: "0123456789"
 
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/Anurati-Regular.otf
+    id: font_cyber_big
+    size: 52
+    glyphs: "ACEFGHIKLNOPRSTUVWXY "
+
+  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/fonts/Anurati-Regular.otf
+    id: font_cyber_small
+    size: 18
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+
 script:
   - id: finish_va_reply
     mode: restart
@@ -2584,6 +2678,10 @@ script:
                   lambda: return id(manual_va_active);
                 then:
                   - lambda: id(manual_va_active) = false;
+                  - lambda: |-
+                      if (id(ui_phase) == ${ui_phase_pullup} || id(ui_phase) == ${ui_phase_pulldown}) {
+                        id(ui_phase) = ${ui_phase_standby};
+                      }
                   - script.execute:
                       id: set_va_phase
                       phase: ${va_phase_idle}
@@ -2594,6 +2692,10 @@ script:
                         - lambda: id(manual_va_resume_media) = false;
                         - media_player.toggle: sendspin_group_media_player
                 else:
+                  - lambda: |-
+                      if (id(ui_phase) == ${ui_phase_pullup} || id(ui_phase) == ${ui_phase_pulldown}) {
+                        id(ui_phase) = ${ui_phase_standby};
+                      }
                   - script.execute:
                       id: set_va_phase
                       phase: ${va_phase_idle}
@@ -2647,6 +2749,11 @@ script:
             - script.execute:
                 id: set_ui_phase
                 phase: !lambda return id(ui_phase);
+            - if:
+                condition:
+                  lambda: return id(timer_is_active);
+                then:
+                  - script.execute: refresh_timer_display
       - if:
           condition:
             lambda: return phase == ${va_phase_waiting_for_command};
@@ -2953,10 +3060,11 @@ script:
           lv_obj_set_style_text_color(id(weather_label), accent3, 0);
           lv_obj_set_style_text_color(id(controls_title_label), accent2, 0);
           lv_obj_set_style_text_color(id(controls_artist_label), accent3, 0);
-          lv_obj_set_style_text_color(id(controls_mute_icon), accent4, 0);
-          lv_obj_set_style_text_color(id(controls_group_label), accent4, 0);
           lv_obj_set_style_text_color(id(controls_previous_icon), accent4, 0);
           lv_obj_set_style_text_color(id(controls_next_icon), accent4, 0);
+          lv_obj_set_style_text_color(id(cyber_time_label), accent4, 0);
+          lv_obj_set_style_text_color(id(cyber_weekday_label), accent2, 0);
+          lv_obj_set_style_text_color(id(cyber_date_label), accent2, 0);
 
           lv_obj_t *playlist_buttons[] = {
             id(playlist_1_button), id(playlist_2_button), id(playlist_3_button),
@@ -3048,6 +3156,10 @@ script:
                 for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                   lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                 }
+                lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
             - script.execute: analog_clock_redraw
             - component.update: clock_hms
             - component.update: clock_date
@@ -3078,6 +3190,10 @@ script:
                       for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                         lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
                       }
+                      lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                      lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
                   - script.execute: rooms_grid_apply
                   - component.update: clock_hms
                   - component.update: clock_date
@@ -3103,6 +3219,10 @@ script:
                             for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                               lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                             }
+                            lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
                         - script.execute: retro_clock_redraw
                         - component.update: clock_hms
                         - component.update: clock_date
@@ -3128,6 +3248,10 @@ script:
                                   for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
                                     lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
                                   }
+                                  lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                  lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
                                   id(mario_anim_active) = false;
                                   id(mario_y_offset) = 0;
                                   id(hourblock_offset) = 0;
@@ -3144,25 +3268,62 @@ script:
                               - component.update: weather_temp_big
                               - component.update: weather_line
                             else:
-                              - lambda: |-
-                                  lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
-                                  if (id(clock_show_date).state) {
-                                    lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                  } else {
-                                    lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
-                                  }
-                                  if (id(analog_clock_canvas_widget) != nullptr) {
-                                    lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
-                                  }
-                                  lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-                                  lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
-                                  for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
-                                    lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
-                                  }
-                              - component.update: clock_hms
-                              - component.update: clock_date
+                              - if:
+                                  condition:
+                                    lambda: 'return style_mode == ${clock_style_cyber};'
+                                  then:
+                                    - lambda: |-
+                                        lv_obj_add_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(clock_ampm_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(weather_header), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(weather_label), LV_OBJ_FLAG_HIDDEN);
+                                        if (id(analog_clock_canvas_widget) != nullptr) {
+                                          lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                          lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_clear_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                                        if (id(clock_show_date).state) {
+                                          lv_obj_clear_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                          lv_obj_clear_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                          lv_obj_clear_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        } else {
+                                          lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                          lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                          lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                    - component.update: clock_hms
+                                    - component.update: clock_date
+                                  else:
+                                    - lambda: |-
+                                        lv_obj_clear_flag(id(clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        if (id(clock_show_date).state) {
+                                          lv_obj_clear_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        } else {
+                                          lv_obj_add_flag(id(date_label), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        if (id(analog_clock_canvas_widget) != nullptr) {
+                                          lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+                                        for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+                                          lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+                                        }
+                                        lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                                        lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+                                    - component.update: clock_hms
+                                    - component.update: clock_date
                               - component.update: weather_temp_big
                               - component.update: weather_line
 
@@ -4838,8 +4999,7 @@ script:
       - lambda: |-
           const uint32_t accent_u32 = ((uint32_t) id(accent_red) << 16) | ((uint32_t) id(accent_green) << 8) | (uint32_t) id(accent_blue);
           const lv_color_t accent = lv_color_hex(accent_u32);
-          const uint32_t accent4_u32 = ((uint32_t) id(accent4_red) << 16) | ((uint32_t) id(accent4_green) << 8) | (uint32_t) id(accent4_blue);
-          const lv_color_t inactive_color = lv_color_hex(accent4_u32);
+          const lv_color_t inactive_color = lv_color_hex(0xFFFFFF);
 
           if (id(shuffle_state)) {
             lv_label_set_text(id(controls_shuffle_label), "\U000F049D");
@@ -5033,7 +5193,7 @@ script:
           } else {
             lv_obj_add_flag(id(news_ticker_block), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(family_photo_block), LV_OBJ_FLAG_HIDDEN);
-            if (content == "None") {
+            if (content == "None" && !id(timer_is_active)) {
               lv_obj_add_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
             } else {
               lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -5157,6 +5317,9 @@ script:
 
           if (!found || total <= 0) {
             lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(timer_now_playing_bar), LV_OBJ_FLAG_HIDDEN);
+            id(cancel_timer_button_timeout)->stop();
+            lv_obj_add_flag(id(cancel_timer_button), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
             if (id(clock_style_mode) == ${clock_style_analog} && id(analog_clock_canvas_widget) != nullptr) {
@@ -5173,9 +5336,24 @@ script:
                 lv_obj_clear_flag(box, LV_OBJ_FLAG_HIDDEN);
               }
             }
+            if (id(clock_style_mode) == ${clock_style_cyber}) {
+              lv_obj_clear_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+              if (id(clock_show_date).state) {
+                lv_obj_clear_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+              } else {
+                lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+              }
+            }
             if (id(standby_background_enabled).state) {
               lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
               lv_obj_move_background(id(standby_background_widget));
+            }
+            if (id(va_phase) == ${va_phase_idle}) {
+              id(set_ui_phase)->execute(id(ui_phase));
             }
             return;
           }
@@ -5307,8 +5485,23 @@ script:
           }
 
           lv_canvas_finish_layer(canvas, &layer);
-
-          lv_obj_clear_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
+          if (id(va_phase) == ${va_phase_idle}) {
+            lv_obj_clear_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
+            if (id(external_media_player).state != media_player::MediaPlayerState::MEDIA_PLAYER_STATE_IDLE || id(manual_va_resume_media)) {
+              id(refresh_now_playing_progress_bar)->execute();
+              lv_label_set_text(id(timer_now_playing_title), lv_label_get_text(id(controls_title_label)));
+              lv_bar_set_value(id(timer_now_playing_progress_bar), lv_bar_get_value(id(now_playing_progress_bar)), LV_ANIM_OFF);
+              lv_obj_clear_flag(id(timer_now_playing_bar), LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_add_flag(id(timer_now_playing_bar), LV_OBJ_FLAG_HIDDEN);
+            }
+          } else {
+            lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(timer_now_playing_bar), LV_OBJ_FLAG_HIDDEN);
+            id(cancel_timer_button_timeout)->stop();
+            lv_obj_add_flag(id(cancel_timer_button), LV_OBJ_FLAG_HIDDEN);
+          }
 
           char text[16];
           if (left >= 3600) {
@@ -5318,21 +5511,29 @@ script:
           }
           lv_label_set_text(id(idle_timer_countdown), text);
 
-          if (id(va_phase) == ${va_phase_idle}) {
-            lv_obj_add_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
-            if (id(analog_clock_canvas_widget) != nullptr) {
-              lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
-            }
-            lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
-            for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
-              lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
-            }
-            lv_obj_clear_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_move_foreground(id(idle_timer_block));
-          } else {
-            lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
+          if (id(analog_clock_canvas_widget) != nullptr) {
+            lv_obj_add_flag(id(analog_clock_canvas_widget), LV_OBJ_FLAG_HIDDEN);
           }
+          lv_obj_add_flag(id(analog_weather_icon), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(analog_weather_temp), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(rooms_date_label), LV_OBJ_FLAG_HIDDEN);
+          for (auto box : {id(room1_box), id(room2_box), id(room3_box), id(room4_box), id(room5_box), id(room6_box)}) {
+            lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
+          }
+          lv_obj_add_flag(id(cyber_weekday_label), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(cyber_rule), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(cyber_date_label), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(idle_timer_block));
+      - if:
+          condition:
+            lambda: 'return !id(timer_is_active);'
+          then:
+            - component.update: weather_temp_big
+            - component.update: weather_line
 
   - id: show_pairing_code
     mode: restart
@@ -5398,6 +5599,27 @@ script:
           if (id(pairing_overlay) != nullptr) {
             lv_obj_add_flag(id(pairing_overlay), LV_OBJ_FLAG_HIDDEN);
           }
+
+  - id: show_cancel_timer_button
+    mode: restart
+    then:
+      - lvgl.widget.show: cancel_timer_button
+      - script.execute: cancel_timer_button_timeout
+
+  - id: cancel_timer_button_timeout
+    mode: restart
+    then:
+      - delay: 5s
+      - lvgl.widget.hide: cancel_timer_button
+
+  - id: cancel_active_timer
+    then:
+      - script.stop: cancel_timer_button_timeout
+      - lvgl.widget.hide: cancel_timer_button
+      - homeassistant.action:
+          action: conversation.process
+          data:
+            text: "cancel timer"
 
   - id: ring_timer
     then:
@@ -5730,10 +5952,12 @@ touchscreen:
               if (id(ui_phase) == ${ui_phase_now_playing}) {
                 if (abs_x >= abs_y) {
                   if (id(touch_start_y) >= ${imagewidth}) {
-                    if (dx < 0) {
-                      id(clock_style_choice).make_call().select_next(true).perform();
-                    } else {
-                      id(clock_style_choice).make_call().select_previous(true).perform();
+                    if (!id(timer_is_active)) {
+                      if (dx < 0) {
+                        id(clock_style_choice).make_call().select_next(true).perform();
+                      } else {
+                        id(clock_style_choice).make_call().select_previous(true).perform();
+                      }
                     }
                   } else if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN)) {
                     if (dx < 0) {
@@ -5752,6 +5976,7 @@ touchscreen:
                   if (dy < 0) {
                     id(open_pullup_menu)->execute();
                   } else {
+                    id(pulldown_return_phase) = id(ui_phase);
                     id(set_ui_phase)->execute(${ui_phase_pulldown});
                   }
                 } else if (!lv_obj_has_flag(id(now_playing_block), LV_OBJ_FLAG_HIDDEN) && id(artist_art_valid)) {
@@ -5764,6 +5989,10 @@ touchscreen:
                       id(now_playing_show_album_art)->execute();
                     }
                   }
+                }
+              } else if (id(ui_phase) == ${ui_phase_player_controls} && id(volume_slider_open)) {
+                if (abs_x < abs_y && dy < 0) {
+                  id(close_volume_slider)->execute();
                 }
               } else if (id(ui_phase) == ${ui_phase_player_controls}) {
                 if (abs_x >= abs_y) {
@@ -5822,10 +6051,12 @@ touchscreen:
               } else if (id(ui_phase) == ${ui_phase_standby}) {
                 if (abs_x >= abs_y) {
                   if (id(touch_start_y) >= ${imagewidth}) {
-                    if (dx < 0) {
-                      id(clock_style_choice).make_call().select_next(true).perform();
-                    } else {
-                      id(clock_style_choice).make_call().select_previous(true).perform();
+                    if (!id(timer_is_active)) {
+                      if (dx < 0) {
+                        id(clock_style_choice).make_call().select_next(true).perform();
+                      } else {
+                        id(clock_style_choice).make_call().select_previous(true).perform();
+                      }
                     }
                   } else {
                     if (dx < 0) {
@@ -5838,16 +6069,17 @@ touchscreen:
                   if (dy < 0) {
                     id(open_pullup_menu)->execute();
                   } else {
+                    id(pulldown_return_phase) = id(ui_phase);
                     id(set_ui_phase)->execute(${ui_phase_pulldown});
                   }
                 }
+              } else if (id(ui_phase) == ${ui_phase_pulldown} && id(brightness_slider_light_index) != 0) {
+                if (abs_x < abs_y && dy < 0) {
+                  id(close_brightness_slider)->execute();
+                }
               } else if (id(ui_phase) == ${ui_phase_pulldown}) {
                 if (abs_x < abs_y && dy < 0 && id(touch_start_y) >= ${imagewidth} && id(brightness_slider_light_index) == 0) {
-                  if (id(external_media_player).state == media_player::MediaPlayerState::MEDIA_PLAYER_STATE_IDLE) {
-                    id(set_ui_phase)->execute(${ui_phase_standby});
-                  } else {
-                    id(set_ui_phase)->execute(${ui_phase_now_playing});
-                  }
+                  id(set_ui_phase)->execute(id(pulldown_return_phase));
                 } else if (abs_x >= abs_y && id(touch_start_y) >= ${imagewidth} && id(brightness_slider_light_index) == 0) {
                   const int pulldown_page_count = 2;
                   int next_page = dx < 0 ? (id(pulldown_menu_index) + 1) % pulldown_page_count
@@ -5861,6 +6093,11 @@ touchscreen:
                   id(set_ui_phase)->execute(${ui_phase_standby});
                 }
               }
+              return;
+            }
+
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(timer_is_active) && id(va_phase) == ${va_phase_idle} && id(touch_start_y) < ${imagewidth}) {
+              id(show_cancel_timer_button)->execute();
               return;
             }
 
@@ -6204,6 +6441,53 @@ lvgl:
                   hidden: true
 
               - obj:
+                  id: timer_now_playing_bar
+                  align: BOTTOM_MID
+                  y: -20
+                  width: 380
+                  height: 62
+                  radius: 14
+                  bg_color: 0x000000
+                  bg_opa: 60%
+                  border_opa: TRANSP
+                  pad_all: 0
+                  scrollable: false
+                  clickable: false
+                  hidden: true
+                  widgets:
+                    - label:
+                        id: timer_now_playing_title
+                        align: TOP_MID
+                        y: 6
+                        width: 360
+                        text: ""
+                        text_color: 0xFFFFFF
+                        text_font: font_display
+                        long_mode: SCROLL_CIRCULAR
+                        text_align: CENTER
+
+                    - bar:
+                        id: timer_now_playing_progress_bar
+                        align: BOTTOM_MID
+                        y: -10
+                        width: 340
+                        height: 6
+                        bg_color: 0x000000
+                        bg_opa: 40%
+                        border_width: 1
+                        border_color: 0xFFFFFF
+                        border_opa: 70%
+                        radius: 3
+                        min_value: 0
+                        max_value: 100
+                        value: 0
+                        animated: false
+                        indicator:
+                          bg_color: 0xFFFFFF
+                          bg_opa: COVER
+                          radius: 3
+
+              - obj:
                   id: now_playing_frame
                   align: TOP_MID
                   x: 0
@@ -6218,6 +6502,36 @@ lvgl:
                   clickable: false
                   scrollable: false
                   hidden: true
+
+              - obj:
+                  id: cancel_timer_button
+                  align: CENTER
+                  width: 240
+                  height: 90
+                  radius: 20
+                  bg_color: 0x330000
+                  bg_opa: 90%
+                  border_color: 0xFF3333
+                  border_width: 3
+                  shadow_color: 0xFF3333
+                  shadow_width: 14
+                  shadow_opa: 45%
+                  clickable: true
+                  scrollable: false
+                  hidden: true
+                  pressed:
+                    bg_color: 0xFF3333
+                    bg_opa: COVER
+                    border_color: 0xFFFFFF
+                  on_click:
+                    - script.execute: cancel_active_timer
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "Cancel Timer"
+                        text_color: 0xFFFFFF
+                        text_font: font_date
+                        text_align: CENTER
 
         - obj:
             id: right_zone
@@ -6576,6 +6890,68 @@ lvgl:
                                     text_color: 0xFFFFFF
                                     text_font: font_mdi_rooms
                                     hidden: true
+
+                    - label:
+                        id: cyber_weekday_label
+                        align: TOP_MID
+                        y: 60
+                        width: 300
+                        text: ""
+                        text_color: 0xFFFFFF
+                        text_font: font_cyber_small
+                        text_letter_space: 3
+                        text_align: CENTER
+                        hidden: true
+
+                    - obj:
+                        id: cyber_rule
+                        align: TOP_MID
+                        y: 90
+                        width: 200
+                        height: 1
+                        bg_color: 0x444444
+                        bg_opa: COVER
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        clickable: false
+                        hidden: true
+
+                    - obj:
+                        id: cyber_time_container
+                        align: TOP_MID
+                        y: 100
+                        width: 320
+                        height: 278
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        clickable: false
+                        widgets:
+                          - label:
+                              id: cyber_time_label
+                              align: CENTER
+                              width: 300
+                              text: ""
+                              text_color: 0xFFFFFF
+                              text_font: font_cyber_big
+                              text_letter_space: 2
+                              text_align: CENTER
+                              long_mode: WRAP
+                              hidden: true
+
+                    - label:
+                        id: cyber_date_label
+                        align: BOTTOM_MID
+                        y: -50
+                        width: 300
+                        text: ""
+                        text_color: 0xFFFFFF
+                        text_font: font_cyber_small
+                        text_letter_space: 3
+                        text_align: CENTER
+                        hidden: true
 
               - obj:
                   id: controls_panel
