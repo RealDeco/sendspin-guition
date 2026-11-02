@@ -4657,6 +4657,11 @@ touchscreen:
     id: my_touchscreen
     display: main_display
     i2c_id: touchscreen_bus
+    calibration:
+      x_min: 0
+      x_max: 480
+      y_min: 0
+      y_max: 480
 #    transform:
 #      mirror_x: true
 #      mirror_y: true
