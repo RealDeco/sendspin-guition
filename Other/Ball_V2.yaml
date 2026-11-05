@@ -18,33 +18,33 @@ substitutions:
 # presence and light sensors
   sensor1_entity: "binary_sensor.room_1_presence"
   light1_entity: "binary_sensor.room_1_light"
-  sensor1_label: "Room 1"
 
   sensor2_entity: "binary_sensor.room_2_presence"
   light2_entity: "binary_sensor.room_2_light"
-  sensor2_label: "Room 2"
 
   sensor3_entity: "binary_sensor.room_3_presence"
   light3_entity: "binary_sensor.room_3_light"
-  sensor3_label: "Room 3"
 
   sensor4_entity: "binary_sensor.room_4_presence"
   light4_entity: "binary_sensor.room_4_light"
-  sensor4_label: "Room 4"
 
   sensor5_entity: "binary_sensor.room_5_presence"
   light5_entity: "binary_sensor.room_5_light"
-  sensor5_label: "Room 5"
 
   sensor6_entity: "binary_sensor.room_6_presence"
   light6_entity: "binary_sensor.room_6_light"
-  sensor6_label: "Room 6"
 
-# pulldown menu switches (labels are set from Home Assistant, see the text entities)
+# pulldown menu switches (labels are set from Home Assistant, see the text entities) (Light 1 menu)
   pulldown1_entity: "light.ceiling"
   pulldown2_entity: "light.ceiling_2"
   pulldown3_entity: "light.hue_p45_7_light"
   pulldown4_entity: "light.color_light"
+
+# pulldown menu switches (Light 2 menu)
+  pulldown5_entity: "light.CHANGE_ME_5"
+  pulldown6_entity: "light.CHANGE_ME_6"
+  pulldown7_entity: "light.CHANGE_ME_7"
+  pulldown8_entity: "light.CHANGE_ME_8"
 
 # scenes menu buttons
   scene1_entity: "scene.bright_day"
@@ -327,7 +327,7 @@ globals:
   - id: pulldown_menu_index
     type: int
     restore_value: no
-    initial_value: "0"
+    initial_value: "1"
   - id: brightness_slider_light_index
     type: int
     restore_value: no
@@ -353,6 +353,22 @@ globals:
     restore_value: yes
     initial_value: "255"
   - id: pulldown4_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
+  - id: pulldown5_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
+  - id: pulldown6_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
+  - id: pulldown7_last_brightness
+    type: float
+    restore_value: yes
+    initial_value: "255"
+  - id: pulldown8_last_brightness
     type: float
     restore_value: yes
     initial_value: "255"
@@ -888,6 +904,7 @@ media_source:
     buffer_size: 100000
   - platform: sendspin
     id: sendspin_media_source
+    static_delay_adjustable: true
 
 media_player:
   - platform: sendspin
@@ -1091,6 +1108,26 @@ binary_sensor:
     entity_id: ${pulldown4_entity}
     on_state:
       - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown5_state
+    entity_id: ${pulldown5_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown6_state
+    entity_id: ${pulldown6_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown7_state
+    entity_id: ${pulldown7_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown8_state
+    entity_id: ${pulldown8_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
 
 switch:
   - platform: sendspin
@@ -1098,16 +1135,6 @@ switch:
     name: "Sendspin Unpaired Access"
     type: unpaired_access
 
-  - platform: template
-    id: sendspin_delay_adjustable
-    name: "Sendspin adjustable delay"
-    entity_category: config
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    turn_on_action:
-      - sendspin.media_source.enable_static_delay_adjustment:
-    turn_off_action:
-      - sendspin.media_source.disable_static_delay_adjustment:
 
   - platform: gpio
     name: Speaker Enable
@@ -1720,6 +1747,46 @@ text:
     on_value:
       - script.execute: refresh_pulldown_labels
   - platform: template
+    id: pulldown5_label
+    name: Pulldown button 5 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 5
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown6_label
+    name: Pulldown button 6 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 6
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown7_label
+    name: Pulldown button 7 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 7
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown8_label
+    name: Pulldown button 8 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 8
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
     id: scene1_label
     name: Scene 1 label
     entity_category: config
@@ -1993,6 +2060,30 @@ sensor:
     attribute: brightness
     on_value:
       - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown4_last_brightness) = x;'
+  - platform: homeassistant
+    id: pulldown5_brightness
+    entity_id: ${pulldown5_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown5_last_brightness) = x;'
+  - platform: homeassistant
+    id: pulldown6_brightness
+    entity_id: ${pulldown6_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown6_last_brightness) = x;'
+  - platform: homeassistant
+    id: pulldown7_brightness
+    entity_id: ${pulldown7_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown7_last_brightness) = x;'
+  - platform: homeassistant
+    id: pulldown8_brightness
+    entity_id: ${pulldown8_entity}
+    attribute: brightness
+    on_value:
+      - lambda: 'if (!std::isnan(x) && x > 0) id(pulldown8_last_brightness) = x;'
   - platform: sendspin
     id: sendspin_track_progress
     type: track_progress
@@ -3361,6 +3452,7 @@ script:
           }
           lv_obj_set_style_bg_color(id(pulldown_dot1), accent, 0);
           lv_obj_set_style_bg_color(id(pulldown_dot2), accent, 0);
+          lv_obj_set_style_bg_color(id(pulldown_dot3), accent, 0);
           lv_obj_set_style_text_color(id(pullup_title_label), accent3, 0);
           lv_obj_t *pullup_buttons[] = {
             id(pullup_va1_button), id(pullup_va2_button), id(pullup_mute_button), id(pullup_target_button)
@@ -4542,6 +4634,18 @@ script:
       - lvgl.label.update:
           id: pulldown4_button_label
           text: !lambda return id(pulldown4_label).state;
+      - lvgl.label.update:
+          id: pulldown5_button_label
+          text: !lambda return id(pulldown5_label).state;
+      - lvgl.label.update:
+          id: pulldown6_button_label
+          text: !lambda return id(pulldown6_label).state;
+      - lvgl.label.update:
+          id: pulldown7_button_label
+          text: !lambda return id(pulldown7_label).state;
+      - lvgl.label.update:
+          id: pulldown8_button_label
+          text: !lambda return id(pulldown8_label).state;
 
   - id: refresh_scene_labels
     mode: restart
@@ -4581,6 +4685,10 @@ script:
           apply_button(id(pulldown2_button), id(pulldown2_button_label), id(pulldown2_state).state);
           apply_button(id(pulldown3_button), id(pulldown3_button_label), id(pulldown3_state).state);
           apply_button(id(pulldown4_button), id(pulldown4_button_label), id(pulldown4_state).state);
+          apply_button(id(pulldown5_button), id(pulldown5_button_label), id(pulldown5_state).state);
+          apply_button(id(pulldown6_button), id(pulldown6_button_label), id(pulldown6_state).state);
+          apply_button(id(pulldown7_button), id(pulldown7_button_label), id(pulldown7_state).state);
+          apply_button(id(pulldown8_button), id(pulldown8_button_label), id(pulldown8_state).state);
 
   - id: pulldown_show_page
     parameters:
@@ -4590,14 +4698,21 @@ script:
           if (id(pulldown_menu_index) == page_index) return;
           id(pulldown_menu_index) = page_index;
           if (page_index == 0) {
-            lv_obj_clear_flag(id(pulldown_lights_group), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
-          } else {
             lv_obj_add_flag(id(pulldown_lights_group), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_lights_group2), LV_OBJ_FLAG_HIDDEN);
+          } else if (page_index == 1) {
+            lv_obj_clear_flag(id(pulldown_lights_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_lights_group2), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(pulldown_lights_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_lights_group2), LV_OBJ_FLAG_HIDDEN);
           }
           lv_obj_set_style_bg_opa(id(pulldown_dot1), page_index == 0 ? LV_OPA_COVER : LV_OPA_30, 0);
           lv_obj_set_style_bg_opa(id(pulldown_dot2), page_index == 1 ? LV_OPA_COVER : LV_OPA_30, 0);
+          lv_obj_set_style_bg_opa(id(pulldown_dot3), page_index == 2 ? LV_OPA_COVER : LV_OPA_30, 0);
       - script.execute: pulldown_timeout
 
   - id: open_pulldown_menu
@@ -4655,14 +4770,18 @@ script:
       - script.stop: brightness_slider_timeout
       - lambda: |-
           id(brightness_slider_light_index) = light_index;
-          lv_obj_t *src_label = id(pulldown4_button_label);
-          bool is_on = id(pulldown4_state).state;
-          float raw = id(pulldown4_brightness).state;
-          float last = id(pulldown4_last_brightness);
+          lv_obj_t *src_label = id(pulldown8_button_label);
+          bool is_on = id(pulldown8_state).state;
+          float raw = id(pulldown8_brightness).state;
+          float last = id(pulldown8_last_brightness);
           switch (light_index) {
             case 1: src_label = id(pulldown1_button_label); is_on = id(pulldown1_state).state; raw = id(pulldown1_brightness).state; last = id(pulldown1_last_brightness); break;
             case 2: src_label = id(pulldown2_button_label); is_on = id(pulldown2_state).state; raw = id(pulldown2_brightness).state; last = id(pulldown2_last_brightness); break;
             case 3: src_label = id(pulldown3_button_label); is_on = id(pulldown3_state).state; raw = id(pulldown3_brightness).state; last = id(pulldown3_last_brightness); break;
+            case 4: src_label = id(pulldown4_button_label); is_on = id(pulldown4_state).state; raw = id(pulldown4_brightness).state; last = id(pulldown4_last_brightness); break;
+            case 5: src_label = id(pulldown5_button_label); is_on = id(pulldown5_state).state; raw = id(pulldown5_brightness).state; last = id(pulldown5_last_brightness); break;
+            case 6: src_label = id(pulldown6_button_label); is_on = id(pulldown6_state).state; raw = id(pulldown6_brightness).state; last = id(pulldown6_last_brightness); break;
+            case 7: src_label = id(pulldown7_button_label); is_on = id(pulldown7_state).state; raw = id(pulldown7_brightness).state; last = id(pulldown7_last_brightness); break;
             default: break;
           }
           int pct;
@@ -5400,6 +5519,8 @@ script:
             lv_obj_add_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
+            id(cancel_timer_button_timeout)->stop();
+            lv_obj_add_flag(id(cancel_timer_button), LV_OBJ_FLAG_HIDDEN);
             if (id(standby_background_enabled).state) {
               lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
               lv_obj_move_background(id(standby_background_widget));
@@ -5557,8 +5678,11 @@ script:
             lv_obj_add_flag(id(cyber_time_label), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(id(idle_timer_block));
+            lv_obj_move_foreground(id(cancel_timer_button));
           } else {
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
+            id(cancel_timer_button_timeout)->stop();
+            lv_obj_add_flag(id(cancel_timer_button), LV_OBJ_FLAG_HIDDEN);
           }
       - if:
           condition:
@@ -5567,6 +5691,27 @@ script:
             - script.execute:
                 id: apply_clock_style
                 style_mode: !lambda 'return id(clock_style_mode);'
+
+  - id: show_cancel_timer_button
+    mode: restart
+    then:
+      - lvgl.widget.show: cancel_timer_button
+      - script.execute: cancel_timer_button_timeout
+
+  - id: cancel_timer_button_timeout
+    mode: restart
+    then:
+      - delay: 5s
+      - lvgl.widget.hide: cancel_timer_button
+
+  - id: cancel_active_timer
+    then:
+      - script.stop: cancel_timer_button_timeout
+      - lvgl.widget.hide: cancel_timer_button
+      - homeassistant.action:
+          action: conversation.process
+          data:
+            text: "cancel timer"
 
   - id: album_art_show_fallback
     mode: restart
@@ -5720,6 +5865,10 @@ touchscreen:
                   lv_obj_remove_state(id(pulldown2_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(pulldown3_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(pulldown4_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown5_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown6_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown7_button), LV_STATE_PRESSED);
+                  lv_obj_remove_state(id(pulldown8_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(scene1_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(scene2_button), LV_STATE_PRESSED);
                   lv_obj_remove_state(id(scene3_button), LV_STATE_PRESSED);
@@ -5819,7 +5968,7 @@ touchscreen:
                 if (abs_x < abs_y && (dy < 0 || dy > 0)) {
                   id(close_pulldown_menu)->execute();
                 } else if (abs_x >= abs_y) {
-                  const int pulldown_page_count = 2;
+                  const int pulldown_page_count = 3;
                   int next_page = dx < 0
                     ? (id(pulldown_menu_index) + 1) % pulldown_page_count
                     : (id(pulldown_menu_index) - 1 + pulldown_page_count) % pulldown_page_count;
@@ -5833,6 +5982,11 @@ touchscreen:
                   id(close_pullup_menu)->execute();
                 }
               }
+              return;
+            }
+
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(timer_is_active) && id(va_phase) == ${va_phase_idle}) {
+              id(show_cancel_timer_button)->execute();
               return;
             }
 
@@ -6369,6 +6523,7 @@ lvgl:
             border_opa: TRANSP
             pad_all: 0
             scrollable: false
+            clickable: false
             hidden: true
             widgets:
               - label:
@@ -6379,6 +6534,36 @@ lvgl:
                   text_color: 0xFFFF00
                   text_font: font_7seg
                   text_letter_space: 0
+                  text_align: CENTER
+
+        - obj:
+            id: cancel_timer_button
+            align: CENTER
+            width: 160
+            height: 60
+            radius: 14
+            bg_color: 0x330000
+            bg_opa: COVER
+            border_color: 0xFF3333
+            border_width: 3
+            shadow_color: 0xFF3333
+            shadow_width: 10
+            shadow_opa: 45%
+            clickable: true
+            scrollable: false
+            hidden: true
+            pressed:
+              bg_color: 0xFF3333
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+            on_click:
+              - script.execute: cancel_active_timer
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "Cancel Timer"
+                  text_color: 0xFFFFFF
+                  text_font: font_date
                   text_align: CENTER
 
     - id: player_controls_page
@@ -7044,7 +7229,7 @@ lvgl:
                   align: TOP_MID
                   y: 11
                   width: 207
-                  text: "Lights"
+                  text: "Light 1"
                   text_color: 0x66CCFF
                   text_font: font_display_medium
                   text_align: CENTER
@@ -7224,7 +7409,21 @@ lvgl:
         - obj:
             id: pulldown_dot1
             align: BOTTOM_MID
-            x: -7
+            x: -11
+            y: -12
+            width: 10
+            height: 10
+            radius: 5
+            bg_color: 0xFFFF00
+            bg_opa: 30%
+            border_opa: TRANSP
+            scrollable: false
+            clickable: false
+
+        - obj:
+            id: pulldown_dot2
+            align: BOTTOM_MID
+            x: 0
             y: -12
             width: 10
             height: 10
@@ -7236,9 +7435,9 @@ lvgl:
             clickable: false
 
         - obj:
-            id: pulldown_dot2
+            id: pulldown_dot3
             align: BOTTOM_MID
-            x: 7
+            x: 11
             y: -12
             width: 10
             height: 10
@@ -7414,6 +7613,202 @@ lvgl:
                         text_align: CENTER
 
         - obj:
+            id: pulldown_lights_group2
+            align: TOP_MID
+            x: 0
+            y: 0
+            width: ${imagewidth}
+            height: ${imageheight}
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: pulldown_title_label2
+                  align: TOP_MID
+                  y: 11
+                  width: 207
+                  text: "Light 2"
+                  text_color: 0x66CCFF
+                  text_font: font_display_medium
+                  text_align: CENTER
+
+              - button:
+                  id: pulldown5_button
+                  align: TOP_MID
+                  x: -48
+                  y: 37
+                  width: 79
+                  height: 79
+                  radius: 12
+                  bg_opa: TRANSP
+                  border_color: 0xFFFF00
+                  border_width: 4
+                  shadow_color: 0xFFFF00
+                  shadow_width: 12
+                  shadow_opa: 45%
+                  on_click:
+                    - if:
+                        condition:
+                          lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                        then:
+                          - homeassistant.action:
+                              action: homeassistant.toggle
+                              data:
+                                entity_id: ${pulldown5_entity}
+                          - script.execute: pulldown_timeout
+                  on_long_press:
+                    - if:
+                        condition:
+                          lambda: 'return !id(touch_swipe_detected);'
+                        then:
+                          - lambda: 'id(long_press_fired) = true;'
+                          - script.execute:
+                              id: open_brightness_slider
+                              light_index: 5
+                  widgets:
+                    - label:
+                        id: pulldown5_button_label
+                        align: CENTER
+                        width: 72
+                        text: "Light 5"
+                        text_color: 0xFFFFFF
+                        text_font: font_playlist
+                        text_align: CENTER
+
+              - button:
+                  id: pulldown6_button
+                  align: TOP_MID
+                  x: 48
+                  y: 37
+                  width: 79
+                  height: 79
+                  radius: 12
+                  bg_opa: TRANSP
+                  border_color: 0xFFFF00
+                  border_width: 4
+                  shadow_color: 0xFFFF00
+                  shadow_width: 12
+                  shadow_opa: 45%
+                  on_click:
+                    - if:
+                        condition:
+                          lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                        then:
+                          - homeassistant.action:
+                              action: homeassistant.toggle
+                              data:
+                                entity_id: ${pulldown6_entity}
+                          - script.execute: pulldown_timeout
+                  on_long_press:
+                    - if:
+                        condition:
+                          lambda: 'return !id(touch_swipe_detected);'
+                        then:
+                          - lambda: 'id(long_press_fired) = true;'
+                          - script.execute:
+                              id: open_brightness_slider
+                              light_index: 6
+                  widgets:
+                    - label:
+                        id: pulldown6_button_label
+                        align: CENTER
+                        width: 72
+                        text: "Light 6"
+                        text_color: 0xFFFFFF
+                        text_font: font_playlist
+                        text_align: CENTER
+
+              - button:
+                  id: pulldown7_button
+                  align: TOP_MID
+                  x: -48
+                  y: 125
+                  width: 79
+                  height: 79
+                  radius: 12
+                  bg_opa: TRANSP
+                  border_color: 0xFFFF00
+                  border_width: 4
+                  shadow_color: 0xFFFF00
+                  shadow_width: 12
+                  shadow_opa: 45%
+                  on_click:
+                    - if:
+                        condition:
+                          lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                        then:
+                          - homeassistant.action:
+                              action: homeassistant.toggle
+                              data:
+                                entity_id: ${pulldown7_entity}
+                          - script.execute: pulldown_timeout
+                  on_long_press:
+                    - if:
+                        condition:
+                          lambda: 'return !id(touch_swipe_detected);'
+                        then:
+                          - lambda: 'id(long_press_fired) = true;'
+                          - script.execute:
+                              id: open_brightness_slider
+                              light_index: 7
+                  widgets:
+                    - label:
+                        id: pulldown7_button_label
+                        align: CENTER
+                        width: 72
+                        text: "Light 7"
+                        text_color: 0xFFFFFF
+                        text_font: font_playlist
+                        text_align: CENTER
+
+              - button:
+                  id: pulldown8_button
+                  align: TOP_MID
+                  x: 48
+                  y: 125
+                  width: 79
+                  height: 79
+                  radius: 12
+                  bg_opa: TRANSP
+                  border_color: 0xFFFF00
+                  border_width: 4
+                  shadow_color: 0xFFFF00
+                  shadow_width: 12
+                  shadow_opa: 45%
+                  on_click:
+                    - if:
+                        condition:
+                          lambda: 'bool was_long = id(long_press_fired); id(long_press_fired) = false; return !id(touch_swipe_detected) && !was_long;'
+                        then:
+                          - homeassistant.action:
+                              action: homeassistant.toggle
+                              data:
+                                entity_id: ${pulldown8_entity}
+                          - script.execute: pulldown_timeout
+                  on_long_press:
+                    - if:
+                        condition:
+                          lambda: 'return !id(touch_swipe_detected);'
+                        then:
+                          - lambda: 'id(long_press_fired) = true;'
+                          - script.execute:
+                              id: open_brightness_slider
+                              light_index: 8
+                  widgets:
+                    - label:
+                        id: pulldown8_button_label
+                        align: CENTER
+                        width: 72
+                        text: "Light 8"
+                        text_color: 0xFFFFFF
+                        text_font: font_playlist
+                        text_align: CENTER
+
+        - obj:
             id: pulldown_brightness_overlay
             align: CENTER
             x: 0
@@ -7475,7 +7870,11 @@ lvgl:
                                     case 1: return std::string("${pulldown1_entity}");
                                     case 2: return std::string("${pulldown2_entity}");
                                     case 3: return std::string("${pulldown3_entity}");
-                                    default: return std::string("${pulldown4_entity}");
+                                    case 4: return std::string("${pulldown4_entity}");
+                                    case 5: return std::string("${pulldown5_entity}");
+                                    case 6: return std::string("${pulldown6_entity}");
+                                    case 7: return std::string("${pulldown7_entity}");
+                                    default: return std::string("${pulldown8_entity}");
                                   }
                         else:
                           - homeassistant.action:
@@ -7489,7 +7888,11 @@ lvgl:
                                     case 1: return std::string("${pulldown1_entity}");
                                     case 2: return std::string("${pulldown2_entity}");
                                     case 3: return std::string("${pulldown3_entity}");
-                                    default: return std::string("${pulldown4_entity}");
+                                    case 4: return std::string("${pulldown4_entity}");
+                                    case 5: return std::string("${pulldown5_entity}");
+                                    case 6: return std::string("${pulldown6_entity}");
+                                    case 7: return std::string("${pulldown7_entity}");
+                                    default: return std::string("${pulldown8_entity}");
                                   }
                                 pct: !lambda |-
                                   return (int) x;
