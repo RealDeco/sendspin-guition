@@ -444,10 +444,6 @@ globals:
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
-  - id: timer_progress_arc
-    type: lv_obj_t*
-    restore_value: no
-    initial_value: "nullptr"
   - id: battery_bar_widget
     type: lv_obj_t*
     restore_value: no
@@ -5489,32 +5485,6 @@ script:
           id(timer_total_seconds) = found && total > 0 ? total : 0;
           id(timer_seconds_remaining).publish_state(id(timer_seconds_left));
 
-          static constexpr int TIMER_SEGMENTS = 60;
-
-          if (id(timer_progress_arc) == nullptr) {
-            id(timer_progress_arc) = lv_obj_create(lv_layer_top());
-            lv_obj_remove_style_all(id(timer_progress_arc));
-            lv_obj_set_size(id(timer_progress_arc), ${screenwidth}, ${screenheight});
-            lv_obj_center(id(timer_progress_arc));
-            lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_SCROLLABLE);
-            const float cx = ${screenwidth} / 2.0f;
-            const float cy = ${screenheight} / 2.0f;
-            const float radius = 113.0f;
-            for (int i = 0; i < TIMER_SEGMENTS; i++) {
-              const float angle = (-90.0f + (360.0f * i / TIMER_SEGMENTS)) * (float) M_PI / 180.0f;
-              lv_obj_t *seg = lv_obj_create(id(timer_progress_arc));
-              lv_obj_remove_style_all(seg);
-              lv_obj_set_size(seg, 6, 6);
-              lv_obj_set_style_radius(seg, LV_RADIUS_CIRCLE, 0);
-              lv_obj_set_style_bg_opa(seg, LV_OPA_COVER, 0);
-              lv_obj_set_pos(seg, (int) lroundf(cx + cosf(angle) * radius - 3.0f),
-                             (int) lroundf(cy + sinf(angle) * radius - 3.0f));
-              lv_obj_clear_flag(seg, LV_OBJ_FLAG_CLICKABLE);
-              lv_obj_clear_flag(seg, LV_OBJ_FLAG_SCROLLABLE);
-            }
-          }
-
           if (!found || total <= 0) {
             lv_obj_add_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
@@ -5532,18 +5502,15 @@ script:
           if (remain < 0.0f) remain = 0.0f;
           if (remain > 1.0f) remain = 1.0f;
 
-          int active_segments = (int) lroundf((float) left * (float) TIMER_SEGMENTS / (float) total);
-          active_segments = std::max(0, std::min(TIMER_SEGMENTS, active_segments));
-          for (int i = 0; i < TIMER_SEGMENTS; i++) {
-            lv_obj_t *seg = lv_obj_get_child(id(timer_progress_arc), i);
-            if (seg == nullptr) continue;
-            const bool active = i < active_segments;
-            lv_obj_set_style_bg_color(seg, active ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x242424), 0);
-            lv_obj_set_style_bg_opa(seg, active ? LV_OPA_COVER : 115, 0);
-          }
+          int arc_value = (int) lroundf(remain * 1000.0f);
+          arc_value = std::max(0, std::min(1000, arc_value));
+          lv_arc_set_value(id(timer_progress_arc), arc_value);
           lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
           lv_obj_move_foreground(id(timer_progress_arc));
 
+          if (id(va_phase) != ${va_phase_idle}) {
+            lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
+          } else {
           lv_obj_t *canvas = id(hourglass_canvas);
           lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_TRANSP);
 
@@ -5650,12 +5617,13 @@ script:
 
           lv_canvas_finish_layer(canvas, &layer);
           lv_obj_clear_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
+          }
 
           char text[16];
           if (left >= 3600) {
-            snprintf(text, sizeof(text), "%d:%02d:%02d", left / 3600, (left / 60) % 60, left % 60);
+            snprintf(text, sizeof(text), "%d:%02d\n%02d", left / 3600, (left / 60) % 60, left % 60);
           } else {
-            snprintf(text, sizeof(text), "%d:%02d", left / 60, left % 60);
+            snprintf(text, sizeof(text), "%02d\n%02d", left / 60, left % 60);
           }
           lv_label_set_text(id(idle_timer_countdown), text);
 
@@ -5712,6 +5680,7 @@ script:
           action: conversation.process
           data:
             text: "cancel timer"
+            language: "en"
 
   - id: album_art_show_fallback
     mode: restart
@@ -6025,6 +5994,31 @@ lvgl:
             to: 0%
       on_stop:
         - sendspin.image.transition_finished: album_slot
+
+  top_layer:
+    widgets:
+      - arc:
+          id: timer_progress_arc
+          align: CENTER
+          width: 226
+          height: 226
+          start_angle: 0
+          end_angle: 360
+          rotation: 270
+          min_value: 0
+          max_value: 1000
+          value: 0
+          adjustable: false
+          arc_width: 6
+          arc_color: 0x242424
+          arc_opa: 45%
+          arc_rounded: false
+          indicator:
+            arc_width: 6
+            arc_color: 0xFF3333
+            arc_rounded: false
+          scrollable: false
+          hidden: true
 
   pages:
     - id: boot_sound_page
@@ -6518,7 +6512,7 @@ lvgl:
             x: 47
             y: 0
             width: 107
-            height: 40
+            height: 90
             bg_opa: TRANSP
             border_opa: TRANSP
             pad_all: 0
@@ -6530,7 +6524,7 @@ lvgl:
                   id: idle_timer_countdown
                   align: CENTER
                   width: 107
-                  text: "0:00"
+                  text: "00\n00"
                   text_color: 0xFFFF00
                   text_font: font_7seg
                   text_letter_space: 0
