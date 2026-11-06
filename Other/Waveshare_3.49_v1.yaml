@@ -18,27 +18,27 @@ substitutions:
 
   sensor1_entity: "binary_sensor.room_1_presence"
   light1_entity: "binary_sensor.room_1_light"
-  sensor1_label: "Room 1"
   sensor2_entity: "binary_sensor.room_2_presence"
   light2_entity: "binary_sensor.room_2_light"
-  sensor2_label: "Room 2"
   sensor3_entity: "binary_sensor.room_3_presence"
   light3_entity: "binary_sensor.room_3_light"
-  sensor3_label: "Room 3"
   sensor4_entity: "binary_sensor.room_4_presence"
   light4_entity: "binary_sensor.room_4_light"
-  sensor4_label: "Room 4"
   sensor5_entity: "binary_sensor.room_5_presence"
   light5_entity: "binary_sensor.room_5_light"
-  sensor5_label: "Room 5"
   sensor6_entity: "binary_sensor.room_6_presence"
   light6_entity: "binary_sensor.room_6_light"
-  sensor6_label: "Room 6"
 
   pulldown1_entity: "light.ceiling"
   pulldown2_entity: "light.ceiling_2"
   pulldown3_entity: "light.hue_p45_7_light"
   pulldown4_entity: "light.color_light"
+
+# pulldown control menu buttons (Light 2 menu)
+  pulldown5_entity: "light.CHANGE_ME_5"
+  pulldown6_entity: "light.CHANGE_ME_6"
+  pulldown7_entity: "light.CHANGE_ME_7"
+  pulldown8_entity: "light.CHANGE_ME_8"
 
   scene1_entity: "scene.bright_day"
   scene2_entity: "scene.normal_day"
@@ -290,7 +290,7 @@ globals:
   - id: pulldown_menu_index
     type: int
     restore_value: no
-    initial_value: "0"
+    initial_value: "1"
   - id: pullup_player_target
     type: int
     restore_value: yes
@@ -809,6 +809,7 @@ media_source:
     id: http_media_source
   - platform: sendspin
     id: sendspin_media_source
+    static_delay_adjustable: true
 
 media_player:
   - platform: sendspin
@@ -922,16 +923,6 @@ switch:
     name: "Sendspin Unpaired Access"
     type: unpaired_access
 
-  - platform: template
-    id: sendspin_delay_adjustable
-    name: "Sendspin adjustable delay"
-    entity_category: config
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    turn_on_action:
-      - sendspin.media_source.enable_static_delay_adjustment:
-    turn_off_action:
-      - sendspin.media_source.disable_static_delay_adjustment:
 
   - platform: gpio
     id: sys_en_hold
@@ -1605,6 +1596,46 @@ text:
     on_value:
       - script.execute: refresh_pulldown_labels
   - platform: template
+    id: pulldown5_label
+    name: Pulldown 5 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 5
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown6_label
+    name: Pulldown 6 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 6
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown7_label
+    name: Pulldown 7 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 7
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
+    id: pulldown8_label
+    name: Pulldown 8 label
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: Light 8
+    mode: text
+    on_value:
+      - script.execute: refresh_pulldown_labels
+  - platform: template
     id: scene1_label
     name: Scene 1 label
     entity_category: config
@@ -1964,6 +1995,26 @@ binary_sensor:
   - platform: homeassistant
     id: pulldown4_state
     entity_id: ${pulldown4_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown5_state
+    entity_id: ${pulldown5_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown6_state
+    entity_id: ${pulldown6_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown7_state
+    entity_id: ${pulldown7_entity}
+    on_state:
+      - script.execute: refresh_pulldown_states
+  - platform: homeassistant
+    id: pulldown8_state
+    entity_id: ${pulldown8_entity}
     on_state:
       - script.execute: refresh_pulldown_states
 
@@ -3347,6 +3398,18 @@ script:
       - lvgl.label.update:
           id: pulldown4_button_label
           text: !lambda return id(pulldown4_label).state;
+      - lvgl.label.update:
+          id: pulldown5_button_label
+          text: !lambda return id(pulldown5_label).state;
+      - lvgl.label.update:
+          id: pulldown6_button_label
+          text: !lambda return id(pulldown6_label).state;
+      - lvgl.label.update:
+          id: pulldown7_button_label
+          text: !lambda return id(pulldown7_label).state;
+      - lvgl.label.update:
+          id: pulldown8_button_label
+          text: !lambda return id(pulldown8_label).state;
 
   - id: refresh_scene_labels
     mode: restart
@@ -3372,11 +3435,17 @@ script:
           if (id(pulldown_menu_index) == page_index) return;
           id(pulldown_menu_index) = page_index;
           if (page_index == 0) {
-            lv_obj_clear_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
-          } else {
             lv_obj_add_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_lights_group2), LV_OBJ_FLAG_HIDDEN);
+          } else if (page_index == 1) {
+            lv_obj_clear_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_lights_group2), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(pulldown_content_block), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(pulldown_scenes_group), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(pulldown_lights_group2), LV_OBJ_FLAG_HIDDEN);
           }
 
   - id: scene_activate
@@ -3418,6 +3487,10 @@ script:
           apply_button(id(pulldown2_button), id(pulldown2_button_label), id(pulldown2_state).state);
           apply_button(id(pulldown3_button), id(pulldown3_button_label), id(pulldown3_state).state);
           apply_button(id(pulldown4_button), id(pulldown4_button_label), id(pulldown4_state).state);
+          apply_button(id(pulldown5_button), id(pulldown5_button_label), id(pulldown5_state).state);
+          apply_button(id(pulldown6_button), id(pulldown6_button_label), id(pulldown6_state).state);
+          apply_button(id(pulldown7_button), id(pulldown7_button_label), id(pulldown7_state).state);
+          apply_button(id(pulldown8_button), id(pulldown8_button_label), id(pulldown8_state).state);
 
   - id: pulldown_toggle
     mode: restart
@@ -5264,8 +5337,11 @@ script:
           id(timer_seconds_remaining).publish_state(id(timer_seconds_left));
 
           if (!found || total <= 0) {
+            lv_obj_add_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
+            id(cancel_timer_button_timeout)->stop();
+            lv_obj_add_flag(id(cancel_timer_button), LV_OBJ_FLAG_HIDDEN);
             if (id(clock_style_mode) == ${clock_style_rooms}) {
               lv_obj_add_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(id(rooms_clock_label), LV_OBJ_FLAG_HIDDEN);
@@ -5300,6 +5376,15 @@ script:
           if (remain < 0.0f) remain = 0.0f;
           if (remain > 1.0f) remain = 1.0f;
 
+          int arc_value = (int) lroundf(remain * 1000.0f);
+          arc_value = std::max(0, std::min(1000, arc_value));
+          lv_arc_set_value(id(timer_progress_arc), arc_value);
+          lv_obj_clear_flag(id(timer_progress_arc), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(id(timer_progress_arc));
+
+          if (id(va_phase) != ${va_phase_idle}) {
+            lv_obj_add_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
+          } else {
           lv_obj_t *canvas = id(hourglass_canvas);
           lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_COVER);
 
@@ -5425,6 +5510,7 @@ script:
           }
 
           lv_canvas_finish_layer(canvas, &layer);
+          }
           if (id(va_phase) == ${va_phase_idle}) {
             lv_obj_clear_flag(id(hourglass_canvas), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(now_playing_frame), LV_OBJ_FLAG_HIDDEN);
@@ -5454,6 +5540,29 @@ script:
           lv_obj_add_flag(id(room6_box), LV_OBJ_FLAG_HIDDEN);
           lv_obj_clear_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
           lv_obj_move_foreground(id(idle_timer_block));
+          lv_obj_move_foreground(id(cancel_timer_button));
+
+  - id: show_cancel_timer_button
+    mode: restart
+    then:
+      - lvgl.widget.show: cancel_timer_button
+      - script.execute: cancel_timer_button_timeout
+
+  - id: cancel_timer_button_timeout
+    mode: restart
+    then:
+      - delay: 5s
+      - lvgl.widget.hide: cancel_timer_button
+
+  - id: cancel_active_timer
+    then:
+      - script.stop: cancel_timer_button_timeout
+      - lvgl.widget.hide: cancel_timer_button
+      - homeassistant.action:
+          action: conversation.process
+          data:
+            text: "cancel timer"
+            language: "en"
 
   - id: show_volume_ring
     mode: restart
@@ -5861,7 +5970,7 @@ touchscreen:
                   }
                 } else if (id(touch_start_x) < bar_start) {
                   if (id(ui_phase) == ${ui_phase_pulldown}) {
-                    const int pulldown_page_count = 2;
+                    const int pulldown_page_count = 3;
                     int next_page = dx < 0
                       ? (id(pulldown_menu_index) + 1) % pulldown_page_count
                       : (id(pulldown_menu_index) - 1 + pulldown_page_count) % pulldown_page_count;
@@ -5939,6 +6048,11 @@ touchscreen:
               return;
             }
 
+            if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist && id(timer_is_active) && id(va_phase) == ${va_phase_idle} && id(touch_start_x) < zone2_end) {
+              id(show_cancel_timer_button)->execute();
+              return;
+            }
+
             if (elapsed <= 700 && abs_x <= tap_max_dist && abs_y <= tap_max_dist) {
               // LVGL's own click detection can't reach the now_playing_bar buttons on this
               // display (its touch input is fed raw, un-rotated 172x640 coordinates, so LVGL
@@ -5951,6 +6065,14 @@ touchscreen:
               if (id(ui_phase) == ${ui_phase_pulldown} && tx < bar_start) {
                 if (id(pulldown_menu_index) == 0) {
                   if (ty >= 24 && ty <= 94) {
+                    if (tx >= 192 && tx <= 268) { id(scene_activate)->execute(std::string("${scene1_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(scene_activate)->execute(std::string("${scene2_entity}")); }
+                  } else if (ty >= 98 && ty <= 168) {
+                    if (tx >= 192 && tx <= 268) { id(scene_activate)->execute(std::string("${scene3_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(scene_activate)->execute(std::string("${scene4_entity}")); }
+                  }
+                } else if (id(pulldown_menu_index) == 1) {
+                  if (ty >= 24 && ty <= 94) {
                     if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown1_entity}")); }
                     else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown2_entity}")); }
                   } else if (ty >= 98 && ty <= 168) {
@@ -5959,11 +6081,11 @@ touchscreen:
                   }
                 } else {
                   if (ty >= 24 && ty <= 94) {
-                    if (tx >= 192 && tx <= 268) { id(scene_activate)->execute(std::string("${scene1_entity}")); }
-                    else if (tx >= 272 && tx <= 348) { id(scene_activate)->execute(std::string("${scene2_entity}")); }
+                    if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown5_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown6_entity}")); }
                   } else if (ty >= 98 && ty <= 168) {
-                    if (tx >= 192 && tx <= 268) { id(scene_activate)->execute(std::string("${scene3_entity}")); }
-                    else if (tx >= 272 && tx <= 348) { id(scene_activate)->execute(std::string("${scene4_entity}")); }
+                    if (tx >= 192 && tx <= 268) { id(pulldown_toggle)->execute(std::string("${pulldown7_entity}")); }
+                    else if (tx >= 272 && tx <= 348) { id(pulldown_toggle)->execute(std::string("${pulldown8_entity}")); }
                   }
                 }
                 return;
@@ -6100,6 +6222,33 @@ lvgl:
           height: ${screenheight}
           antialias: false
           clickable: false
+          hidden: true
+
+  top_layer:
+    widgets:
+      - arc:
+          id: timer_progress_arc
+          align: CENTER
+          x: -234
+          y: 0
+          width: 160
+          height: 160
+          start_angle: 0
+          end_angle: 360
+          rotation: 270
+          min_value: 0
+          max_value: 1000
+          value: 0
+          adjustable: false
+          arc_width: 4
+          arc_color: 0x242424
+          arc_opa: 45%
+          arc_rounded: false
+          indicator:
+            arc_width: 4
+            arc_color: 0xFF3333
+            arc_rounded: false
+          scrollable: false
           hidden: true
 
   pages:
@@ -6534,6 +6683,7 @@ lvgl:
                         border_opa: TRANSP
                         pad_all: 0
                         scrollable: false
+                        clickable: false
                         hidden: true
                         widgets:
                           - label:
@@ -6555,6 +6705,36 @@ lvgl:
                               text_color: 0xFFFF00
                               text_font: font_7seg
                               text_letter_space: 0
+                              text_align: CENTER
+
+                    - obj:
+                        id: cancel_timer_button
+                        align: CENTER
+                        width: 150
+                        height: 60
+                        radius: 16
+                        bg_color: 0x330000
+                        bg_opa: COVER
+                        border_color: 0xFF3333
+                        border_width: 3
+                        shadow_color: 0xFF3333
+                        shadow_width: 10
+                        shadow_opa: 45%
+                        clickable: true
+                        scrollable: false
+                        hidden: true
+                        pressed:
+                          bg_color: 0xFF3333
+                          bg_opa: COVER
+                          border_color: 0xFFFFFF
+                        on_click:
+                          - script.execute: cancel_active_timer
+                        widgets:
+                          - label:
+                              align: CENTER
+                              text: "Cancel Timer"
+                              text_color: 0xFFFFFF
+                              text_font: font_playlist
                               text_align: CENTER
 
                     - obj:
@@ -6975,6 +7155,118 @@ lvgl:
                                     align: CENTER
                                     width: 64
                                     text: "Off"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                    - obj:
+                        id: pulldown_lights_group2
+                        align: TOP_MID
+                        y: 8
+                        width: 172
+                        height: 144
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        pad_all: 0
+                        scrollable: false
+                        hidden: true
+                        widgets:
+                          - button:
+                              id: pulldown5_button
+                              align: TOP_MID
+                              x: -40
+                              y: 0
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: pulldown5_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Light 5"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: pulldown6_button
+                              align: TOP_MID
+                              x: 40
+                              y: 0
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: pulldown6_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Light 6"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: pulldown7_button
+                              align: TOP_MID
+                              x: -40
+                              y: 74
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: pulldown7_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Light 7"
+                                    text_color: 0xFFFFFF
+                                    text_font: font_playlist
+                                    text_align: CENTER
+
+                          - button:
+                              id: pulldown8_button
+                              align: TOP_MID
+                              x: 40
+                              y: 74
+                              width: 76
+                              height: 70
+                              radius: 12
+                              bg_opa: TRANSP
+                              border_color: 0xFFFF00
+                              border_width: 3
+                              shadow_color: 0xFFFF00
+                              shadow_width: 8
+                              shadow_opa: 40%
+                              clickable: false
+                              widgets:
+                                - label:
+                                    id: pulldown8_button_label
+                                    align: CENTER
+                                    width: 64
+                                    text: "Light 8"
                                     text_color: 0xFFFFFF
                                     text_font: font_playlist
                                     text_align: CENTER
