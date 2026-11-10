@@ -73,6 +73,14 @@ substitutions:
   scene3_entity: "scene.red_night"
   scene4_entity: "scene.off"
 
+packages:
+  extcomp:
+    url: https://github.com/RealDeco/xiaozhi-esphome.git
+    ref: main
+    refresh: 0s
+    files:
+      - devices/Under_Development/Modular/HW/sendspin-external_components_2026.10.0.yaml
+
 esp32:
   board: esp32-s3-devkitc-1
   flash_size: 16MB
@@ -748,6 +756,7 @@ i2s_audio:
     i2s_lrclk_pin: GPIO15
     i2s_bclk_pin: GPIO13
     i2s_mclk_pin: GPIO12
+    full_duplex: true
   - id: i2s_lineout
     i2s_lrclk_pin: GPIO44
     i2s_bclk_pin: GPIO48
@@ -765,8 +774,14 @@ microphone:
     i2s_din_pin: GPIO14
     adc_type: external
     channel: left
-    sample_rate: 16000
+    sample_rate: ${media_sample_rate}
     bits_per_sample: 16bit
+  - platform: resampler
+    id: voice_microphone
+    microphone:
+      microphone: box_mic
+      channels: [0]
+    sample_rate: 16000
 
 speaker:
   - platform: i2s_audio
@@ -776,7 +791,7 @@ speaker:
     dac_type: external
     sample_rate: 48000
     bits_per_sample: 16bit
-    channel: left
+    channel: stereo
     audio_dac: es8311_dac
     buffer_duration: 100ms
 
@@ -960,7 +975,7 @@ switch:
     pin:
       pca9554: pca9554a_device
       number: 7
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
 
   - platform: template
     id: startup_sound_switch
@@ -987,10 +1002,12 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     on_turn_off:
       - microphone.unmute:
+          id: voice_microphone
       - script.execute: start_wake_word
     on_turn_on:
       - script.execute: stop_wake_word
       - microphone.mute:
+          id: voice_microphone
 
   - platform: template
     id: timer_ringing
@@ -1744,6 +1761,7 @@ text:
 
 micro_wake_word:
   id: mww
+  microphone: voice_microphone
   stop_after_detection: false
   models:
     - model: okay_nabu
@@ -1813,7 +1831,7 @@ micro_wake_word:
 
 voice_assistant:
   id: va
-  microphone: box_mic
+  microphone: voice_microphone
   media_player: external_media_player
   micro_wake_word: mww
   noise_suppression_level: 2
