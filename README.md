@@ -100,6 +100,8 @@ alt="Guition 1.80 silver puck photo"
 Guition 1.80" Silver Puck:
 [https://www.aliexpress.com/item/1005007338590852.html](https://www.aliexpress.com/item/1005007338590852.html)
 
+Alternative link: [https://www.aliexpress.com/item/1005013669236170.html](https://www.aliexpress.com/item/1005013669236170.html)
+
 ---
 
 ## Guition 1.85" Rotary Knob
